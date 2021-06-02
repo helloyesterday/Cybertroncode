@@ -60,7 +60,7 @@ class Units:
         self._energy_name = {
             'kj/mol':'kJ/mol',
             'j/mol':'J/mol',
-            'kcal/mol':'Kcal/mol',
+            'kcal/mol':'kcal/mol',
             'cal/mol':'cal/mol',
             'ha':'Hartree',
             'hartree':'Hartree',
