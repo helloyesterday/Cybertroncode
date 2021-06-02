@@ -1,3 +1,4 @@
+from inspect import Parameter
 import os
 import numpy as np
 import mindspore as ms
@@ -145,6 +146,7 @@ class WithLossCell_RFE(nn.Cell):
         energy_fn,
         force_fn,
         ratio_energy=0.01,
+        ratio_force=0.99,
         # with_penalty=False,
     ):
         super().__init__(auto_prefix=False)
@@ -152,7 +154,7 @@ class WithLossCell_RFE(nn.Cell):
         self.force_fn = force_fn
         self.energy_fn = energy_fn
         self.ratio_energy = ratio_energy
-        self.ratio_force = 1.0 - ratio_energy
+        self.ratio_force = ratio_force
         self.grad_op = C.GradOperation()
         # self.with_penalty = with_penalty
 
@@ -581,8 +583,12 @@ class Recorder(Callback):
 
         if self._per_step > 0 and cb_params.cur_step_num % self._per_step == 0:
             cur_epoch = cb_params.cur_epoch_num
-            cur_step = cb_params.cur_step_num
-            cur_step_in_epoch = (cur_step - 1) % cb_params.batch_num + 1
+            opt = cb_params.optimizer
+            if opt is None:
+                opt = cb_params.train_network.optimizer
+            global_step = opt.global_step
+            if not isinstance(global_step,int):
+                global_step = global_step.asnumpy()[0]
 
             if self.avg_steps > 0:
                 mov_avg = sum(self.loss_record) / sum(self.train_num)
@@ -590,11 +596,11 @@ class Recorder(Callback):
                 mov_avg = self.loss_record / self.train_num
             
             title = "#! FIELDS step"
-            info = 'Epoch: ' + str(cur_epoch) + ', Step: ' + str(cur_step_in_epoch)
-            outdata = '{:>10d}'.format(cur_step)
+            info = 'Epoch: ' + str(cur_epoch) + ', Step: ' + str(global_step)
+            outdata = '{:>10d}'.format(global_step)
 
             if self.dynamic_lr is not None:
-                lr = self.dynamic_lr(F.cast(cb_params.cur_step_num-1,ms.int32))
+                lr = self.dynamic_lr(F.cast(global_step-1,ms.int32))
                 info += ', Learning_rate: ' + str(lr)
                 title += ' learning_rate'
                 outdata += '{:>15e}'.format(lr.asnumpy())
@@ -663,12 +669,19 @@ class Recorder(Callback):
             mov_avg = self.loss_record / self.train_num
 
         if self._per_epoch > 0 and cur_epoch % self._per_epoch == 0:
-            title = "#! FIELDS epoch"
-            info = 'Epoch: ' + str(cur_epoch)
-            outdata = '{:>10d}'.format(cur_epoch)
+            opt = cb_params.optimizer
+            if opt is None:
+                opt = cb_params.train_network.optimizer
+            global_step = opt.global_step
+            if not isinstance(global_step,int):
+                global_step = global_step.asnumpy()[0]
+
+            title = "#! FIELDS step"
+            info = 'Epoch: ' + str(cur_epoch) + ', Step: ' + str(global_step)
+            outdata = '{:>10d}'.format(global_step)
 
             if self.dynamic_lr is not None:
-                lr = self.dynamic_lr(F.cast(cb_params.cur_step_num-1,ms.int32))
+                lr = self.dynamic_lr(F.cast(global_step-1,ms.int32))
                 title += ' learning_rate'
                 info += ', Learning_rate: ' + str(lr)
                 outdata += '{:>15e}'.format(lr.asnumpy())
