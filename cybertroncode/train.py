@@ -492,7 +492,7 @@ class WithEvalCell_ZANBE(WithLabelEvalCell):
         return loss, outputs, label, atom_num
 
 class Recorder(Callback):
-    def __init__(self, model, name, directory=None, per_epoch=1, per_step=0, avg_steps=0, eval_dataset=None, best_ckpt_metrics=None, dynamic_lr=None):
+    def __init__(self, model, name, directory=None, per_epoch=1, per_step=0, avg_steps=0, eval_dataset=None, best_ckpt_metrics=None):
         super().__init__()
         if not isinstance(per_epoch, int) or per_epoch < 0:
             raise ValueError("per_epoch must be int and >= 0.")
@@ -515,7 +515,6 @@ class Recorder(Callback):
         self._per_epoch = per_epoch
         self._per_step = per_step
         self.eval_dataset = eval_dataset
-        self.dynamic_lr = dynamic_lr
 
         if directory is not None:
             self._directory = _make_directory(directory)
@@ -531,10 +530,6 @@ class Recorder(Callback):
         self.best_ckpt_metrics = best_ckpt_metrics
 
         self.last_loss = 0
-        self.epoch_loss = 0
-
-        self.ds_num = 0
-
         self.record = []
 
         self.output_title = True
@@ -556,6 +551,91 @@ class Recorder(Callback):
         with open(ckptdata, "a") as f:
             f.write(info + os.linesep)
 
+    def _output_data(self,cb_params):
+        cur_epoch = cb_params.cur_epoch_num
+        opt = cb_params.optimizer
+        if opt is None:
+            opt = cb_params.train_network.optimizer
+        global_step = opt.global_step
+        if not isinstance(global_step,int):
+            global_step = global_step.asnumpy()[0]
+        global_step = F.cast(global_step,ms.int32)
+
+        if self.avg_steps > 0:
+            mov_avg = sum(self.loss_record) / sum(self.train_num)
+        else:
+            mov_avg = self.loss_record / self.train_num
+        
+        title = "#! FIELDS step"
+        info = 'Epoch: ' + str(cur_epoch) + ', Step: ' + str(global_step)
+        outdata = '{:>10d}'.format(global_step.asnumpy())
+
+        lr = opt.learning_rate
+        if opt.dynamic_lr:
+            if opt.is_group_lr:
+                lr = ()
+                for learning_rate in opt.learning_rate:
+                    current_dynamic_lr = learning_rate(global_step-1)
+                    lr += (current_dynamic_lr,)
+            else:
+                lr = opt.learning_rate(global_step-1)
+
+        title += ' learning_rate'
+        info += ', Learning_rate: ' + str(lr)
+        outdata += '{:>15e}'.format(lr.asnumpy())
+
+        title += " last_loss avg_loss"
+        info += ', Last_Loss: ' + str(self.last_loss) + ', Avg_loss: ' + str(mov_avg)
+        outdata += '{:>15e}'.format(self.last_loss) + '{:>15e}'.format(mov_avg)
+
+        _make_directory(self._directory)
+
+        if self.eval_dataset is not None:
+            eval_metrics = self.model.eval(self.eval_dataset, dataset_sink_mode=False)
+            for k,v in eval_metrics.items():
+                info += ', '
+                info += k
+                info += ': '
+                info += str(v)
+
+                if type(v) is np.ndarray and len(v) > 1:
+                    for i in range(len(v)):
+                        title += (' ' + k + str(i))
+                        outdata += '{:>15e}'.format(v[i])
+                else:
+                    title += (' ' + k)
+                    outdata += '{:>15e}'.format(v)
+
+            if self.best_ckpt_metrics in eval_metrics.keys():
+                vnow = eval_metrics[self.best_ckpt_metrics]
+                if type(vnow) is np.ndarray and len(vnow) > 1:
+                    output_ckpt = vnow < self.best_value
+                    num_best = np.count_nonzero(output_ckpt)
+                    if num_best > 0:
+                        self._write_cpkt_file(self._ckptfile,info,cb_params.train_network)
+                        source_ckpt = os.path.join(self._directory, self._ckptfile + '.ckpt')
+                        for i in range(len(vnow)):
+                            if output_ckpt[i]:
+                                dest_ckpt = os.path.join(self._directory, self._ckptfile + '-' + str(i) + '.ckpt')
+                                bck_ckpt = os.path.join(self._directory, self._ckptfile + '-' + str(i) + '.bck.ckpt')
+                                if os.path.exists(dest_ckpt):
+                                    os.rename(dest_ckpt,bck_ckpt)
+                                copyfile(source_ckpt,dest_ckpt)
+                        self.best_value = np.minimum(vnow,self.best_value)
+                else:
+                    if vnow < self.best_value:
+                        self._write_cpkt_file(self._ckptfile,info,cb_params.train_network)
+                        self.best_value = vnow
+
+        print(info, flush=True)
+        filename = os.path.join(self._directory, self._filename)
+        if self.output_title:
+            with open(filename, "a") as f:
+                f.write(title + os.linesep)
+            self.output_title = False
+        with open(filename, "a") as f:
+            f.write(outdata + os.linesep)
+
     def step_end(self, run_context):
         cb_params = run_context.original_args()
         loss = cb_params.net_outputs
@@ -570,10 +650,7 @@ class Recorder(Callback):
         nbatch = len(cb_params.train_dataset_element[0])
         batch_loss = loss * nbatch
 
-        self.ds_num += nbatch
-
         self.last_loss = loss
-        self.epoch_loss += batch_loss
         if self.avg_steps > 0:
             self.loss_record.append(batch_loss)
             self.train_num.append(nbatch)
@@ -582,168 +659,14 @@ class Recorder(Callback):
             self.train_num += nbatch
 
         if self._per_step > 0 and cb_params.cur_step_num % self._per_step == 0:
-            cur_epoch = cb_params.cur_epoch_num
-            opt = cb_params.optimizer
-            if opt is None:
-                opt = cb_params.train_network.optimizer
-            global_step = opt.global_step
-            if not isinstance(global_step,int):
-                global_step = global_step.asnumpy()[0]
-
-            if self.avg_steps > 0:
-                mov_avg = sum(self.loss_record) / sum(self.train_num)
-            else:
-                mov_avg = self.loss_record / self.train_num
-            
-            title = "#! FIELDS step"
-            info = 'Epoch: ' + str(cur_epoch) + ', Step: ' + str(global_step)
-            outdata = '{:>10d}'.format(global_step)
-
-            if self.dynamic_lr is not None:
-                lr = self.dynamic_lr(F.cast(global_step-1,ms.int32))
-                info += ', Learning_rate: ' + str(lr)
-                title += ' learning_rate'
-                outdata += '{:>15e}'.format(lr.asnumpy())
-
-            title += " last_loss avg_loss"
-            info += ', Last_Loss: ' + str(self.last_loss) + ', Avg_loss: ' + str(mov_avg)
-            outdata += '{:>15e}'.format(self.last_loss) + '{:>15e}'.format(mov_avg)
-
-            _make_directory(self._directory)
-
-            if self.eval_dataset is not None:
-                eval_metrics = self.model.eval(self.eval_dataset, dataset_sink_mode=False)
-                for k,v in eval_metrics.items():
-                    info += ', '
-                    info += k
-                    info += ': '
-                    info += str(v)
-
-                    if type(v) is np.ndarray and len(v) > 1:
-                        for i in range(len(v)):
-                            title += (' ' + k + str(i))
-                            outdata += '{:>15e}'.format(v[i])
-                    else:
-                        title += (' ' + k)
-                        outdata += '{:>15e}'.format(v)
-
-                if self.best_ckpt_metrics in eval_metrics.keys():
-                    vnow = eval_metrics[self.best_ckpt_metrics]
-                    if type(vnow) is np.ndarray and len(vnow) > 1:
-                        output_ckpt = vnow < self.best_value
-                        num_best = np.count_nonzero(output_ckpt)
-                        if num_best > 0:
-                            self._write_cpkt_file(self._ckptfile,info,cb_params.train_network)
-                            source_ckpt = os.path.join(self._directory, self._ckptfile + '.ckpt')
-                            for i in range(len(vnow)):
-                                if output_ckpt[i]:
-                                    dest_ckpt = os.path.join(self._directory, self._ckptfile + '-' + str(i) + '.ckpt')
-                                    bck_ckpt = os.path.join(self._directory, self._ckptfile + '-' + str(i) + '.bck.ckpt')
-                                    if os.path.exists(dest_ckpt):
-                                        os.rename(dest_ckpt,bck_ckpt)
-                                    copyfile(source_ckpt,dest_ckpt)
-                            self.best_value = np.minimum(vnow,self.best_value)
-                    else:
-                        if vnow < self.best_value:
-                            self._write_cpkt_file(self._ckptfile,info,cb_params.train_network)
-                            self.best_value = vnow
-
-            print(info, flush=True)
-            filename = os.path.join(self._directory, self._filename)
-            if self.output_title:
-                with open(filename, "a") as f:
-                    f.write(title + os.linesep)
-                self.output_title = False
-            with open(filename, "a") as f:
-                f.write(outdata + os.linesep)
+            self._output_data(cb_params)
 
     def epoch_end(self, run_context):
         cb_params = run_context.original_args()
         cur_epoch = cb_params.cur_epoch_num
 
-        self.epoch_loss /= self.ds_num
-
-        if self.avg_steps > 0:
-            mov_avg = sum(self.loss_record) / sum(self.train_num)
-        else:
-            mov_avg = self.loss_record / self.train_num
-
         if self._per_epoch > 0 and cur_epoch % self._per_epoch == 0:
-            opt = cb_params.optimizer
-            if opt is None:
-                opt = cb_params.train_network.optimizer
-            global_step = opt.global_step
-            if not isinstance(global_step,int):
-                global_step = global_step.asnumpy()[0]
-
-            title = "#! FIELDS step"
-            info = 'Epoch: ' + str(cur_epoch) + ', Step: ' + str(global_step)
-            outdata = '{:>10d}'.format(global_step)
-
-            if self.dynamic_lr is not None:
-                lr = self.dynamic_lr(F.cast(global_step-1,ms.int32))
-                title += ' learning_rate'
-                info += ', Learning_rate: ' + str(lr)
-                outdata += '{:>15e}'.format(lr.asnumpy())
-
-            title += " last_loss epoch_loss avg_loss"
-            info += ', Last_Loss: ' + str(self.last_loss) + \
-                ', Epoch_Loss: ' + str(self.epoch_loss) + \
-                ', Avg_loss: ' + str(mov_avg)
-            outdata += '{:>15e}'.format(self.epoch_loss) + \
-                '{:>15e}'.format(self.last_loss) + \
-                '{:>15e}'.format(mov_avg)
-
-            _make_directory(self._directory)
-
-            if self.eval_dataset is not None:
-                eval_metrics = self.model.eval(self.eval_dataset, dataset_sink_mode=False)
-                for k,v in eval_metrics.items():
-                    info += ', '
-                    info += k
-                    info += ': '
-                    info += str(v)
-
-                    if type(v) is np.ndarray and len(v) > 1:
-                        for i in range(len(v)):
-                            title += (' ' + k + str(i))
-                            outdata += '{:>15e}'.format(v[i])
-                    else:
-                        title += (' ' + k)
-                        outdata += '{:>15e}'.format(v)
-
-                if self.best_ckpt_metrics in eval_metrics.keys():
-                    vnow = eval_metrics[self.best_ckpt_metrics]
-                    if type(vnow) is np.ndarray and len(vnow) > 1:
-                        output_ckpt = vnow < self.best_value
-                        num_best = np.count_nonzero(output_ckpt)
-                        if num_best > 0:
-                            self._write_cpkt_file(self._ckptfile,info,cb_params.train_network)
-                            source_ckpt = os.path.join(self._directory, self._ckptfile + '.ckpt')
-                            for i in range(len(vnow)):
-                                if output_ckpt[i]:
-                                    dest_ckpt = os.path.join(self._directory, self._ckptfile + '-' + str(i) + '.ckpt')
-                                    bck_ckpt = os.path.join(self._directory, self._ckptfile + '-' + str(i) + '.bck.ckpt')
-                                    if os.path.exists(dest_ckpt):
-                                        os.rename(dest_ckpt,bck_ckpt)
-                                    copyfile(source_ckpt,dest_ckpt)
-                            self.best_value = np.minimum(vnow,self.best_value)
-                    else:
-                        if vnow < self.best_value:
-                            self._write_cpkt_file(self._ckptfile,info,cb_params.train_network)
-                            self.best_value = vnow
-            
-            print(info, flush=True)
-            filename = os.path.join(self._directory, self._filename)
-            if self.output_title:
-                with open(filename, "a") as f:
-                    f.write(title + os.linesep)
-                self.output_title = False
-            with open(filename, "a") as f:
-                f.write(outdata + os.linesep)
-        
-        self.epoch_loss = 0
-        self.ds_num = 0
+            self._output_data(cb_params)
 
 class MAE(Metric):
     def __init__(self,indexes=[2,3],reduce_all_dims=True):
