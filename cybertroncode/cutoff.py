@@ -7,7 +7,14 @@ from mindspore.ops import functional as F
 
 from cybertroncode.units import units
 
-__all__ = ["CosineCutoff", "MollifierCutoff", "HardCutoff", "SmoothCutoff", "GaussianCutoff"]
+__all__ = [
+    "CosineCutoff",
+    "MollifierCutoff",
+    "HardCutoff",
+    "SmoothCutoff",
+    "GaussianCutoff",
+    "get_cutoff",
+    ]
 
 _CUTOFF_ALIAS = dict()
 

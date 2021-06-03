@@ -1,12 +1,8 @@
-from os import X_OK
-import numpy as np
 import mindspore as ms
 from mindspore import nn
 from mindspore import Tensor
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
-from mindspore.common.initializer import initializer
-from mindspore.common.initializer import Normal
 
 from cybertroncode.units import units
 from cybertroncode.blocks import MLP,Dense
@@ -19,7 +15,7 @@ __all__ = [
     "get_decoder",
     "SimpleDecoder",
     "ResidualOutputBlock",
-]
+    ]
 
 _DECODER_ALIAS = dict()
 
@@ -127,7 +123,7 @@ def get_decoder(
     if obj is None or isinstance(obj,Decoder):
         return obj
     elif isinstance(obj, str):
-        if obj not in _DECODER_ALIAS.keys():
+        if obj.lower() not in _DECODER_ALIAS.keys():
             raise ValueError("The class corresponding to '{}' was not found.".format(obj))
         return _DECODER_ALIAS[obj.lower()](
             n_in=n_in,

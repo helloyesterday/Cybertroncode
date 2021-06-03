@@ -408,7 +408,7 @@ def get_aggregator(
     if obj is None or isinstance(obj,Aggregator):
         return obj
     elif isinstance(obj, str):
-        if obj not in _AGGREGATOR_ALIAS.keys():
+        if obj.lower() not in _AGGREGATOR_ALIAS.keys():
             raise ValueError("The class corresponding to '{}' was not found.".format(obj))
         return _AGGREGATOR_ALIAS[obj.lower()](dim=dim,axis=axis)
     else:
@@ -424,7 +424,7 @@ def get_list_aggregator(
     if obj is None or isinstance(obj,ListAggregator):
         return obj
     elif isinstance(obj, str):
-        if obj not in _LIST_AGGREGATOR_ALIAS.keys():
+        if obj.lower() not in _LIST_AGGREGATOR_ALIAS.keys():
             raise ValueError("The class corresponding to '{}' was not found.".format(obj))
         return _LIST_AGGREGATOR_ALIAS[obj.lower()](
             dim=dim,
