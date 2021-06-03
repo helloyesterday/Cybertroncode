@@ -1,4 +1,3 @@
-from inspect import Parameter
 import os
 import numpy as np
 import mindspore as ms
@@ -9,12 +8,7 @@ from mindspore import Tensor
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.ops import composite as C
-from mindspore import dataset as ds
-from mindspore.train import Model
-from mindspore import context
-from mindspore.train.callback import LossMonitor,SummaryCollector
-from mindspore.train.callback import ModelCheckpoint, CheckpointConfig,Callback
-from mindspore.train.serialization import load_checkpoint,load_param_into_net
+from mindspore.train.callback import Callback
 from mindspore.train.serialization import save_checkpoint
 from mindspore.nn.metrics import Metric
 from mindspore.train._utils import _make_directory
@@ -22,6 +16,21 @@ from mindspore.nn.learning_rate_schedule import LearningRateSchedule
 from mindspore._checkparam import Validator as validator
 
 _cur_dir = os.getcwd()
+
+__all__ = [
+    "DatasetWhitening",
+    "OutputScaleShift",
+    "WithForceLossCell",
+    "WithLabelLossCell",
+    "WithForceEvalCell",
+    "WithLabelEvalCell",
+    "EvalMonitor",
+    "MAE",
+    "MSE",
+    "MAEAveragedByAtoms",
+    "MLoss",
+    "TransformerLR",
+    ]
 
 class DatasetWhitening(nn.Cell):
     def __init__(self,scale=1.,shift=0.,references=None,mask=None,axis=-2,):
@@ -113,35 +122,9 @@ class OutputScaleShift(nn.Cell):
         else:
             return atoms_scale if self.scaled_by_atoms else graph_scale
 
-class SquareLoss(nn.loss.loss._Loss):
-    def __init__(self,reduction='mean'):
-        super().__init__(reduction)
-        self.square = P.Square()
-    def construct(self, data, label):
-        y = self.square(data-label)
-        return self.get_loss(y)
-
-class AbsLoss(nn.loss.loss._Loss):
-    def __init__(self,reduction='mean'):
-        super().__init__()
-        self.abs = P.Abs()
-        self.squeeze = P.Squeeze(-1)
-    def construct(self, data, label):
-        y = self.abs(data-label)
-        return self.squeeze(y)
-
-class ForceAbsLoss(nn.loss.loss._Loss):
-    def __init__(self,reduction='mean'):
-        super().__init__()
-        self.norm = nn.Norm(-1)
-        self.reduce_mean = P.ReduceMean()
-    def construct(self, pred_force, label_force):
-        diff = pred_force - label_force
-        loss = self.norm(diff)
-        return self.reduce_mean(loss,-1)
-
-class WithLossCell_RFE(nn.Cell):
+class WithForceLossCell(nn.Cell):
     def __init__(self,
+        datatypes,
         backbone,
         energy_fn,
         force_fn,
@@ -150,26 +133,96 @@ class WithLossCell_RFE(nn.Cell):
         # with_penalty=False,
     ):
         super().__init__(auto_prefix=False)
+
+        if not isinstance(datatypes,str):
+            raise TypeError('Type of "datatypes" must be str')
+
+        fulltypes = 'RZANnBbLlFE'
+        for datatype in datatypes:
+            if fulltypes.count(datatype) == 0:
+                raise ValueError('Unknown datatype: ' + datatype)
+
+        for datatype in fulltypes:
+            num = datatypes.count(datatype)
+            if num > 1:
+                raise ValueError('There are '+str(num)+' "' + datatype + '" in datatype "' + datatypes + '".')
+
+        self.R = datatypes.find('R') # positions
+        self.Z = datatypes.find('Z') # node_types
+        self.A = datatypes.find('A') # atom_types
+        self.N = datatypes.find('N') # neighbors
+        self.n = datatypes.find('n') # neighbor_mask
+        self.B = datatypes.find('B') # bonds
+        self.b = datatypes.find('b') # bond_mask
+        self.L = datatypes.find('L') # far_neighbors
+        self.l = datatypes.find('l') # far_mask
+        self.F = datatypes.find('F') # force
+        self.E = datatypes.find('E') # energy
+
+        if self.F < 0:
+            raise TypeError('The datatype "F" must be included in WithForceLossCell!')
+
+        if self.E < 0:
+            raise TypeError('The datatype "E" must be included in WithForceLossCell!')
+
         self._backbone = backbone
         self.force_fn = force_fn
         self.energy_fn = energy_fn
         self.ratio_energy = ratio_energy
         self.ratio_force = ratio_force
-        self.grad_op = C.GradOperation()
+        self.grad_op = C.GradOperation(get_all=False)
         # self.with_penalty = with_penalty
 
-    def construct(self, positions, forces, energy):
-        out = self._backbone(positions)
-        fout = -1 * self.grad_op(self._backbone)(positions)
+    def construct(self, *inputs):
+        inputs = inputs + (None,)
+
+        positions = inputs[self.R]
+        node_types = inputs[self.Z]
+        atom_types = inputs[self.A]
+        neighbors = inputs[self.N]
+        neighbor_mask = inputs[self.n]
+        bonds = inputs[self.B]
+        bond_mask = inputs[self.b]
+        far_neighbors = inputs[self.L]
+        far_mask = inputs[self.l]
+
+        out = self._backbone(
+            positions,
+            node_types,
+            atom_types,
+            neighbors,
+            neighbor_mask,
+            bonds,
+            bond_mask,
+            far_neighbors,
+            far_mask,
+        )
+        fout = -1 * self.grad_op(self._backbone)(
+            positions,
+            node_types,
+            atom_types,
+            neighbors,
+            neighbor_mask,
+            bonds,
+            bond_mask,
+            far_neighbors,
+            far_mask,
+        )
+
+        forces = inputs[self.F]
+        energy = inputs[self.E]
+        
         loss_force = self.force_fn(fout,forces) * self.ratio_force
         loss_energy = self.energy_fn(out,energy) * self.ratio_energy
         return loss_energy + loss_force
+
     @property
     def backbone_network(self):
         return self._backbone
 
 class WithLabelLossCell(nn.Cell):
     def __init__(self,
+        datatypes,
         backbone,
         loss_fn,
         do_whitening=False,
@@ -177,6 +230,7 @@ class WithLabelLossCell(nn.Cell):
         shift=0,
         references=None,
         mask=None,
+        # with_penalty=False,
     ):
         super().__init__(auto_prefix=False)
         self._backbone = backbone
@@ -194,117 +248,156 @@ class WithLabelLossCell(nn.Cell):
         else:
             self.whitening = None
 
-    def get_loss(self,out,label,types=None):
+        if not isinstance(datatypes,str):
+            raise TypeError('Type of "datatypes" must be str')
+
+        fulltypes = 'RZANnBbLlE'
+        for datatype in datatypes:
+            if fulltypes.count(datatype) == 0:
+                raise ValueError('Unknown datatype: ' + datatype)
+
+        for datatype in fulltypes:
+            num = datatypes.count(datatype)
+            if num > 1:
+                raise ValueError('There are '+str(num)+' "' + datatype + '" in datatype "' + datatypes + '".')
+
+        self.R = datatypes.find('R') # positions
+        self.Z = datatypes.find('Z') # node_types
+        self.A = datatypes.find('A') # atom_types
+        self.N = datatypes.find('N') # neighbors
+        self.n = datatypes.find('n') # neighbor_mask
+        self.B = datatypes.find('B') # bonds
+        self.b = datatypes.find('b') # bond_mask
+        self.L = datatypes.find('L') # far_neighbors
+        self.l = datatypes.find('l') # far_mask
+        self.E = datatypes.find('E') # label
+
+        if self.E < 0:
+            raise TypeError('The datatype "E" must be included in WithLabelLossCell!')
+
+    def construct(self, *inputs):
+
+        inputs = inputs + (None,)
+
+        positions = inputs[self.R]
+        node_types = inputs[self.Z]
+        atom_types = inputs[self.A]
+        neighbors = inputs[self.N]
+        neighbor_mask = inputs[self.n]
+        bonds = inputs[self.B]
+        bond_mask = inputs[self.b]
+        far_neighbors = inputs[self.L]
+        far_mask = inputs[self.l]
+
+        out = self._backbone(
+            positions,
+            node_types,
+            atom_types,
+            neighbors,
+            neighbor_mask,
+            bonds,
+            bond_mask,
+            far_neighbors,
+            far_mask,
+        )
+
+        label = inputs[self.E]
+        types = atom_types
+        if types is None:
+            types = node_types
+
         if self.do_whitening:
             label = self.whitening(label,types)
+
         return self._loss_fn(out,label)
 
-class WithLabelLossCell_RZE(WithLabelLossCell):
+class WithForceEvalCell(nn.Cell):
     def __init__(self,
-        backbone,
-        loss_fn,
-        do_whitening=False,
-        scale=1,
-        shift=0,
-        references=None,
-        mask=None,
+        datatypes,
+        network,
+        energy_fn=None,
+        force_fn=None,
+        add_cast_fp32=False
     ):
-        super().__init__(
-            backbone=backbone,
-            loss_fn=loss_fn,
-            do_whitening=do_whitening,
-            scale=scale,
-            shift=shift,
-            references=references,
-            mask=mask,
-        )
-        
-    def construct(self, positions, types, label):
-        out = self._backbone(positions,types)
-        return self.get_loss(out,label,types)
-
-class WithLabelLossCell_RZBE(WithLabelLossCell):
-    def __init__(self,
-        backbone,
-        loss_fn,
-        do_whitening=False,
-        scale=1,
-        shift=0,
-        references=None,
-        mask=None,
-    ):
-        super().__init__(
-            backbone=backbone,
-            loss_fn=loss_fn,
-            do_whitening=do_whitening,
-            scale=scale,
-            shift=shift,
-            references=references,
-            mask=mask,
-        )
-    def construct(self, positions, types, bonds, label):
-        out = self._backbone(positions,types,bonds=bonds)
-        return self.get_loss(out,label,types)
-
-class WithLabelLossCell_ZABE(WithLabelLossCell):
-    def __init__(self,
-        backbone,
-        loss_fn,
-        do_whitening=False,
-        scale=1,
-        shift=0,
-        references=None,
-        mask=None,
-    ):
-        super().__init__(
-            backbone=backbone,
-            loss_fn=loss_fn,
-            do_whitening=do_whitening,
-            scale=scale,
-            shift=shift,
-            references=references,
-            mask=mask,
-        )
-    def construct(self, node_types, atom_types, bonds, label):
-        out = self._backbone(None,node_types,atom_types,bonds=bonds)
-        return self.get_loss(out,label,atom_types)
-
-class WithLabelLossCell_ZANBE(WithLabelLossCell):
-    def __init__(self,
-        backbone,
-        loss_fn,
-        do_whitening=False,
-        scale=1,
-        shift=0,
-        references=None,
-        mask=None,
-    ):
-        super().__init__(
-            backbone=backbone,
-            loss_fn=loss_fn,
-            do_whitening=do_whitening,
-            scale=scale,
-            shift=shift,
-            references=references,
-            mask=mask,
-        )
-    def construct(self, node_types, atom_types, neighbors, bonds, label):
-        out = self._backbone(None,node_types,atom_types,neighbors,None,bonds)
-        return self.get_loss(out,label,atom_types)
-
-class WithEvalCell_RFE(nn.Cell):
-    def __init__(self, network, energy_fn=None, force_fn=None, add_cast_fp32=False):
         super().__init__(auto_prefix=False)
+
+        if not isinstance(datatypes,str):
+            raise TypeError('Type of "datatypes" must be str')
+
+        fulltypes = 'RZANnBbLlFE'
+        for datatype in datatypes:
+            if fulltypes.count(datatype) == 0:
+                raise ValueError('Unknown datatype: ' + datatype)
+
+        for datatype in fulltypes:
+            num = datatypes.count(datatype)
+            if num > 1:
+                raise ValueError('There are '+str(num)+' "' + datatype + '" in datatype "' + datatypes + '".')
+
+        self.R = datatypes.find('R') # positions
+        self.Z = datatypes.find('Z') # node_types
+        self.A = datatypes.find('A') # atom_types
+        self.N = datatypes.find('N') # neighbors
+        self.n = datatypes.find('n') # neighbor_mask
+        self.B = datatypes.find('B') # bonds
+        self.b = datatypes.find('b') # bond_mask
+        self.L = datatypes.find('L') # far_neighbors
+        self.l = datatypes.find('l') # far_mask
+        self.F = datatypes.find('F') # forces
+        self.E = datatypes.find('E') # energy
+
+        if self.F < 0:
+            raise TypeError('The datatype "F" must be included in WithForceEvalCell!')
+
+        if self.E < 0:
+            raise TypeError('The datatype "E" must be included in WithForceEvalCell!')
+
         self._network = network
         self._energy_fn = energy_fn
         self._force_fn = force_fn
         self.add_cast_fp32 = add_cast_fp32
 
-        self.grad_op = C.GradOperation()
+        self.grad_op = C.GradOperation(get_all=False)
 
-    def construct(self, positions, forces, energy):
-        outputs = self._network(positions)
-        foutputs = -1 * self.grad_op(self._network)(positions)
+    def construct(self, *inputs):
+        inputs = inputs + (None,)
+
+        positions = inputs[self.R]
+        node_types = inputs[self.Z]
+        atom_types = inputs[self.A]
+        neighbors = inputs[self.N]
+        neighbor_mask = inputs[self.n]
+        bonds = inputs[self.B]
+        bond_mask = inputs[self.b]
+        far_neighbors = inputs[self.L]
+        far_mask = inputs[self.l]
+
+        outputs = self._network(
+            positions,
+            node_types,
+            atom_types,
+            neighbors,
+            neighbor_mask,
+            bonds,
+            bond_mask,
+            far_neighbors,
+            far_mask,
+        )
+        foutputs = -1 * self.grad_op(self._network)(
+            positions,
+            node_types,
+            atom_types,
+            neighbors,
+            neighbor_mask,
+            bonds,
+            bond_mask,
+            far_neighbors,
+            far_mask,
+        )
+
+        forces = inputs[self.F]
+        energy = inputs[self.E]
+
         if self.add_cast_fp32:
             forces = F.mixed_precision_cast(ms.float32, forces)
             energy = F.mixed_precision_cast(ms.float32, energy)
@@ -324,6 +417,7 @@ class WithEvalCell_RFE(nn.Cell):
 
 class WithLabelEvalCell(nn.Cell):
     def __init__(self,
+        datatypes,
         network,
         loss_fn=None,
         add_cast_fp32=False,
@@ -355,143 +449,85 @@ class WithLabelEvalCell(nn.Cell):
                     shift=shift,
                     references=references,
                     mask=mask
-                )   
+                )
 
-    def get_atoms_number(self,types,dataref):
-        atom_num = F.cast(types>0,dataref.dtype)
-        return self.reducesum(atom_num,-1)
+        if not isinstance(datatypes,str):
+            raise TypeError('Type of "datatypes" must be str')
 
-    def get_loss(self,outputs, label, types=None):
+        fulltypes = 'RZANnBbLlE'
+        for datatype in datatypes:
+            if fulltypes.count(datatype) == 0:
+                raise ValueError('Unknown datatype: ' + datatype)
+
+        for datatype in fulltypes:
+            num = datatypes.count(datatype)
+            if num > 1:
+                raise ValueError('There are '+str(num)+' "' + datatype + '" in datatype "' + datatypes + '".')
+
+        self.R = datatypes.find('R') # positions
+        self.Z = datatypes.find('Z') # node_types
+        self.A = datatypes.find('A') # atom_types
+        self.N = datatypes.find('N') # neighbors
+        self.n = datatypes.find('n') # neighbor_mask
+        self.B = datatypes.find('B') # bonds
+        self.b = datatypes.find('b') # bond_mask
+        self.L = datatypes.find('L') # far_neighbors
+        self.l = datatypes.find('l') # far_mask
+        self.E = datatypes.find('E') # label
+
+        if self.E < 0:
+            raise TypeError('The datatype "E" must be included in WithLabelEvalCell!')
+
+    def construct(self, *inputs):
+        inputs = inputs + (None,)
+
+        positions = inputs[self.R]
+        node_types = inputs[self.Z]
+        atom_types = inputs[self.A]
+        neighbors = inputs[self.N]
+        neighbor_mask = inputs[self.n]
+        bonds = inputs[self.B]
+        bond_mask = inputs[self.b]
+        far_neighbors = inputs[self.L]
+        far_mask = inputs[self.l]
+
+        outputs = self._network(
+            positions,
+            node_types,
+            atom_types,
+            neighbors,
+            neighbor_mask,
+            bonds,
+            bond_mask,
+            far_neighbors,
+            far_mask,
+        )
+        label = inputs[self.E]
         if self.add_cast_fp32:
             label = F.mixed_precision_cast(ms.float32, label)
             outputs = F.cast(outputs, ms.float32)
 
-        if self._loss_fn is None:
-            return 0
-        else:
+        types = atom_types
+        if types is None:
+            types = node_types
+
+        loss = 0
+        if self._loss_fn is not None:
+            _label = label
             if self.do_scaleshift:
-                label = self.whitening(label,types)
-            return self._loss_fn(outputs, label)
+                _label = self.whitening(label,types)
+            loss = self._loss_fn(outputs, _label)
 
-    def scale_outputs(self,outputs,types):
         if self.do_scaleshift:
-            return self.scaleshift(outputs,types)
-        else:
-            return outputs
+            outputs = self.scaleshift(outputs,types)
 
-class WithLabelEvalCell_RZE(WithLabelEvalCell):
-    def __init__(self,
-        network,
-        loss_fn=None,
-        add_cast_fp32=False,
-        do_scaleshift=False,
-        scale=1,
-        shift=0,
-        references=None,
-    ):
-        super().__init__(
-            network=network,
-            loss_fn=loss_fn,
-            add_cast_fp32=add_cast_fp32,
-            do_scaleshift=do_scaleshift,
-            scale=scale,
-            shift=shift,
-            references=references,
-        )
-
-    def construct(self, positions, types, label):
-        atom_num = self.get_atoms_number(types,positions)
-        outputs0 = self._network(positions,types)
-        outputs = self.scale_outputs(outputs0,types)
-        loss = self.get_loss(outputs0,label,types)
+        dataref = positions if positions is not None else outputs
+        atom_num = F.cast(types>0,dataref.dtype)
+        atom_num = self.reducesum(atom_num,-1)
 
         return loss, outputs, label, atom_num
 
-class WithLabelEvalCell_RZBE(WithLabelEvalCell):
-    def __init__(self,
-        network,
-        loss_fn=None,
-        add_cast_fp32=False,
-        do_scaleshift=False,
-        scale=1,
-        shift=0,
-        references=None,
-    ):
-        super().__init__(
-            network=network,
-            loss_fn=loss_fn,
-            add_cast_fp32=add_cast_fp32,
-            do_scaleshift=do_scaleshift,
-            scale=scale,
-            shift=shift,
-            references=references,
-        )
-
-    def construct(self, positions, types, bonds, label):
-        atom_num = self.get_atoms_number(types,positions)
-        outputs0 = self._network(positions,types,bonds=bonds)
-        outputs = self.scale_outputs(outputs0,types)
-        loss = self.get_loss(outputs0,label,types)
-        
-        return loss, outputs, label, atom_num
-
-class WithEvalCell_ZABE(WithLabelEvalCell):
-    def __init__(self,
-        network,
-        loss_fn=None,
-        add_cast_fp32=False,
-        do_scaleshift=False,
-        scale=1,
-        shift=0,
-        references=None,
-    ):
-        super().__init__(
-            network=network,
-            loss_fn=loss_fn,
-            add_cast_fp32=add_cast_fp32,
-            do_scaleshift=do_scaleshift,
-            scale=scale,
-            shift=shift,
-            references=references,
-        )
-
-    def construct(self, node_types, atom_types, bonds, label):
-        atom_num = self.get_atoms_number(atom_types,label)
-        outputs0 = self._network(None,node_types,atom_types,bonds=bonds)
-        outputs = self.scale_outputs(outputs0,atom_types)
-        loss = self.get_loss(outputs0,label,atom_types)
-        
-        return loss, outputs, label, atom_num
-
-class WithEvalCell_ZANBE(WithLabelEvalCell):
-    def __init__(self,
-        network,
-        loss_fn=None,
-        add_cast_fp32=False,
-        do_scaleshift=False,
-        scale=1,
-        shift=0,
-        references=None,
-    ):
-        super().__init__(
-            network=network,
-            loss_fn=loss_fn,
-            add_cast_fp32=add_cast_fp32,
-            do_scaleshift=do_scaleshift,
-            scale=scale,
-            shift=shift,
-            references=references,
-        )
-
-    def construct(self, node_types, atom_types, neighbors, bonds, label):
-        atom_num = self.get_atoms_number(atom_types,label)
-        outputs0 = self._network(None,node_types,atom_types,neighbors,None,bonds)
-        outputs = self.scale_outputs(outputs0,atom_types)
-        loss = self.get_loss(outputs0,label,atom_types)
-        
-        return loss, outputs, label, atom_num
-
-class Recorder(Callback):
+class EvalMonitor(Callback):
     def __init__(self, model, name, directory=None, per_epoch=1, per_step=0, avg_steps=0, eval_dataset=None, best_ckpt_metrics=None):
         super().__init__()
         if not isinstance(per_epoch, int) or per_epoch < 0:
@@ -694,7 +730,7 @@ class MAE(Metric):
             raise RuntimeError('Total samples num must not be 0.')
         return self._abs_error_sum / self._samples_num
 
-class MAE_per_atom(Metric):
+class MAEAveragedByAtoms(Metric):
     def __init__(self,indexes=[1,2,3],reduce_all_dims=True):
         super().__init__()
         self.clear()
