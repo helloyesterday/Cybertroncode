@@ -17,9 +17,13 @@ from mindspore.profiler import Profiler
 
 from cybertroncode.models import SchNet,MolCT,PhysNet
 from cybertroncode.cybertron import Cybertron
+from cybertroncode.cutoff import MollifierCutoff
+from cybertroncode.rbf import LogGaussianDistribution
+from cybertroncode.activations import ShiftedSoftplus,Swish
+from cybertroncode.cutoff import CosineCutoff,SmoothCutoff
 from cybertroncode.train import MLoss
 from cybertroncode.train import WithLabelLossCell,WithLabelEvalCell
-from cybertroncode.train import EvalMonitor,MAE,MSE,TransformerLR
+from cybertroncode.train import EvalMonitor,MAE,MSE,MAEAveragedByAtoms,TransformerLR
 from cybertroncode.readouts import AtomwiseReadout,GraphReadout
 
 if __name__ == '__main__':
@@ -43,12 +47,11 @@ if __name__ == '__main__':
     valid_data = np.load(valid_file)
     test_data = np.load(test_file)
 
-    idx = [7,8,9,10]
+    idx = [0,2,3,4,11]
 
     num_atom = int(train_data['Nmax'])
-    atom_scale = Tensor(train_data['atom_std'][idx],ms.float32)
-    atom_shift = Tensor(train_data['atom_avg'][idx],ms.float32)
-    atom_ref = Tensor(train_data['ref'][:,idx],ms.float32)
+    scale = Tensor(train_data['mol_std'][idx],ms.float32)
+    shift = Tensor(train_data['mol_avg'][idx],ms.float32)
 
     mod = MolCT(
         min_rbf_dis=0.1,
@@ -70,7 +73,7 @@ if __name__ == '__main__':
     # mod = SchNet(max_rbf_dis=2,num_rbf=64,n_interactions=3,dim_feature=128,dim_filter=128,unit_length='nm',use_graph_norm=True)
     # mod = PhysNet(max_rbf_dis=10,num_rbf=32,dim_feature=32,n_interactions=5)
     
-    readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,1,1],activation='swish')
+    readout = GraphReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,3,1],activation='swish',aggregator='transformer')
     # net = Cybertron(mod,max_nodes_number=num_atom,full_connect=True,atom_scale=scale,atom_shift=shift,atom_ref=atom_ref,readout='atom',unit_dis='A',unit_energy='eV',dim_output=4,)
     net = Cybertron(mod,max_nodes_number=num_atom,full_connect=True,readout=readout,unit_dis='A')
 
@@ -85,9 +88,9 @@ if __name__ == '__main__':
     print('Total parameters: ',tot_params)
     # print(net)
 
-    print(atom_scale,atom_shift)
+    print(scale,shift)
 
-    n_epoch = 1
+    n_epoch = 1024
     repeat_time = 1
     batch_size = 32
 
@@ -99,8 +102,8 @@ if __name__ == '__main__':
     ds_valid = ds_valid.batch(n_valid)
     ds_valid = ds_valid.repeat(1)
 
-    loss_network = WithLabelLossCell('RZE',net,nn.MAELoss(),do_whitening=True,scale=atom_scale,shift=atom_shift,references=atom_ref)
-    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),do_scaleshift=True,scale=atom_scale,shift=atom_shift,references=atom_ref)
+    loss_network = WithLabelLossCell('RZE',net,nn.MAELoss(),do_whitening=True,scale=scale,shift=shift)
+    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),do_scaleshift=True,scale=scale,shift=shift)
 
     # lr = nn.ExponentialDecayLR(learning_rate=1e-3, decay_rate=0.96, decay_steps=8096, is_stair=True)
     lr = TransformerLR(learning_rate=1.,warmup_steps=4000,dimension=128)
