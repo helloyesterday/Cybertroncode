@@ -1,5 +1,12 @@
 from mindspore import nn
+from mindspore.nn.layer.activation import _activation
 from mindspore.ops import operations as P
+
+__all__ = [
+    "ShiftedSoftplus",
+    "Swish",
+    "get_activation",
+    ]
 
 class ShiftedSoftplus(nn.Cell):
     r"""Compute shifted soft-plus activation function.
@@ -50,3 +57,20 @@ class Swish(nn.Cell):
 
     def construct(self,x):
         return x * self.sigmoid(x)
+
+_EXTENDED_ACTIVATIONS = {
+    'shifted': ShiftedSoftplus,
+    'swish': Swish,
+}
+
+def get_activation(name):
+    if name is None or isinstance(name,nn.Cell):
+        return name
+    elif isinstance(name, str):
+        if name.lower() in _activation.keys():
+            return name
+        if name.lower() not in _EXTENDED_ACTIVATIONS.keys():
+            raise ValueError("The class corresponding to '{}' was not found.".format(name))
+        return _EXTENDED_ACTIVATIONS[name.lower()]()
+    else:
+        raise TypeError("Unsupported activation type '{}'.".format(type(name)))

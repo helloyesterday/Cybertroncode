@@ -1,8 +1,7 @@
-import mindspore
 from mindspore import nn
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
-from mindspore.nn.layer.activation import get_activation
+from cybertroncode.activations import get_activation
 
 __all__ = [
     "Dense",
@@ -28,7 +27,7 @@ class Dense(nn.Dense):
             weight_init=weight_init,
             bias_init=bias_init,
             has_bias=has_bias,
-            activation=activation,
+            activation=get_activation(activation),
         )
 
 class MLP(nn.Cell):
@@ -77,7 +76,7 @@ class MLP(nn.Cell):
                     weight_init=weight_init,
                     bias_init=bias_init,
                     has_bias=True,
-                    activation=activation
+                    activation=get_activation(activation),
                     )
                 )
                 indim=ldim
@@ -91,7 +90,8 @@ class MLP(nn.Cell):
                     weight_init=weight_init,
                     bias_init=bias_init,
                     has_bias=True,
-                    activation=activation)
+                    activation=get_activation(activation),
+                    )
                 )
             else:
                 nets.append(
@@ -138,7 +138,7 @@ class PreActDense(nn.Cell):
     def __init__(self,dim_in,dim_out,activation):
         super().__init__()
 
-        self.activation = activation
+        self.activation = get_activation(activation)
         self.dense = Dense(dim_in,dim_out,activation=None)
 
     def construct(self,x):
