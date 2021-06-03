@@ -9,7 +9,6 @@ from cybertroncode.units import units
 from cybertroncode.base import Types2FullConnectNeighbors
 from cybertroncode.readouts import Readout,LongeRangeReadout
 from cybertroncode.readouts import AtomwiseReadout,GraphReadout
-from cybertroncode.readouts import InteractionsAggregator
 from cybertroncode.neighbors import Distances
         
 class Cybertron(nn.Cell):
