@@ -5,7 +5,6 @@ from mindspore import nn
 from mindspore import Tensor
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
-from mindspore.common.api import ms_function
 
 from cybertroncode.units import units
 

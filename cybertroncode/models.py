@@ -6,7 +6,6 @@ from mindspore.ops import functional as F
 from mindspore.ops import operations as P
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
-from cybertroncode import aggregators
 
 from cybertroncode.units import units
 from cybertroncode.blocks import Dense, Residual
@@ -17,6 +16,13 @@ from cybertroncode.base import ResFilter,GraphNorm
 from cybertroncode.cutoff import get_cutoff
 from cybertroncode.rbf import GaussianSmearing,LogGaussianDistribution
 from cybertroncode.activations import ShiftedSoftplus,Swish
+
+__all__ = [
+    "DeepGraphMolecularModel",
+    "SchNet",
+    "PhysNet",
+    "MolCT",
+    ]
 
 class DeepGraphMolecularModel(nn.Cell):
     r"""Basic class for graph neural network (GNN) based deep molecular model

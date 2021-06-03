@@ -1,4 +1,3 @@
-import math
 import numpy as np
 import mindspore as ms
 import mindspore.nn as nn
@@ -9,17 +8,23 @@ from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
 
-from cybertroncode.blocks import Dense,MLP,Residual
+from cybertroncode.blocks import Dense,MLP
 from cybertroncode.blocks import PreActDense
-from cybertroncode.blocks import PreActResidual
 from cybertroncode.blocks import SeqPreActResidual
 from cybertroncode.neighbors import GatherNeighbors
-from cybertroncode.base import Aggregate,Filter,CFconv
+from cybertroncode.base import Aggregate,CFconv
 from cybertroncode.base import PositionalEmbedding
 from cybertroncode.base import MultiheadAttention
 from cybertroncode.base import Pondering,ACTWeight
 from cybertroncode.base import FeedForward,ResFilter
 from cybertroncode.activations import ShiftedSoftplus,Swish
+
+__all__ = [
+    "Interaction",
+    "SchNetInteraction",
+    "PhysNetModule",
+    "NeuralInteractionUnit",
+    ]
 
 class Interaction(nn.Cell):
     def __init__(self,

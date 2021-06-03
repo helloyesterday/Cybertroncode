@@ -1,5 +1,3 @@
-from mindspore.nn.layer import activation
-import numpy as np
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import nn
@@ -8,7 +6,6 @@ from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 
 from cybertroncode.units import units
-from cybertroncode.blocks import MLP
 from cybertroncode.neighbors import GatherNeighbors
 from cybertroncode.base import SmoothReciprocal
 from cybertroncode.cutoff import get_cutoff
@@ -16,14 +13,14 @@ from cybertroncode.aggregators import get_aggregator,get_list_aggregator
 from cybertroncode.decoders import  get_decoder
 
 __all__ = [
+    "Readout",
     "AtomwiseReadout",
-    "OutputBlock",
-    "TensorSum",
+    "GraphReadout",
+    "LongeRangeReadout",
     "PairwiseReadout",
-    "PhysNetFinalPrediction",
-    "MultipleChannelRepresentation",
-    "ScaleShift",
-    "Standardize"]
+    "CoulombReadout",
+    "InteractionsAggregator",
+    ]
 
 class InteractionsAggregator(nn.Cell):
     def __init__(self,
@@ -562,6 +559,11 @@ class GraphReadout(Readout):
         aggregator='mean',
         unit_energy=None,
         multi_aggregators=False,
+        read_all_interactions=False,
+        n_interactions=None,
+        interactions_aggregator='sum',
+        n_aggregator_hiddens=0,
+        interaction_decoders=None,
     ):
         super().__init__(
             n_in=n_in,
@@ -579,6 +581,11 @@ class GraphReadout(Readout):
             aggregator=aggregator,
             unit_energy=unit_energy,
             multi_aggregators=multi_aggregators,
+            read_all_interactions=read_all_interactions,
+            n_interactions=n_interactions,
+            interactions_aggregator=interactions_aggregator,
+            n_aggregator_hiddens=n_aggregator_hiddens,
+            interaction_decoders=interaction_decoders,
         )
 
         self.name = 'Graph'
@@ -689,6 +696,11 @@ class LongeRangeReadout(Readout):
         cutoff_max=units.length(1,'nm'),
         cutoff_min=units.length(0.8,'nm'),
         fixed_neigh=False,
+        read_all_interactions=False,
+        n_interactions=None,
+        interactions_aggregator='sum',
+        n_aggregator_hiddens=0,
+        interaction_decoders=None,
     ):
         super().__init__(
             n_in=dim_feature,
@@ -706,6 +718,11 @@ class LongeRangeReadout(Readout):
             aggregator='sum',
             unit_energy=unit_energy,
             multi_aggregators=False,
+            read_all_interactions=read_all_interactions,
+            n_interactions=n_interactions,
+            interactions_aggregator=interactions_aggregator,
+            n_aggregator_hiddens=n_aggregator_hiddens,
+            interaction_decoders=interaction_decoders,
         )
 
         self.name = 'longrange'
@@ -788,6 +805,11 @@ class CoulombReadout(LongeRangeReadout):
         cutoff_max=units.length(1,'nm'),
         cutoff_min=units.length(0.8,'nm'),
         fixed_neigh=False,
+        read_all_interactions=False,
+        n_interactions=None,
+        interactions_aggregator='sum',
+        n_aggregator_hiddens=0,
+        interaction_decoders=None,
     ):
         super().__init__(
             dim_feature=dim_feature,
@@ -805,6 +827,11 @@ class CoulombReadout(LongeRangeReadout):
             cutoff_max=cutoff_max,
             cutoff_min=cutoff_min,
             fixed_neigh=fixed_neigh,
+            read_all_interactions=read_all_interactions,
+            n_interactions=n_interactions,
+            interactions_aggregator=interactions_aggregator,
+            n_aggregator_hiddens=n_aggregator_hiddens,
+            interaction_decoders=interaction_decoders,
         )
         self.name = 'Coulumb'
 
@@ -873,6 +900,11 @@ class PairwiseReadout(LongeRangeReadout):
         cutoff_max=units.length(1,'nm'),
         cutoff_min=units.length(0.8,'nm'),
         fixed_neigh=False,
+        read_all_interactions=False,
+        n_interactions=None,
+        interactions_aggregator='sum',
+        n_aggregator_hiddens=0,
+        interaction_decoders=None,
     ):
         super().__init__(
             dim_feature=dim_feature,
@@ -890,6 +922,11 @@ class PairwiseReadout(LongeRangeReadout):
             cutoff_max=cutoff_max,
             cutoff_min=cutoff_min,
             fixed_neigh=fixed_neigh,
+            read_all_interactions=read_all_interactions,
+            n_interactions=n_interactions,
+            interactions_aggregator=interactions_aggregator,
+            n_aggregator_hiddens=n_aggregator_hiddens,
+            interaction_decoders=interaction_decoders,
         )
 
         self.name = 'pairwise'

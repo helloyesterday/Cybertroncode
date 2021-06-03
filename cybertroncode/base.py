@@ -9,44 +9,25 @@ from mindspore.common.initializer import initializer,Constant
 
 from cybertroncode.units import units
 from cybertroncode.blocks import MLP,Dense,Residual
-from cybertroncode.activations import Swish
 from cybertroncode.cutoff import SmoothCutoff
 
-class AtomwiseError(Exception):
-    pass
-
-class Standardize(nn.Cell):
-    r"""Standardize layer for shifting and scaling.
-
-    .. math::
-       y = \frac{x - \mu}{\sigma}
-
-    Args:
-        mean (torch.Tensor): mean value :math:`\mu`.
-        stddev (torch.Tensor): standard deviation value :math:`\sigma`.
-        eps (float, optional): small offset value to avoid zero division.
-
-    """
-
-    def __init__(self, mean, stddev, eps=1e-9):
-        super().__init__()
-        self.mean = mean
-        self.stddev = stddev
-        self.eps = F.ones_like(stddev) * eps
-
-    def construct(self, inputs):
-        """Compute layer output.
-
-        Args:
-            inputs (torch.Tensor): input data.
-
-        Returns:
-            torch.Tensor: layer output.
-
-        """
-        # Add small number to catch divide by zero
-        y = (inputs - self.mean) / (self.stddev + self.eps)
-        return y
+__all__ = [
+    "GraphNorm",
+    "Filter",
+    "ResFilter",
+    "CFconv",
+    "Aggregate",
+    "SmoothReciprocal",
+    "SoftmaxWithMask",
+    "PositionalEmbedding",
+    "MultiheadAttention",
+    "FeedForward",
+    "Pondering",
+    "ACTWeight",
+    "Num2Mask",
+    "Number2FullConnectNeighbors",
+    "Types2FullConnectNeighbors",
+    ]
 
 class GraphNorm(nn.Cell):
     def __init__(self,
@@ -127,12 +108,9 @@ class CFconv(nn.Cell):
         self.filter=Filter(num_rbf,dim_filter,activation)
                 
     def construct(self,x,f_ij,c_ij=None):
-        # n_batch, n_atom, n_nbh, n_rbf = rbf.shape
-        # rbf = F.reshape(rbf,(-1,n_rbf))
         W = self.filter(f_ij)
         if c_ij is not None:
             W = W * F.expand_dims(c_ij,-1)
-        # W = F.reshape(W,(n_batch,n_atom,n_nbh,-1))
         
         return x * W
 
