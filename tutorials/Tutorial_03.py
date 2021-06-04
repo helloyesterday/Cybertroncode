@@ -19,11 +19,11 @@ if __name__ == '__main__':
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    mol_name='qm9_ev_A'
+    sys_name = 'qm9_ev_A'
 
-    train_file = mol_name + '_train_1024.npz'
-    valid_file = mol_name + '_valid_128.npz'
-    test_file  = mol_name + '_test_1024.npz'
+    train_file = sys_name + '_train_1024.npz'
+    valid_file = sys_name + '_valid_128.npz'
+    test_file  = sys_name + '_test_1024.npz'
 
     train_data = np.load(train_file)
     valid_data = np.load(valid_file)
@@ -55,14 +55,14 @@ if __name__ == '__main__':
     lr = nn.ExponentialDecayLR(learning_rate=1e-3, decay_rate=0.96, decay_steps=4, is_stair=True)
     optim = nn.Adam(params=net.trainable_params(),learning_rate=lr)
 
-    outdir = 'qm9_ev_A_T03'
-    outname = 'qm9_ev_A_T03_' + mod.network_name
+    outdir = sys_name + '_T03'
+    outname = outdir + mod.network_name
 
-    from mindspore.train.serialization import load_checkpoint,load_param_into_net
-    param_file = outdir + '/' + outname + '-1_32.ckpt'
-    param_dict = load_checkpoint(param_file)
-    load_param_into_net(net,param_dict)
-    load_param_into_net(optim,param_dict)
+    # from mindspore.train.serialization import load_checkpoint,load_param_into_net
+    # param_file = outdir + '/' + outname + '-8_32.ckpt'
+    # param_dict = load_checkpoint(param_file)
+    # load_param_into_net(net,param_dict)
+    # load_param_into_net(optim,param_dict)
 
     net.print_info()
 
@@ -72,7 +72,7 @@ if __name__ == '__main__':
         print(i,param.name,param.shape)
     print('Total parameters: ',tot_params)
 
-    n_epoch = 1
+    n_epoch = 8
     repeat_time = 1
     batch_size = 32
 
@@ -91,20 +91,19 @@ if __name__ == '__main__':
     loss_network = WithLabelLossCell('RZE',net,nn.MAELoss())
     eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss())
 
-
     eval_mae  = 'EvalMAE'
     atom_mae  = 'AtomMAE'
     eval_loss = 'Evalloss'
     model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2]),atom_mae:MAEAveragedByAtoms([1,2,3]),eval_loss:MLoss(0)})
 
-    # record_cb = TrainMonitor(model, outname, per_step=1, avg_steps=32, directory=outdir, eval_dataset=ds_valid)
-    record_cb = TrainMonitor(model, outname, per_step=1, avg_steps=32, directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
+    record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=16, directory=outdir, eval_dataset=ds_valid)
+    # record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=32, directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
 
-    config_ck = CheckpointConfig(save_checkpoint_steps=8, keep_checkpoint_max=64)
+    config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
     ckpoint_cb = ModelCheckpoint(prefix=outname, directory=outdir, config=config_ck)
 
     print("Start training ...")
-    beg_time = time.time() 
+    beg_time = time.time()
     model.train(n_epoch,ds_train,callbacks=[record_cb,ckpoint_cb],dataset_sink_mode=False)
     end_time = time.time()
     used_time = end_time - beg_time
@@ -113,8 +112,8 @@ if __name__ == '__main__':
     print ("Training Fininshed!")
     print ("Training Time: %02d:%02d:%02d" % (h, m, s))
 
-    param_file = outdir + '/' + outname + '-best.ckpt'
-    load_checkpoint(param_file, net=net)
+    # param_file = outdir + '/' + outname + '-best.ckpt'
+    # load_checkpoint(param_file, net=net)
 
     print('Test dataset:')
     eval_metrics = model.eval(ds_test, dataset_sink_mode=False)

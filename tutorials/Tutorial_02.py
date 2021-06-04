@@ -15,11 +15,11 @@ if __name__ == '__main__':
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    mol_name='qm9_ev_A'
+    sys_name = 'qm9_ev_A'
 
-    train_file = mol_name + '_train_1024.npz'
-    valid_file = mol_name + '_valid_128.npz'
-    test_file  = mol_name + '_test_1024.npz'
+    train_file = sys_name + '_train_1024.npz'
+    valid_file = sys_name + '_valid_128.npz'
+    test_file  = sys_name + '_test_1024.npz'
 
     train_data = np.load(train_file)
     valid_data = np.load(valid_file)
@@ -59,7 +59,7 @@ if __name__ == '__main__':
         print(i,param.name,param.shape)
     print('Total parameters: ',tot_params)
 
-    n_epoch = 1
+    n_epoch = 8
     repeat_time = 1
     batch_size = 32
 
@@ -88,13 +88,13 @@ if __name__ == '__main__':
     eval_loss = 'Evalloss'
     model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2]),atom_mae:MAEAveragedByAtoms([1,2,3]),eval_loss:MLoss(0)})
 
-    outdir = 'qm9_ev_A_T02'
-    outname = 'qm9_ev_A_T02_' + mod.network_name
+    outdir = sys_name + '_T02'
+    outname = sys_name + mod.network_name
 
     from cybertroncode.train import TrainMonitor
-    record_cb = TrainMonitor(model, outname, per_step=1, avg_steps=32, directory=outdir, eval_dataset=ds_valid)
+    record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=16, directory=outdir, eval_dataset=ds_valid)
 
-    config_ck = CheckpointConfig(save_checkpoint_steps=8, keep_checkpoint_max=64)
+    config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
     ckpoint_cb = ModelCheckpoint(prefix=outname, directory=outdir, config=config_ck)
 
     print("Start training ...")

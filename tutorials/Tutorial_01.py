@@ -66,7 +66,7 @@ if __name__ == '__main__':
         print(i,param.name,param.shape)
     print('Total parameters: ',tot_params)
 
-    n_epoch = 1
+    n_epoch = 8
     repeat_time = 1
     batch_size = 32
 
@@ -85,12 +85,12 @@ if __name__ == '__main__':
     model = Model(loss_network,optimizer=optim)
 
     from mindspore.train.callback import LossMonitor
-    monitor_cb = LossMonitor()
+    monitor_cb = LossMonitor(16)
 
     from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
     outdir = 'qm9_ev_A_T01'
-    params_name = 'qm9_ev_A_T01_' + mod.network_name
-    config_ck = CheckpointConfig(save_checkpoint_steps=8, keep_checkpoint_max=64)
+    params_name = outdir + mod.network_name
+    config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
     ckpoint_cb = ModelCheckpoint(prefix=params_name, directory=outdir, config=config_ck)
 
     print("Start training ...")
