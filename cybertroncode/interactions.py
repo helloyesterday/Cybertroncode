@@ -17,7 +17,7 @@ from cybertroncode.base import PositionalEmbedding
 from cybertroncode.base import MultiheadAttention
 from cybertroncode.base import Pondering,ACTWeight
 from cybertroncode.base import FeedForward,ResFilter
-from cybertroncode.activations import ShiftedSoftplus,Swish
+from cybertroncode.activations import get_activation
 
 __all__ = [
     "Interaction",
@@ -71,7 +71,7 @@ class SchNetInteraction(Interaction):
         dim_feature,
         num_rbf,
         dim_filter,
-        activation=ShiftedSoftplus(),
+        activation='swish',
         fixed_neigh=False,
         normalize_filter=False,
     ):
@@ -147,7 +147,7 @@ class PhysNetModule(Interaction):
         self,
         num_rbf,
         dim_feature,
-        activation=ShiftedSoftplus(),
+        activation='swish',
         fixed_neigh=False,
         n_inter_residual=3,
         n_outer_residual=2,
@@ -160,7 +160,6 @@ class PhysNetModule(Interaction):
             )
 
         self.name = 'PhysNet Module Layer'
-        self.activation = activation
 
         self.xi_dense = Dense(dim_feature,dim_feature,activation=activation)
         self.xij_dense = Dense(dim_feature,dim_feature,activation=activation)
@@ -171,6 +170,8 @@ class PhysNetModule(Interaction):
         self.inter_residual = SeqPreActResidual(dim_feature,activation=activation,n_res=n_inter_residual)
         self.inter_dense = PreActDense(dim_feature,dim_feature,activation=activation)
         self.outer_residual = SeqPreActResidual(dim_feature,activation=activation,n_res=n_outer_residual)
+
+        self.activation = get_activation(activation)
 
         self.reducesum = P.ReduceSum()
 
@@ -240,7 +241,7 @@ class NeuralInteractionUnit(Interaction):
         dim_feature,
         num_rbf,
         n_heads=8,
-        activation=Swish(),
+        activation='swish',
         max_cycles=10,
         time_embedding=0,
         use_pondering=True,

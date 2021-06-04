@@ -4,6 +4,7 @@ from mindspore.ops import operations as P
 
 __all__ = [
     "ShiftedSoftplus",
+    "ScaledShiftedSoftplus",
     "Swish",
     "get_activation",
     ]
@@ -35,6 +36,30 @@ class ShiftedSoftplus(nn.Cell):
         # return self.softplus(x) - self.ln2
         return self.log1p(self.exp(x)) - self.ln2
 
+class ScaledShiftedSoftplus(nn.Cell):
+    r"""Compute shifted soft-plus activation function.
+
+    .. math::
+       y = \ln\left(1 + e^{-x}\right) - \ln(2)
+
+    Args:
+        x (mindspore.Tensor): input tensor.
+
+    Returns:
+        mindspore.Tensor: shifted soft-plus of input.
+
+    """
+    def __init__(self):
+        super().__init__()
+        self.softplus = P.Softplus()
+        self.ln2 = 0.6931471805599453
+
+    def __str__(self):
+        return "scaled_shifted_softplus"
+
+    def construct(self,x):
+        return 2 * (self.softplus(x) - self.ln2)
+
 class Swish(nn.Cell):
     r"""Compute swish\SILU\SiL function.
 
@@ -60,6 +85,7 @@ class Swish(nn.Cell):
 
 _EXTENDED_ACTIVATIONS = {
     'shifted': ShiftedSoftplus,
+    'scaledshifted': ScaledShiftedSoftplus,
     'swish': Swish,
 }
 

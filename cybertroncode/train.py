@@ -24,7 +24,7 @@ __all__ = [
     "WithLabelLossCell",
     "WithForceEvalCell",
     "WithLabelEvalCell",
-    "EvalMonitor",
+    "TrainMonitor",
     "MAE",
     "MSE",
     "MAEAveragedByAtoms",
@@ -527,7 +527,7 @@ class WithLabelEvalCell(nn.Cell):
 
         return loss, outputs, label, atom_num
 
-class EvalMonitor(Callback):
+class TrainMonitor(Callback):
     def __init__(self, model, name, directory=None, per_epoch=1, per_step=0, avg_steps=0, eval_dataset=None, best_ckpt_metrics=None):
         super().__init__()
         if not isinstance(per_epoch, int) or per_epoch < 0:
@@ -559,7 +559,7 @@ class EvalMonitor(Callback):
 
         self._filename = name + '-info.data'
         self._ckptfile = name + '-best'
-        self._ckptdata = name + '-best-ckpt.data'
+        self._ckptdata = name + '-cpkt.data'
 
         self.num_ckpt = 1
         self.best_value = 5e4
@@ -589,13 +589,17 @@ class EvalMonitor(Callback):
 
     def _output_data(self,cb_params):
         cur_epoch = cb_params.cur_epoch_num
+
         opt = cb_params.optimizer
         if opt is None:
             opt = cb_params.train_network.optimizer
-        global_step = opt.global_step
-        if not isinstance(global_step,int):
-            global_step = global_step.asnumpy()[0]
-        global_step = F.cast(global_step,ms.int32)
+        
+        if opt.dynamic_lr:
+            step = opt.global_step
+            if not isinstance(step,int):
+                step = step.asnumpy()[0]
+        else:
+            step = cb_params.cur_step_num
 
         if self.avg_steps > 0:
             mov_avg = sum(self.loss_record) / sum(self.train_num)
@@ -603,22 +607,24 @@ class EvalMonitor(Callback):
             mov_avg = self.loss_record / self.train_num
         
         title = "#! FIELDS step"
-        info = 'Epoch: ' + str(cur_epoch) + ', Step: ' + str(global_step)
-        outdata = '{:>10d}'.format(global_step.asnumpy())
+        info = 'Epoch: ' + str(cur_epoch) + ', Step: ' + str(step)
+        outdata = '{:>10d}'.format(step)
 
         lr = opt.learning_rate
         if opt.dynamic_lr:
+            step = F.cast(step,ms.int32)
             if opt.is_group_lr:
                 lr = ()
                 for learning_rate in opt.learning_rate:
-                    current_dynamic_lr = learning_rate(global_step-1)
+                    current_dynamic_lr = learning_rate(step-1)
                     lr += (current_dynamic_lr,)
             else:
-                lr = opt.learning_rate(global_step-1)
+                lr = opt.learning_rate(step-1)
+        lr = lr.asnumpy()
 
         title += ' learning_rate'
         info += ', Learning_rate: ' + str(lr)
-        outdata += '{:>15e}'.format(lr.asnumpy())
+        outdata += '{:>15e}'.format(lr)
 
         title += " last_loss avg_loss"
         info += ', Last_Loss: ' + str(self.last_loss) + ', Avg_loss: ' + str(mov_avg)
@@ -653,7 +659,7 @@ class EvalMonitor(Callback):
                         for i in range(len(vnow)):
                             if output_ckpt[i]:
                                 dest_ckpt = os.path.join(self._directory, self._ckptfile + '-' + str(i) + '.ckpt')
-                                bck_ckpt = os.path.join(self._directory, self._ckptfile + '-' + str(i) + '.bck.ckpt')
+                                bck_ckpt = os.path.join(self._directory, self._ckptfile + '-' + str(i) + '.ckpt.bck')
                                 if os.path.exists(dest_ckpt):
                                     os.rename(dest_ckpt,bck_ckpt)
                                 copyfile(source_ckpt,dest_ckpt)
