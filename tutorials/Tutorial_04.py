@@ -8,6 +8,9 @@ from mindspore.train import Model
 from mindspore import context
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
+import sys
+sys.path.append('/home/HwHiAiUser/mindspore/cybertroncode/')
+
 from cybertroncode.models import SchNet,MolCT,PhysNet
 from cybertroncode.readouts import AtomwiseReadout
 from cybertroncode.cybertron import Cybertron
@@ -17,7 +20,7 @@ from cybertroncode.train import TrainMonitor
 
 if __name__ == '__main__':
 
-    context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
+    context.set_context(mode=context.GRAPH_MODE, device_target="Ascend")
 
     mol_name='qm9_ev_A'
 
@@ -89,7 +92,7 @@ if __name__ == '__main__':
     eval_mae  = 'EvalMAE'
     atom_mae  = 'AtomMAE'
     eval_loss = 'Evalloss'
-    model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2],reduce_all_dims=False),atom_mae:MAEAveragedByAtoms([1,2,3],reduce_all_dims=False),eval_loss:MLoss(0)})
+    model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2],reduce_all_dims=False),atom_mae:MAEAveragedByAtoms([1,2,3],reduce_all_dims=False),eval_loss:MLoss(0)},amp_level='O3',keep_batchnorm_fp32=False)
 
     record_cb = TrainMonitor(model, outname, per_step=8, avg_steps=32, directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
 
