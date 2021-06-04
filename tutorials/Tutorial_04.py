@@ -9,6 +9,7 @@ from mindspore import context
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
 import sys
+# You should add your own abspath here.
 sys.path.append('/home/HwHiAiUser/mindspore/cybertroncode/')
 
 from cybertroncode.models import SchNet,MolCT,PhysNet
