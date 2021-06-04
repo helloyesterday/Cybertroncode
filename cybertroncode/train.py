@@ -33,23 +33,29 @@ __all__ = [
     ]
 
 class DatasetWhitening(nn.Cell):
-    def __init__(self,scale=1.,shift=0.,references=None,mask=None,axis=-2,):
+    def __init__(self,scale=1.,shift=0.,atom_ref=None,mask=None,axis=-2,):
         super().__init__()
 
         self.scale = scale
         self.shift = shift
 
-        self.references = references
+        self.atom_ref = atom_ref
         self.axis = axis
-        self.mask = mask
 
-        self.scaled_by_atoms = self.references is not None
+        if isinstance(mask,(tuple,list,np.ndarray)):
+            self.mask = Tensor(mask)
+        elif mask is None or isinstance(mask,Tensor):
+            self.mask = mask
+        else:
+            raise TypeError('Unkonwn type of mask: '+str(type(mask)))
+
+        self.scaled_by_atoms = self.atom_ref is not None
         self.scaled_by_graph = not self.scaled_by_atoms
 
         self.mixed_scale_type = self.mask is not None
         if self.mixed_scale_type:
-            if self.references is None:
-                raise TypeError('references must be given at mixed scale type')
+            if self.atom_ref is None:
+                raise TypeError('atom_ref must be given at mixed scale type')
             self.scaled_by_graph = True
 
         self.reduce_sum = P.ReduceSum()
@@ -66,35 +72,41 @@ class DatasetWhitening(nn.Cell):
             atom_num = F.cast(types>0,label.dtype)
             atom_num = self.keep_sum(atom_num,-1)
 
-            ref = F.gather(self.references,types,0)
+            ref = F.gather(self.atom_ref,types,0)
             ref = self.reduce_sum(ref,-2)
 
             atoms_scale = (label - ref - self.shift * atom_num) / self.scale
         
         if self.mixed_scale_type:
-            mask = self.mask * F.ones_like(label)
+            mask = (self.mask * F.ones_like(label)) > 0
             return F.select(mask,atoms_scale,graph_scale)
         else:
             return atoms_scale if self.scaled_by_atoms else graph_scale
 
 class OutputScaleShift(nn.Cell):
-    def __init__(self,scale=1.,shift=0.,references=None,mask=None,axis=-2):
+    def __init__(self,scale=1.,shift=0.,atom_ref=None,mask=None,axis=-2):
         super().__init__()
 
         self.scale = scale
         self.shift = shift
 
-        self.references = references
+        self.atom_ref = atom_ref
         self.axis = axis
-        self.mask = mask
 
-        self.scaled_by_atoms = self.references is not None
+        if isinstance(mask,(tuple,list,np.ndarray)):
+            self.mask = Tensor(mask)
+        elif mask is None or isinstance(mask,Tensor):
+            self.mask = mask
+        else:
+            raise TypeError('Unkonwn type of mask: '+str(type(mask)))
+
+        self.scaled_by_atoms = self.atom_ref is not None
         self.scaled_by_graph = not self.scaled_by_atoms
 
         self.mixed_scale_type = self.mask is not None
         if self.mixed_scale_type:
-            if self.references is None:
-                raise TypeError('references must be given at mixed scale type')
+            if self.atom_ref is None:
+                raise TypeError('atom_ref must be given at mixed scale type')
             self.scaled_by_graph = True
 
         self.reduce_sum = P.ReduceSum()
@@ -111,13 +123,13 @@ class OutputScaleShift(nn.Cell):
             atom_num = F.cast(types>0,outputs.dtype)
             atom_num = self.keep_sum(atom_num,-1)
 
-            ref = F.gather(self.references,types,0)
+            ref = F.gather(self.atom_ref,types,0)
             ref = self.reduce_sum(ref,-2)
 
             atoms_scale = outputs * self.scale + self.shift * atom_num + ref
         
         if self.mixed_scale_type:
-            mask = self.mask * F.ones_like(outputs)
+            mask = (self.mask * F.ones_like(outputs)) > 0
             return F.select(mask,atoms_scale,graph_scale)
         else:
             return atoms_scale if self.scaled_by_atoms else graph_scale
@@ -228,7 +240,7 @@ class WithLabelLossCell(nn.Cell):
         do_whitening=False,
         scale=1,
         shift=0,
-        references=None,
+        atom_ref=None,
         mask=None,
         # with_penalty=False,
     ):
@@ -242,7 +254,7 @@ class WithLabelLossCell(nn.Cell):
             self.whitening = DatasetWhitening(
                 scale=scale,
                 shift=shift,
-                references=references,
+                atom_ref=atom_ref,
                 mask=mask
             )
         else:
@@ -424,7 +436,7 @@ class WithLabelEvalCell(nn.Cell):
         do_scaleshift=False,
         scale=1,
         shift=0,
-        references=None,
+        atom_ref=None,
         mask=None,
     ):
         super().__init__(auto_prefix=False)
@@ -440,14 +452,14 @@ class WithLabelEvalCell(nn.Cell):
             self.scaleshift = OutputScaleShift(
                 scale=scale,
                 shift=shift,
-                references=references,
+                atom_ref=atom_ref,
                 mask=mask
             )
             if loss_fn is not None:
                 self.whitening = DatasetWhitening(
                     scale=scale,
                     shift=shift,
-                    references=references,
+                    atom_ref=atom_ref,
                     mask=mask
                 )
 
