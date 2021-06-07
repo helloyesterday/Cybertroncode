@@ -3,6 +3,8 @@ import time
 import mindspore as ms
 from mindspore import nn
 from mindspore import Tensor
+import sys
+sys.path.append('..')
 
 if __name__ == '__main__':
 
