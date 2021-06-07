@@ -8,6 +8,9 @@ from mindspore.train import Model
 from mindspore import context
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
+import sys
+sys.path.append('..')
+
 from cybertroncode.models import SchNet,MolCT,PhysNet
 from cybertroncode.cybertron import Cybertron
 
