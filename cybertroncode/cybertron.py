@@ -107,14 +107,15 @@ class Cybertron(nn.Cell):
                         "when the 'full_connect' flag is 'True' and " +
                         "'node_types' is 'None' in MolCalculator!")
                 self.fc_neighbors = Types2FullConnectNeighbors(max_nodes_number)
+        self.max_nodes_number = max_nodes_number
 
         if self.fixed_atoms and self.full_connect:
             fixed_neigh = True
-            self.distances = Distances(True)
+            self.distances = Distances(True,long_dis=self.cutoff*10)
             self.model.set_fixed_neighbors(True)
         else:
             fixed_neigh = False
-            self.distances = Distances(False)
+            self.distances = Distances(False,long_dis=self.cutoff*10)
         self.fixed_neigh = fixed_neigh
 
         self.multi_readouts = False

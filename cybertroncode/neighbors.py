@@ -46,15 +46,17 @@ class Distances(nn.Cell):
 
     """
 
-    def __init__(self,fixed_atoms=False,dim=3):
+    def __init__(self,fixed_atoms=False,dim=3,long_dis=units.length(10,'nm')):
         super().__init__()
         self.fixed_atoms=fixed_atoms
         self.reducesum = P.ReduceSum()
         self.pow = P.Pow()
         self.gatherd = P.GatherD()
         self.norm = nn.Norm(-1)
+        self.long_dis = long_dis
 
         self.gather_neighbors = GatherNeighbors(dim,fixed_atoms)
+        self.maximum = P.Maximum()
 
     def construct(
         self, positions, neighbors, neighbor_mask=None, cell=None, cell_offsets=None
@@ -79,14 +81,11 @@ class Distances(nn.Cell):
         """
 
         pos_xyz = self.gather_neighbors(positions,neighbors)
-
-        # Subtract positions of central atoms to get distance vectors
-        dist_vec = pos_xyz - F.expand_dims(positions,-2)
-
-        distances = self.norm(dist_vec)
+        pos_diff = pos_xyz - F.expand_dims(positions,-2)
         
         if neighbor_mask is not None:
-            r_large = F.ones_like(distances)*5e4
-            distances = F.select(neighbor_mask,distances,r_large)
-
-        return distances
+            large_diff = pos_diff + self.long_dis
+            smask = (F.ones_like(pos_diff) * F.expand_dims(neighbor_mask,-1)) > 0
+            pos_diff = F.select(smask,pos_diff,large_diff)
+        
+        return self.norm(pos_diff)
