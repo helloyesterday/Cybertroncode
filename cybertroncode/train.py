@@ -74,11 +74,17 @@ class DatasetWhitening(nn.Cell):
 
             ref = F.gather(self.atom_ref,types,0)
             ref = self.reduce_sum(ref,-2)
+            if len(label.shape) == 3:
+                atom_num = F.expand_dims(atom_num,-1)
+                ref = F.expand_dims(ref,-1)
 
             atoms_scale = (label - ref - self.shift * atom_num) / self.scale
         
         if self.mixed_scale_type:
-            mask = (self.mask * F.ones_like(label)) > 0
+            mask = self.mask
+            if len(label.shape) == 3:
+                mask = F.expand_dims(self.mask,-1)
+            mask = (mask * F.ones_like(label)) > 0
             return F.select(mask,atoms_scale,graph_scale)
         else:
             return atoms_scale if self.scaled_by_atoms else graph_scale
@@ -126,25 +132,161 @@ class OutputScaleShift(nn.Cell):
             ref = F.gather(self.atom_ref,types,0)
             ref = self.reduce_sum(ref,-2)
 
+            if len(outputs.shape) == 3:
+                atom_num = F.expand_dims(atom_num,-1)
+                ref = F.expand_dims(ref,-1)
+
             atoms_scale = outputs * self.scale + self.shift * atom_num + ref
         
         if self.mixed_scale_type:
-            mask = (self.mask * F.ones_like(outputs)) > 0
+            mask = self.mask
+            if len(outputs.shape) == 3:
+                mask = F.expand_dims(self.mask,-1)
+            mask = mask * F.ones_like(outputs)
             return F.select(mask,atoms_scale,graph_scale)
         else:
             return atoms_scale if self.scaled_by_atoms else graph_scale
+
+class LossWithEnergyAndForces(nn.loss.loss.Loss):
+    def __init__(self,
+        ratio_energy=1,
+        ratio_forces=0,
+        reduction_vector='mean',
+        reduction_forces='mean',
+        reduction_batch='mean',
+        scale_dis=1,
+        averaged_by_atoms=False,
+    ):
+        super().__init__(reduction_batch)
+
+        if reduction_vector not in ('mean', 'sum'):
+            raise ValueError(f"reduction_mol method for {reduction_vector} is not supported")
+        self.reduction_vector = reduction_vector
+
+        if reduction_forces not in ('mean', 'sum'):
+            raise ValueError(f"reduction_mol method for {reduction_forces} is not supported")
+        self.reduction_forces = reduction_forces
+
+        self.scale_dis = scale_dis
+        if averaged_by_atoms and reduction_forces == 'mean':
+            print('Warning! The term "averaged_by_atoms" is "True" but reduction_forces is "mean".')
+        self.averaged_by_atoms = averaged_by_atoms
+
+        self.ratio_energy = ratio_energy
+        self.ratio_forces = ratio_forces
+
+        self.reduce_mean = P.ReduceMean()
+        self.reduce_sum = P.ReduceSum()
+
+    def _calc_loss(self,diff):
+        return diff
+
+    def construct(self, pred_energy, label_energy, pred_forces=None, label_forces=None, mask=None, num=1):
+        eloss = 0
+        if self.ratio_forces > 0:
+            ediff = pred_energy - label_energy
+            eloss = self._calc_loss(ediff)
+
+        floss = 0
+        if self.ratio_forces > 0:
+            fdiff = (pred_forces - label_forces) * self.scale_dis
+            fdiff = self._calc_loss(fdiff)
+            if self.reduction_vector == 'mean':
+                fdiff = self.reduce_mean(fdiff,-1)
+            else:
+                fdiff = self.reduce_sum(fdiff,-1)
+            if mask is None:
+                if self.reduction_forces == 'mean':
+                    floss = self.reduce_mean(fdiff,-1)
+                else:
+                    floss = self.reduce_sum(fdiff,-1)
+            else:
+                fdiff = fdiff * mask
+                floss = self.reduce_sum(fdiff,-1)
+                if self.reduction_forces == 'mean':
+                    floss = floss / num
+
+        y = eloss * self.ratio_energy + floss * self.ratio_forces
+        if self.averaged_by_atoms:
+            if mask is None:
+                num = F.cast(label_forces.shape[-2],ms.int32)
+            norm = num * self.ratio_forces + self.ratio_energy
+            y = y / norm
+
+        return self.get_loss(y)
+
+class MAELoss(LossWithEnergyAndForces):
+    def __init__(self,
+        ratio_energy=1,
+        ratio_forces=0,
+        reduction_vector='mean',
+        reduction_forces='mean',
+        reduction_batch='mean',
+        scale_dis=1,
+        averaged_by_atoms=False,
+    ):
+        super().__init__(
+            ratio_energy=ratio_energy,
+            ratio_forces=ratio_forces,
+            reduction_vector=reduction_vector,
+            reduction_forces=reduction_forces,
+            reduction_batch=reduction_batch,
+            scale_dis=scale_dis,
+            averaged_by_atoms=averaged_by_atoms,
+        )
+        self.abs = P.abs()
+    
+    def _calc_loss(self, diff):
+        return self.abs(diff)
+
+class MSELoss(LossWithEnergyAndForces):
+    def __init__(self,
+        ratio_energy=1,
+        ratio_forces=0,
+        reduction_vector='mean',
+        reduction_forces='mean',
+        reduction_batch='mean',
+        scale_dis=1,
+        averaged_by_atoms=False,
+    ):
+        super().__init__(
+            ratio_energy=ratio_energy,
+            ratio_forces=ratio_forces,
+            reduction_vector=reduction_vector,
+            reduction_forces=reduction_forces,
+            reduction_batch=reduction_batch,
+            scale_dis=scale_dis,
+            averaged_by_atoms=averaged_by_atoms,
+        )
+        self.square = P.Square()
+    
+    def _calc_loss(self, diff):
+        return self.square(diff)
 
 class WithForceLossCell(nn.Cell):
     def __init__(self,
         datatypes,
         backbone,
-        energy_fn,
-        force_fn,
-        ratio_energy=0.01,
-        ratio_force=0.99,
+        loss_fn,
+        do_whitening=False,
+        scale=1,
+        shift=0,
+        atom_ref=None,
+        mask=None,
         # with_penalty=False,
     ):
         super().__init__(auto_prefix=False)
+
+        self.do_whitening = do_whitening
+        if do_whitening:
+            self.whitening = DatasetWhitening(
+                scale=scale,
+                shift=shift,
+                atom_ref=atom_ref,
+                mask=mask
+            )
+        else:
+            self.whitening = None
 
         if not isinstance(datatypes,str):
             raise TypeError('Type of "datatypes" must be str')
@@ -178,12 +320,13 @@ class WithForceLossCell(nn.Cell):
             raise TypeError('The datatype "E" must be included in WithForceLossCell!')
 
         self._backbone = backbone
-        self.force_fn = force_fn
-        self.energy_fn = energy_fn
-        self.ratio_energy = ratio_energy
-        self.ratio_force = ratio_force
-        self.grad_op = C.GradOperation(get_all=False)
+        self._loss_fn = loss_fn
+
+        self.node_types = self._backbone.node_types
+
+        self.grad_op = C.GradOperation()
         # self.with_penalty = with_penalty
+        self.reduce_sum = P.ReduceSum()
 
     def construct(self, *inputs):
         inputs = inputs + (None,)
@@ -198,18 +341,8 @@ class WithForceLossCell(nn.Cell):
         far_neighbors = inputs[self.L]
         far_mask = inputs[self.l]
 
+        energy = inputs[self.E]
         out = self._backbone(
-            positions,
-            node_types,
-            atom_types,
-            neighbors,
-            neighbor_mask,
-            bonds,
-            bond_mask,
-            far_neighbors,
-            far_mask,
-        )
-        fout = -1 * self.grad_op(self._backbone)(
             positions,
             node_types,
             atom_types,
@@ -222,11 +355,32 @@ class WithForceLossCell(nn.Cell):
         )
 
         forces = inputs[self.F]
-        energy = inputs[self.E]
-        
-        loss_force = self.force_fn(fout,forces) * self.ratio_force
-        loss_energy = self.energy_fn(out,energy) * self.ratio_energy
-        return loss_energy + loss_force
+        fout = -1 * self.grad_op(self._backbone)(
+            positions,
+            node_types,
+            atom_types,
+            neighbors,
+            neighbor_mask,
+            bonds,
+            bond_mask,
+            far_neighbors,
+            far_mask,
+        )
+
+        if node_types is None:
+            node_types = self.node_types
+
+        if self.do_whitening:
+            energy = self.whitening(energy,node_types)
+            forces = self.whitening(forces,node_types)
+
+        if node_types is None:
+            return self._loss_fn(out,energy,fout,forces)
+        else:
+            mask = node_types > 0
+            num = F.cast(node_types>0,fout.dtype)
+            num = self.reduce_sum(num,-1)
+            return self._loss_fn(out,energy,fout,forces,mask,num)
 
     @property
     def backbone_network(self):
@@ -327,11 +481,33 @@ class WithForceEvalCell(nn.Cell):
     def __init__(self,
         datatypes,
         network,
-        energy_fn=None,
-        force_fn=None,
-        add_cast_fp32=False
+        loss_fn=None,
+        add_cast_fp32=False,
+        do_scaleshift=False,
+        scale=1,
+        shift=0,
+        atom_ref=None,
+        mask=None,
     ):
         super().__init__(auto_prefix=False)
+
+        self.do_scaleshift = do_scaleshift
+        self.scaleshift = None
+        self.whitening = None
+        if do_scaleshift:
+            self.scaleshift = OutputScaleShift(
+                scale=scale,
+                shift=shift,
+                atom_ref=atom_ref,
+                mask=mask
+            )
+            if loss_fn is not None:
+                self.whitening = DatasetWhitening(
+                    scale=scale,
+                    shift=shift,
+                    atom_ref=atom_ref,
+                    mask=mask
+                )
 
         if not isinstance(datatypes,str):
             raise TypeError('Type of "datatypes" must be str')
@@ -345,6 +521,9 @@ class WithForceEvalCell(nn.Cell):
             num = datatypes.count(datatype)
             if num > 1:
                 raise ValueError('There are '+str(num)+' "' + datatype + '" in datatype "' + datatypes + '".')
+
+        self.node_types = network.node_types
+        self.max_nodes_number = network.max_nodes_number
 
         self.R = datatypes.find('R') # positions
         self.Z = datatypes.find('Z') # node_types
@@ -365,11 +544,12 @@ class WithForceEvalCell(nn.Cell):
             raise TypeError('The datatype "E" must be included in WithForceEvalCell!')
 
         self._network = network
-        self._energy_fn = energy_fn
-        self._force_fn = force_fn
+        self._loss_fn = loss_fn
         self.add_cast_fp32 = add_cast_fp32
 
-        self.grad_op = C.GradOperation(get_all=False)
+        self.reduce_sum = P.ReduceSum()
+
+        self.grad_op = C.GradOperation()
 
     def construct(self, *inputs):
         inputs = inputs + (None,)
@@ -395,6 +575,7 @@ class WithForceEvalCell(nn.Cell):
             far_neighbors,
             far_mask,
         )
+
         foutputs = -1 * self.grad_op(self._network)(
             positions,
             node_types,
@@ -415,17 +596,40 @@ class WithForceEvalCell(nn.Cell):
             energy = F.mixed_precision_cast(ms.float32, energy)
             outputs = F.cast(outputs, ms.float32)
 
-        if self._energy_fn is None:
-            eloss = 0
-        else:
-            eloss = self._energy_fn(outputs, energy)
-
-        if self._force_fn is None:
-            floss = 0
-        else:
-            floss = self._force_fn(foutputs, forces)
+        if node_types is None:
+            node_types = self.node_types
         
-        return eloss, floss, outputs, energy, foutputs, forces
+        types = atom_types
+        if types is None:
+            types = node_types
+
+        atom_num = None
+        if types is not None:
+            dataref = positions if positions is not None else outputs
+            atom_num = F.cast(types>0,dataref.dtype)
+            atom_num = self.reduce_sum(atom_num,-1)
+
+        loss = 0
+        if self._loss_fn is not None:
+            _energy = energy
+            _forces = forces
+            if self.do_scaleshift:
+                _energy = self.whitening(_energy,types)
+                _forces = self.whitening(_forces,types)
+
+            num = self.max_nodes_number
+            mask = None
+            if node_types is not None:
+                mask = node_types > 0
+                num = F.cast(node_types>0,foutputs.dtype)
+                num = self.reduce_sum(num,-1)
+            loss = self._loss_fn(outputs, _energy, foutputs, _forces, mask, num)
+
+        if self.do_scaleshift:
+            outputs = self.scaleshift(outputs,types)
+            foutputs = self.scaleshift(foutputs,types)
+        
+        return loss, outputs, energy, foutputs, forces, atom_num
 
 class WithLabelEvalCell(nn.Cell):
     def __init__(self,
@@ -444,6 +648,8 @@ class WithLabelEvalCell(nn.Cell):
         self._loss_fn = loss_fn
         self.add_cast_fp32 = add_cast_fp32
         self.reducesum = P.ReduceSum(keep_dims=True)
+
+        self.node_types = network.node_types
 
         self.do_scaleshift = do_scaleshift
         self.scaleshift = None
@@ -514,6 +720,7 @@ class WithLabelEvalCell(nn.Cell):
             far_neighbors,
             far_mask,
         )
+
         label = inputs[self.E]
         if self.add_cast_fp32:
             label = F.mixed_precision_cast(ms.float32, label)
@@ -522,6 +729,8 @@ class WithLabelEvalCell(nn.Cell):
         types = atom_types
         if types is None:
             types = node_types
+        if types is None:
+            types = self.node_types
 
         loss = 0
         if self._loss_fn is not None:
@@ -533,9 +742,11 @@ class WithLabelEvalCell(nn.Cell):
         if self.do_scaleshift:
             outputs = self.scaleshift(outputs,types)
 
-        dataref = positions if positions is not None else outputs
-        atom_num = F.cast(types>0,dataref.dtype)
-        atom_num = self.reducesum(atom_num,-1)
+        atom_num = None
+        if types is not None:
+            dataref = positions if positions is not None else outputs
+            atom_num = F.cast(types>0,dataref.dtype)
+            atom_num = self.reducesum(atom_num,-1)
 
         return loss, outputs, label, atom_num
 
@@ -652,8 +863,8 @@ class TrainMonitor(Callback):
                 info += ': '
                 info += str(v)
 
-                if type(v) is np.ndarray and len(v) > 1:
-                    for i in range(len(v)):
+                if isinstance(v,np.ndarray) and v.size > 1:
+                    for i in range(v.size):
                         title += (' ' + k + str(i))
                         outdata += '{:>15e}'.format(v[i])
                 else:
@@ -722,8 +933,32 @@ class TrainMonitor(Callback):
         if self._per_epoch > 0 and cur_epoch % self._per_epoch == 0:
             self._output_data(cb_params)
 
+class MaxError(Metric):
+    def __init__(self,indexes=[1,2],reduce_all_dims=True):
+        super().__init__()
+        self.clear()
+        self._indexes = indexes
+        if reduce_all_dims:
+            self.axis = None
+        else:
+            self.axis = 0
+
+    def clear(self):
+        self._max_error = 0
+
+    def update(self, *inputs):
+        y_pred = self._convert_data(inputs[self._indexes[0]])
+        y = self._convert_data(inputs[self._indexes[1]])
+        diff = y.reshape(y_pred.shape) - y_pred
+        max_error = diff.max() - diff.min()
+        if max_error > self._max_error:
+            self._max_error = max_error
+
+    def eval(self):
+        return self._max_error
+
 class MAE(Metric):
-    def __init__(self,indexes=[2,3],reduce_all_dims=True):
+    def __init__(self,indexes=[1,2],reduce_all_dims=True):
         super().__init__()
         self.clear()
         self._indexes = indexes
@@ -777,7 +1012,7 @@ class MAEAveragedByAtoms(Metric):
         return self._abs_error_sum / self._samples_num
 
 class MSE(Metric):
-    def __init__(self,indexes=[4,5],reduce_all_dims=True):
+    def __init__(self,indexes=[3,4],reduce_all_dims=True):
         super().__init__()
         self.clear()
         self._indexes = indexes
