@@ -55,16 +55,16 @@ class InteractionsAggregator(nn.Cell):
         if self.list_aggregator is None:
             raise TypeError("ListAggregator cannot be None at InteractionsAggregator")
 
-    def construct(self,xlist,node_mask=None):
+    def construct(self,xlist,atom_mask=None):
         if self.decoders is not None:
             ylist = []
             n_interactions = len(xlist)
             for i in range(n_interactions):
                 y = self.decoders[i](xlist[i])
                 ylist.append(y)
-            return self.list_aggregator(ylist,node_mask)
+            return self.list_aggregator(ylist,atom_mask)
         else:
-            return self.list_aggregator(xlist,node_mask)
+            return self.list_aggregator(xlist,atom_mask)
 
 class Readout(nn.Cell):
     def __init__(self,
@@ -72,8 +72,8 @@ class Readout(nn.Cell):
         n_out=1,
         atom_scale=1,
         atom_shift=0,
-        graph_scale=1,
-        graph_shift=0,
+        mol_scale=1,
+        mol_shift=0,
         axis=-2,
         atom_ref=None,
         scaled_by_atoms_number=True,
@@ -131,13 +131,13 @@ class Readout(nn.Cell):
         atom_shift, num_atom_shift = self._check_type_and_number(atom_shift,'atom_shift',(int,float,Tensor))
         self.atom_shift = atom_shift
 
-        if not isinstance(graph_scale,(float,int,Tensor)): raise TypeError('Type of graph_scale must be float, int or Tensor')
-        self.graph_scale = graph_scale
+        if not isinstance(mol_scale,(float,int,Tensor)): raise TypeError('Type of mol_scale must be float, int or Tensor')
+        self.mol_scale = mol_scale
 
-        if not isinstance(graph_shift,(float,int,Tensor)): raise TypeError('Type of graph_shift must be float, int or Tensor')
-        self.graph_shift = graph_shift
+        if not isinstance(mol_shift,(float,int,Tensor)): raise TypeError('Type of mol_shift must be float, int or Tensor')
+        self.mol_shift = mol_shift
 
-        if not isinstance(axis,int): raise TypeError('Type of graph_shift must be int')
+        if not isinstance(axis,int): raise TypeError('Type of mol_shift must be int')
         self.axis = axis
 
         activation, num_activation = self._check_type_and_number(activation,'activation')
@@ -307,8 +307,8 @@ class Readout(nn.Cell):
 
 
         print("------with total readout dimension: "+str(self.total_out))
-        print("------with graph scale: "+str(self.graph_scale)+self.str_unit_energy)
-        print("------with graph shift: "+str(self.graph_shift)+self.str_unit_energy)
+        print("------with molecular scale: "+str(self.mol_scale)+self.str_unit_energy)
+        print("------with molecular shift: "+str(self.mol_shift)+self.str_unit_energy)
         print("------averaged by atoms number: "+('Yes' if self.averaged_by_atoms_number else 'No'))
 
     def _print_plus_info(self):
@@ -394,8 +394,8 @@ class AtomwiseReadout(Readout):
         n_out=1,
         atom_scale=1,
         atom_shift=0,
-        graph_scale=1,
-        graph_shift=0,
+        mol_scale=1,
+        mol_shift=0,
         axis=-2,
         atom_ref=None,
         scaled_by_atoms_number=False,
@@ -416,8 +416,8 @@ class AtomwiseReadout(Readout):
             n_out=n_out,
             atom_scale=atom_scale,
             atom_shift=atom_shift,
-            graph_scale=graph_scale,
-            graph_shift=graph_shift,
+            mol_scale=mol_scale,
+            mol_shift=mol_shift,
             axis=axis,
             atom_ref=atom_ref,
             scaled_by_atoms_number=scaled_by_atoms_number,
@@ -476,13 +476,13 @@ class AtomwiseReadout(Readout):
             else:
                 self.aggregator = get_aggregator(aggregator,self.n_out,axis)
 
-    def construct(self, x, xlist, node_mask=None, nodes_number=None, distances=None, neighbors=None, neighbor_mask=None, atoms_types=None, atoms_number=None):
+    def construct(self, x, xlist, atoms_types=None, atom_mask=None, atoms_number=None, distances=None, neighbors=None, neighbor_mask=None):
         r"""
         predicts atomwise property
         """
 
         if self.read_all_interactions:
-            x = self.interactions_aggregator(xlist,node_mask)
+            x = self.interactions_aggregator(xlist,atom_mask)
 
         y = None
         if self.multi_decoders:
@@ -495,7 +495,7 @@ class AtomwiseReadout(Readout):
                         yi = yi / atoms_number
                     if self.atom_ref is not None:
                         yi += F.gather(self.multi_atom_ref[i],atoms_types,0)
-                    yi = self.aggregator[i](yi,node_mask,nodes_number)
+                    yi = self.aggregator[i](yi,atom_mask,atoms_number)
 
                 ytuple = ytuple + (yi,)
 
@@ -507,7 +507,7 @@ class AtomwiseReadout(Readout):
                     y = y / atoms_number
                 if self.atom_ref is not None:
                     y += F.gather(self.atom_ref,atoms_types,0)
-                y = self.aggregator(y,node_mask,nodes_number)
+                y = self.aggregator(y,atom_mask,atoms_number)
         else:
             if self.decoder is not None:
                 y = self.decoder(x)
@@ -522,9 +522,9 @@ class AtomwiseReadout(Readout):
                 y += F.gather(self.atom_ref,atoms_types,0)
             
             if self.aggregator is not None:
-                y = self.aggregator(y,node_mask,nodes_number)
+                y = self.aggregator(y,atom_mask,atoms_number)
 
-        y = y * self.graph_scale + self.graph_shift
+        y = y * self.mol_scale + self.mol_shift
 
         if self.averaged_by_atoms_number:
             if atoms_number is None:
@@ -548,8 +548,8 @@ class GraphReadout(Readout):
         n_out=1,
         atom_scale=1,
         atom_shift=0,
-        graph_scale=1,
-        graph_shift=0,
+        mol_scale=1,
+        mol_shift=0,
         axis=-2,
         atom_ref=None,
         scaled_by_atoms_number=False,
@@ -570,8 +570,8 @@ class GraphReadout(Readout):
             n_out=n_out,
             atom_scale=atom_scale,
             atom_shift=atom_shift,
-            graph_scale=graph_scale,
-            graph_shift=graph_shift,
+            mol_scale=mol_scale,
+            mol_shift=mol_shift,
             axis=axis,
             atom_ref=atom_ref,
             scaled_by_atoms_number=scaled_by_atoms_number,
@@ -623,25 +623,25 @@ class GraphReadout(Readout):
 
         self.reduce_sum = P.ReduceSum()
 
-    def construct(self, x, xlist, node_mask=None, nodes_number=None, distances=None, neighbors=None, neighbor_mask=None, atoms_types=None, atoms_number=None):
+    def construct(self, x, xlist, atoms_types=None, atom_mask=None, atoms_number=None, distances=None, neighbors=None, neighbor_mask=None):
         r"""
         predicts graph property
         """
 
         if self.read_all_interactions:
-            x = self.interactions_aggregator(xlist,node_mask)
+            x = self.interactions_aggregator(xlist,atom_mask)
 
         y = None
         if self.multi_decoders:
             if self.multi_aggregators:
                 agg = None
             else:
-                agg = self.aggregator(x,node_mask,nodes_number)
+                agg = self.aggregator(x,atom_mask,atoms_number)
 
             ytuple = ()
             for i in range(self.num_decoder):
                 if self.multi_aggregators:
-                    agg = self.aggregator[i](x,node_mask,nodes_number)
+                    agg = self.aggregator[i](x,atom_mask,atoms_number)
 
                 yi = self.decoder[i](agg)
 
@@ -654,7 +654,7 @@ class GraphReadout(Readout):
                 y = y / atoms_number
 
         else:
-            agg = self.aggregator(x,node_mask,nodes_number)
+            agg = self.aggregator(x,atom_mask,atoms_number)
 
             if self.decoder is not None:
                 y = self.decoder(agg)
@@ -670,7 +670,7 @@ class GraphReadout(Readout):
             ref = self.reduce_sum(ref,self.axis)
             y += ref
         
-        y = y * self.graph_scale + self.graph_shift
+        y = y * self.mol_scale + self.mol_shift
 
         if self.averaged_by_atoms_number:
             if atoms_number is None:
@@ -684,8 +684,8 @@ class LongeRangeReadout(Readout):
         dim_feature,
         atom_scale=1,
         atom_shift=0,
-        graph_scale=1,
-        graph_shift=0,
+        mol_scale=1,
+        mol_shift=0,
         axis=-2,
         atom_ref=None,
         activation=None,
@@ -707,8 +707,8 @@ class LongeRangeReadout(Readout):
             n_out=1,
             atom_scale=atom_scale,
             atom_shift=atom_shift,
-            graph_scale=graph_scale,
-            graph_shift=graph_shift,
+            mol_scale=mol_scale,
+            mol_shift=mol_shift,
             axis=axis,
             atom_ref=atom_ref,
             scaled_by_atoms_number=False,
@@ -793,8 +793,8 @@ class CoulombReadout(LongeRangeReadout):
         dim_feature,
         atom_scale=1,
         atom_shift=0,
-        graph_scale=1,
-        graph_shift=0,
+        mol_scale=1,
+        mol_shift=0,
         axis=-2,
         atom_ref=None,
         activation=None,
@@ -815,8 +815,8 @@ class CoulombReadout(LongeRangeReadout):
             dim_feature=dim_feature,
             atom_scale=atom_scale,
             atom_shift=atom_shift,
-            graph_scale=graph_scale,
-            graph_shift=graph_shift,
+            mol_scale=mol_scale,
+            mol_shift=mol_shift,
             axis=axis,
             atom_ref=atom_ref,
             activation=activation,
@@ -844,14 +844,14 @@ class CoulombReadout(LongeRangeReadout):
 
         self.split = P.Split(-1,2)
 
-    def construct(self, x, xlist, node_mask=None, nodes_number=None, distances=None, neighbors=None, neighbor_mask=None, atoms_types=None, atoms_number=None):
+    def construct(self, x, xlist, atoms_types=None, atom_mask=None, atoms_number=None, distances=None, neighbors=None, neighbor_mask=None):
 
         r"""
         predicts atomwise property
         """
 
         if self.read_all_interactions:
-            x = self.interactions_aggregator(xlist,node_mask)
+            x = self.interactions_aggregator(xlist,atom_mask)
 
         y = self.decoder(x)
 
@@ -870,16 +870,16 @@ class CoulombReadout(LongeRangeReadout):
 
         Eq = qiqj * sij
         Eq = self.reduce_sum(Eq,-1)
-        Eq = self.aggregator(Eq,node_mask,nodes_number) * self.coulomb_const / 2.
+        Eq = self.aggregator(Eq,atom_mask,atoms_number) * self.coulomb_const / 2.
         
         Ei = Ei * self.atom_scale + self.atom_shift
 
         if self.atom_ref is not None:
             Ei += F.gather(self.atom_ref,atoms_types,0)
 
-        Ei = self.aggregator(Ei,node_mask,nodes_number)
+        Ei = self.aggregator(Ei,atom_mask,atoms_number)
 
-        Ei = Ei * self.graph_scale + self.graph_shift
+        Ei = Ei * self.mol_scale + self.mol_shift
 
         return Ei + Eq
 
@@ -888,8 +888,8 @@ class PairwiseReadout(LongeRangeReadout):
         dim_feature,
         atom_scale=1,
         atom_shift=0,
-        graph_scale=1,
-        graph_shift=0,
+        mol_scale=1,
+        mol_shift=0,
         axis=-2,
         atom_ref=None,
         activation=None,
@@ -910,8 +910,8 @@ class PairwiseReadout(LongeRangeReadout):
             dim_feature=dim_feature,
             atom_scale=atom_scale,
             atom_shift=atom_shift,
-            graph_scale=graph_scale,
-            graph_shift=graph_shift,
+            mol_scale=mol_scale,
+            mol_shift=mol_shift,
             axis=axis,
             atom_ref=atom_ref,
             activation=activation,
@@ -941,10 +941,10 @@ class PairwiseReadout(LongeRangeReadout):
 
         self.squeeze = P.Squeeze(-1)
 
-    def construct(self, x, xlist, node_mask=None, nodes_number=None, distances=None, neighbors=None, neighbor_mask=None, atoms_types=None, atoms_number=None):
+    def construct(self, x, xlist, atoms_types=None, atom_mask=None, atoms_number=None, distances=None, neighbors=None, neighbor_mask=None):
 
         if self.read_all_interactions:
-            x = self.interactions_aggregator(xlist,node_mask)
+            x = self.interactions_aggregator(xlist,atom_mask)
 
         Ei = self.decoder(x)
 
@@ -967,15 +967,15 @@ class PairwiseReadout(LongeRangeReadout):
 
         Eq = qiqj * sij
         Eq = self.reduce_sum(Eq,-1)
-        Eq = self.aggregator(Eq,node_mask,nodes_number) * self.coulomb_const / 2.
+        Eq = self.aggregator(Eq,atom_mask,atoms_number) * self.coulomb_const / 2.
         
         Ei = Ei * self.atom_scale + self.atom_shift
 
         if self.atom_ref is not None:
             Ei += F.gather(self.atom_ref,atoms_types,0)
 
-        Ei = self.aggregator(Ei,node_mask,nodes_number)
+        Ei = self.aggregator(Ei,atom_mask,atoms_number)
 
-        Ei = Ei * self.graph_scale + self.graph_shift
+        Ei = Ei * self.mol_scale + self.mol_shift
 
         return Ei + Eq

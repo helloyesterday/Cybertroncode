@@ -31,7 +31,7 @@ class DeepGraphMolecularModel(nn.Cell):
         num_elements (int): maximum number of atomic types
         num_rbf (int): number of the serial of radical basis functions (RBF)
         dim_feature (int): dimension of the vectors for atomic embedding
-        node_types (ms.Tensor[int], optional): atomic index 
+        atom_types (ms.Tensor[int], optional): atomic index 
         rbf_function(nn.Cell, optional): the alghorithm to calculate RBF
         cutoff_network (nn.Cell, optional): the algorithm to calculate cutoff.
 
@@ -160,7 +160,7 @@ class DeepGraphMolecularModel(nn.Cell):
         for interaction in self.interactions:
             interaction.set_fixed_neighbors(flag)
 
-    def _calc_cutoffs(self,r_ij=1,neighbor_mask=None,bonds=None,bond_mask=None,node_mask=None):
+    def _calc_cutoffs(self,r_ij=1,neighbor_mask=None,bonds=None,bond_mask=None,atom_mask=None):
         if self.cutoff_network is None:
             return F.ones_like(r_ij),neighbor_mask
         else:
@@ -184,7 +184,7 @@ class DeepGraphMolecularModel(nn.Cell):
     def _get_self_rbf(self):
         return 0
 
-    def construct(self, r_ij=1, node_types=None, node_mask=None, neighbors=None, neighbor_mask=None, bonds=None, bond_mask=None):
+    def construct(self, r_ij=1, atom_types=None, atom_mask=None, neighbors=None, neighbor_mask=None, bonds=None, bond_mask=None):
         """Compute interaction output.
 
         Args:
@@ -192,7 +192,7 @@ class DeepGraphMolecularModel(nn.Cell):
             neighbors (ms.Tensor[int]): indices of neighbors of (N_b, N_a, N_nbh) shape.
             neighbor_mask (ms.Tensor[bool], optional): mask to filter out non-existing neighbors
                 introduced via padding.
-            node_types (ms.Tensor[int], optional): atomic index 
+            atom_types (ms.Tensor[int], optional): atomic index 
 
         Returns:
             torch.Tensor: block output with (N_b, N_a, N_basis) shape.
@@ -201,11 +201,11 @@ class DeepGraphMolecularModel(nn.Cell):
 
         if self.fixed_atoms:
             exones = self.ones((r_ij.shape[0],1,1),r_ij.dtype)
-            e =  exones * self.atom_embedding(node_types)
-            if node_mask is not None:
-                node_mask = (exones * node_mask) > 0
+            e =  exones * self.atom_embedding(atom_types)
+            if atom_mask is not None:
+                atom_mask = (exones * atom_mask) > 0
         else:
-            e = self.atom_embedding(node_types)
+            e = self.atom_embedding(atom_types)
         
         if self.use_distances:
             f_ij = self._get_rbf(r_ij)
@@ -233,7 +233,7 @@ class DeepGraphMolecularModel(nn.Cell):
             b_ij = 0
 
             # apply cutoff
-        c_ij, mask = self._calc_cutoffs(r_ij,neighbor_mask,bonds,bond_mask,node_mask)
+        c_ij, mask = self._calc_cutoffs(r_ij,neighbor_mask,bonds,bond_mask,atom_mask)
         
         # continuous-filter convolution interaction block followed by Dense layer
         x = e
@@ -270,7 +270,7 @@ class SchNet(DeepGraphMolecularModel):
         dim_filter (int): dimension of the vectors for filters used in continuous-filter convolution.
         n_interactions (int, optional): number of interaction blocks.
         max_distance (float): the maximum distance to calculate RBF.
-        node_types (ms.Tensor[int], optional): atomic index 
+        atom_types (ms.Tensor[int], optional): atomic index 
         rbf_function(nn.Cell, optional): the alghorithm to calculate RBF
         cutoff_network (nn.Cell, optional): the algorithm to calculate cutoff.
         normalize_filter (bool, optional): if True, divide aggregated filter by number
@@ -369,7 +369,7 @@ class PhysNet(DeepGraphMolecularModel):
         dim_filter (int): dimension of the vectors for filters used in continuous-filter convolution.
         n_interactions (int, optional): number of interaction blocks.
         max_distance (float): the maximum distance to calculate RBF.
-        node_types (ms.Tensor[int], optional): atomic index 
+        atom_types (ms.Tensor[int], optional): atomic index 
         rbf_function(nn.Cell, optional): the alghorithm to calculate RBF
         cutoff_network (nn.Cell, optional): the algorithm to calculate cutoff.
         normalize_filter (bool, optional): if True, divide aggregated filter by number
@@ -762,12 +762,12 @@ class MolCT(DeepGraphMolecularModel):
         for interaction in self.interactions:
             interaction.set_fixed_neighbors(flag)
 
-    def _calc_cutoffs(self,r_ij=1,neighbor_mask=None,bonds=None,bond_mask=None,node_mask=None):
+    def _calc_cutoffs(self,r_ij=1,neighbor_mask=None,bonds=None,bond_mask=None,atom_mask=None):
         mask = None
 
         if self.use_distances:
             if neighbor_mask is not None:
-                mask = self.concat((node_mask,neighbor_mask))
+                mask = self.concat((atom_mask,neighbor_mask))
             
             if self.cutoff_network is None:
                 new_shape = (r_ij.shape[0], r_ij.shape[1] + 1, r_ij.shape[2])
@@ -775,16 +775,16 @@ class MolCT(DeepGraphMolecularModel):
             else:
                 rii_shape = r_ij.shape[:-1] + (1,)
                 r_ii = self.fill(r_ij.dtype,rii_shape,self.self_dis)
-                if node_mask is not None:
+                if atom_mask is not None:
                     r_large = F.ones_like(r_ii)*5e4
-                    r_ii = F.select(node_mask,r_ii,r_large)
+                    r_ii = F.select(atom_mask,r_ii,r_large)
                 # [B, A, N']
                 r_ij = self.concat((r_ii,r_ij))
 
                 return self.cutoff_network(r_ij,mask)
         else:
             if bond_mask is not None:
-                mask = self.concat((node_mask,bond_mask))
+                mask = self.concat((atom_mask,bond_mask))
             return F.cast(mask>0,ms.float32),mask
 
     def _get_self_rbf(self):

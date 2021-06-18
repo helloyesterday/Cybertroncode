@@ -30,8 +30,8 @@ class Cybertron(nn.Cell):
         unit_dis='nm',
         unit_energy=None,
         readout='atomwise',
-        max_nodes_number=0,
-        node_types=None,
+        max_atoms_number=0,
+        atom_types=None,
         bond_types=None,
         full_connect=False,
         cut_shape=False,
@@ -51,33 +51,34 @@ class Cybertron(nn.Cell):
         
         self.molsum = P.ReduceSum(keep_dims=True)
 
-        self.node_mask = None
-        if node_types is None:
+        self.atom_mask = None
+        self.atom_types = None
+        if atom_types is None:
             self.fixed_atoms=False
             self.num_atoms=0
         else:
             self.fixed_atoms=True
             self.model._set_fixed_atoms(True)
 
-            if len(node_types.shape) == 1:
-                self.num_atoms=len(node_types)
-            elif len(node_types.shape) == 2:
-                self.num_atoms=len(node_types[0])
+            if len(atom_types.shape) == 1:
+                self.num_atoms=len(atom_types)
+            elif len(atom_types.shape) == 2:
+                self.num_atoms=len(atom_types[0])
 
             if self.num_atoms <= 0:
                 raise ValueError("The 'num_atoms' cannot be 0 "+
-                    "'node_types' is not 'None' in MolCalculator!")
+                    "'atom_types' is not 'None' in MolCalculator!")
 
-            if type(node_types) is not Tensor:
-                node_types = Tensor(node_types,ms.int32)
+            if type(atom_types) is not Tensor:
+                atom_types = Tensor(atom_types,ms.int32)
 
-            self.node_types = node_types
-            self.node_mask = F.expand_dims(node_types,-1) > 0
-            if self.node_mask.all():
-                self.node_mask = None
+            self.atom_types = atom_types
+            self.atom_mask = F.expand_dims(atom_types,-1) > 0
+            if self.atom_mask.all():
+                self.atom_mask = None
 
-            nodes_number = F.cast(node_types>0,ms.float32)
-            self.nodes_number = self.molsum(nodes_number,-1)
+            atoms_number = F.cast(atom_types>0,ms.float32)
+            self.atoms_number = self.molsum(atoms_number,-1)
 
         self.use_bonds = self.model.use_bonds
         self.fixed_bonds = False
@@ -102,12 +103,12 @@ class Cybertron(nn.Cell):
                 self.fc_neighbors = Types2FullConnectNeighbors(self.num_atoms)
                 self.neighbors = self.fc_neighbors.get_full_neighbors()
             else:
-                if max_nodes_number <= 0:
+                if max_atoms_number <= 0:
                     raise ValueError("The 'max_atoms_num' cannot be 0 "+
                         "when the 'full_connect' flag is 'True' and " +
-                        "'node_types' is 'None' in MolCalculator!")
-                self.fc_neighbors = Types2FullConnectNeighbors(max_nodes_number)
-        self.max_nodes_number = max_nodes_number
+                        "'atom_types' is 'None' in MolCalculator!")
+                self.fc_neighbors = Types2FullConnectNeighbors(max_atoms_number)
+        self.max_atoms_number = max_atoms_number
 
         if self.fixed_atoms and self.full_connect:
             fixed_neigh = True
@@ -212,7 +213,7 @@ class Cybertron(nn.Cell):
         activation,
         unit_energy,
     ):
-        if isinstance(readout,Readout):
+        if readout is None or isinstance(readout,Readout):
             return readout
         elif isinstance(readout,str):
             if readout.lower() == 'atom' or readout.lower() == 'atomwise':
@@ -238,7 +239,7 @@ class Cybertron(nn.Cell):
         print('---with input distance unit: '+self.unit_dis)
         print('---with input distance unit: '+self.unit_dis)
         if self.fixed_atoms:
-            print('---with fixed atoms: '+str(self.node_types[0]))
+            print('---with fixed atoms: '+str(self.atom_types[0]))
         if self.full_connect:
             print('---using full connected neighbors')
         if self.use_bonds and self.fixed_bonds:
@@ -266,7 +267,6 @@ class Cybertron(nn.Cell):
 
     def construct(self,
             positions=None,
-            node_types=None,
             atom_types=None,
             neighbors=None,
             neighbor_mask=None,
@@ -278,24 +278,20 @@ class Cybertron(nn.Cell):
         """Compute the properties of the molecules.
 
         Args:
-            positions     (mindspore.Tensor[float], [B, A, 3]): Cartesian coordinates for each node.
-            node_types    (mindspore.Tensor[int],   [B, A]):    Types (ID) of input nodes.
-                                                                If the attribute "self.node_types" have been set and
-                                                                node_types is not given here, node_types = self.node_type
-            atom_types    (mindspore.Tensor[int],   [B, A']):   Types (ID) of the real atoms represented by the input nodes.
-                                                                Used to calculate the real number of each type of atoms with atom_ref.
-                                                                If atom_types is not given here, atom_types = node_types
-            neighbors     (mindspore.Tensor[int],   [B, A, N]): Indices of other near neighbor nodes around a node
+            positions     (mindspore.Tensor[float], [B, A, 3]): Cartesian coordinates for each atom.
+            atom_types    (mindspore.Tensor[int],   [B, A]):    Types (ID) of input atoms.
+                                                                If the attribute "self.atom_types" have been set and
+                                                                atom_types is not given here, atom_types = self.atom_types
+            neighbors     (mindspore.Tensor[int],   [B, A, N]): Indices of other near neighbor atoms around a atom
             neighbor_mask (mindspore.Tensor[bool],  [B, A, N]): Mask for neighbors
-            bonds         (mindspore.Tensor[int],   [B, A, N]): Types (ID) of bond connected with two nodes
+            bonds         (mindspore.Tensor[int],   [B, A, N]): Types (ID) of bond connected with two atoms
             bond_mask     (mindspore.Tensor[bool],  [B, A, N]): Mask for bonds
-            far_neighbors (mindspore.Tensor[int],   [B, A, N]): Indices of other far neighbor nodes around a node
+            far_neighbors (mindspore.Tensor[int],   [B, A, N]): Indices of other far neighbor atoms around a atom
             far_mask      (mindspore.Tensor[bool],  [B, A, N]): Mask for far_neighbors
             
             B:  Batch size, usually the number of input molecules or frames
-            A:  Number of input node, usually the number of atoms in one molecule or frame
-            A': Number of the real atoms in one molecule or frame. If all the atoms are represented by input nodes, A = A'.
-            N:  Number of other nearest neighbor nodes around a node
+            A:  Number of input atoms, usually the number of atoms in one molecule or frame
+            N:  Number of other nearest neighbor atoms around a atom
             O:  Output dimension of the predicted properties
 
         Returns:
@@ -303,23 +299,23 @@ class Cybertron(nn.Cell):
 
         """
 
-        node_mask = None
-        nodes_number = None
-        if node_types is None:
+        atom_mask = None
+        atoms_number = None
+        if atom_types is None:
             if self.fixed_atoms:
-                node_types = self.node_types
-                node_mask = self.node_mask
-                nodes_number = self.nodes_number
+                atom_types = self.atom_types
+                atom_mask = self.atom_mask
+                atoms_number = self.atoms_number
                 if  self.full_connect:
                     neighbors = self.neighbors
                     neighbor_mask = None
             else:
-                # raise ValueError('node_types is miss')
+                # raise ValueError('atom_types is miss')
                 return None
         else:
-            node_mask = F.expand_dims(node_types,-1) > 0
-            nodes_number = F.cast(node_types>0,ms.float32)
-            nodes_number = self.molsum(nodes_number,-1)
+            atom_mask = F.expand_dims(atom_types,-1) > 0
+            atoms_number = F.cast(atom_types>0,ms.float32)
+            atoms_number = self.molsum(atoms_number,-1)
 
         if self.use_bonds:
             if bonds is None:
@@ -335,16 +331,16 @@ class Cybertron(nn.Cell):
 
         if neighbors is None:
             if self.full_connect:
-                neighbors,neighbor_mask=self.fc_neighbors(node_types)
+                neighbors,neighbor_mask=self.fc_neighbors(atom_types)
                 if self.cut_shape:
-                    atypes = F.cast(node_types>0,positions.dtype)
+                    atypes = F.cast(atom_types>0,positions.dtype)
                     anum = self.reducesum(atypes,-1)
                     nmax = self.reducemax(anum)
                     nmax = F.cast(nmax,ms.int32)
                     nmax0 = int(nmax.asnumpy())
                     nmax1 = nmax0 - 1
 
-                    node_types = node_types[:,:nmax0]
+                    atom_types = atom_types[:,:nmax0]
                     positions = positions[:,:nmax0,:]
                     neighbors = neighbors[:,:nmax0,:nmax1]
                     neighbor_mask = neighbor_mask[:,:nmax0,:nmax1]
@@ -358,14 +354,10 @@ class Cybertron(nn.Cell):
             r_ij = 1
             neighbor_mask = bond_mask
 
-        x, xlist = self.model(r_ij,node_types,node_mask,neighbors,neighbor_mask,bonds,bond_mask)
+        x, xlist = self.model(r_ij,atom_types,atom_mask,neighbors,neighbor_mask,bonds,bond_mask)
 
-        if atom_types is None:
-            atom_types = node_types
-            atoms_number = nodes_number
-        else:
-            atoms_number = F.cast(atom_types>0,ms.float32)
-            atoms_number = self.molsum(atoms_number,-1)
+        if self.readout is None:
+            return x
 
         far_neighbors = None
         far_mask = None
@@ -382,13 +374,13 @@ class Cybertron(nn.Cell):
         if self.multi_readouts:
             ytuple = ()
             for i in range(self.num_readout):
-                yi = self.readout[i](x,xlist,node_mask,nodes_number,far_rij,far_neighbors,far_mask,atom_types,atoms_number)
+                yi = self.readout[i](x,xlist,atom_types,atom_mask,atoms_number,far_rij,far_neighbors,far_mask)
                 if self.unit_energy is not None:
                     yi = yi * self.output_scale[i]
                 ytuple = ytuple + (yi,)
             y = self.concat(ytuple)
         else:
-            y = self.readout(x,xlist,node_mask,nodes_number,far_rij,far_neighbors,far_mask,atom_types,atoms_number)
+            y = self.readout(x,xlist,atom_types,atom_mask,atoms_number,far_rij,far_neighbors,far_mask)
             if self.unit_energy is not None:
                 y = y * self.output_scale
 

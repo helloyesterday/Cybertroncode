@@ -33,119 +33,72 @@ __all__ = [
     ]
 
 class DatasetWhitening(nn.Cell):
-    def __init__(self,scale=1.,shift=0.,atom_ref=None,mask=None,axis=-2,):
+    def __init__(self,
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
+        atom_ref=None,
+        axis=-2,
+    ):
         super().__init__()
 
-        self.scale = scale
-        self.shift = shift
+        self.mol_scale = mol_scale
+        self.mol_shift = mol_shift
+
+        self.atom_scale = atom_scale
+        self.atom_shift = atom_shift
 
         self.atom_ref = atom_ref
         self.axis = axis
 
-        if isinstance(mask,(tuple,list,np.ndarray)):
-            self.mask = Tensor(mask)
-        elif mask is None or isinstance(mask,Tensor):
-            self.mask = mask
-        else:
-            raise TypeError('Unkonwn type of mask: '+str(type(mask)))
-
-        self.scaled_by_atoms = self.atom_ref is not None
-        self.scaled_by_graph = not self.scaled_by_atoms
-
-        self.mixed_scale_type = self.mask is not None
-        if self.mixed_scale_type:
-            if self.atom_ref is None:
-                raise TypeError('atom_ref must be given at mixed scale type')
-            self.scaled_by_graph = True
-
         self.reduce_sum = P.ReduceSum()
         self.keep_sum = P.ReduceSum(keep_dims=True)
 
-    def construct(self, label, types=None):
+    def construct(self, label, atoms_number, atom_types=None):
+        ref = 0
+        if self.atom_ref is not None:
+            ref = F.gather(self.atom_ref,atom_types,0)
+            ref = self.reduce_sum(ref,axis=self.axis)
 
-        graph_scale = None
-        if self.scaled_by_graph:
-            graph_scale = (label - self.shift) / self.scale
+        whiten_label = (label - self.mol_shift) / self.mol_scale
+        whiten_label = (whiten_label - ref - self.atom_shift * atoms_number) / self.atom_scale
         
-        atoms_scale = None
-        if self.scaled_by_atoms:
-            atom_num = F.cast(types>0,label.dtype)
-            atom_num = self.keep_sum(atom_num,-1)
-
-            ref = F.gather(self.atom_ref,types,0)
-            ref = self.reduce_sum(ref,-2)
-            if len(label.shape) == 3:
-                atom_num = F.expand_dims(atom_num,-1)
-                ref = F.expand_dims(ref,-1)
-
-            atoms_scale = (label - ref - self.shift * atom_num) / self.scale
-        
-        if self.mixed_scale_type:
-            mask = self.mask
-            if len(label.shape) == 3:
-                mask = F.expand_dims(self.mask,-1)
-            mask = (mask * F.ones_like(label)) > 0
-            return F.select(mask,atoms_scale,graph_scale)
-        else:
-            return atoms_scale if self.scaled_by_atoms else graph_scale
+        return whiten_label
 
 class OutputScaleShift(nn.Cell):
-    def __init__(self,scale=1.,shift=0.,atom_ref=None,mask=None,axis=-2):
+    def __init__(self,
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
+        atom_ref=None,
+        axis=-2,
+    ):
         super().__init__()
 
-        self.scale = scale
-        self.shift = shift
+        self.mol_scale = mol_scale
+        self.mol_shift = mol_shift
+
+        self.atom_scale = atom_scale
+        self.atom_shift = atom_shift
 
         self.atom_ref = atom_ref
         self.axis = axis
 
-        if isinstance(mask,(tuple,list,np.ndarray)):
-            self.mask = Tensor(mask)
-        elif mask is None or isinstance(mask,Tensor):
-            self.mask = mask
-        else:
-            raise TypeError('Unkonwn type of mask: '+str(type(mask)))
-
-        self.scaled_by_atoms = self.atom_ref is not None
-        self.scaled_by_graph = not self.scaled_by_atoms
-
-        self.mixed_scale_type = self.mask is not None
-        if self.mixed_scale_type:
-            if self.atom_ref is None:
-                raise TypeError('atom_ref must be given at mixed scale type')
-            self.scaled_by_graph = True
-
         self.reduce_sum = P.ReduceSum()
         self.keep_sum = P.ReduceSum(keep_dims=True)
 
-    def construct(self, outputs, types=None):
+    def construct(self, outputs, atoms_number, atom_types=None):        
+        ref = 0
+        if self.atom_ref is not None:
+            ref = F.gather(self.atom_ref,atom_types,0)
+            ref = self.reduce_sum(ref,axis=self.axis)
 
-        graph_scale = None
-        if self.scaled_by_graph:
-            graph_scale = outputs * self.scale + self.shift
+        scaled_outputs = outputs * self.atom_scale + self.atom_shift * atoms_number + ref
+        scaled_outputs = scaled_outputs * self.mol_scale + self.mol_shift
         
-        atoms_scale = None
-        if self.scaled_by_atoms:
-            atom_num = F.cast(types>0,outputs.dtype)
-            atom_num = self.keep_sum(atom_num,-1)
-
-            ref = F.gather(self.atom_ref,types,0)
-            ref = self.reduce_sum(ref,-2)
-
-            if len(outputs.shape) == 3:
-                atom_num = F.expand_dims(atom_num,-1)
-                ref = F.expand_dims(ref,-1)
-
-            atoms_scale = outputs * self.scale + self.shift * atom_num + ref
-        
-        if self.mixed_scale_type:
-            mask = self.mask
-            if len(outputs.shape) == 3:
-                mask = F.expand_dims(self.mask,-1)
-            mask = mask * F.ones_like(outputs)
-            return F.select(mask,atoms_scale,graph_scale)
-        else:
-            return atoms_scale if self.scaled_by_atoms else graph_scale
+        return scaled_outputs
 
 class LossWithEnergyAndForces(nn.loss.loss.Loss):
     def __init__(self,
@@ -181,7 +134,7 @@ class LossWithEnergyAndForces(nn.loss.loss.Loss):
     def _calc_loss(self,diff):
         return diff
 
-    def construct(self, pred_energy, label_energy, pred_forces=None, label_forces=None, mask=None, num=1):
+    def construct(self, pred_energy, label_energy, pred_forces, label_forces,  atoms_number, atom_mask=None):
         eloss = 0
         if self.ratio_forces > 0:
             ediff = pred_energy - label_energy
@@ -195,22 +148,20 @@ class LossWithEnergyAndForces(nn.loss.loss.Loss):
                 fdiff = self.reduce_mean(fdiff,-1)
             else:
                 fdiff = self.reduce_sum(fdiff,-1)
-            if mask is None:
+            if atom_mask is None:
                 if self.reduction_forces == 'mean':
                     floss = self.reduce_mean(fdiff,-1)
                 else:
                     floss = self.reduce_sum(fdiff,-1)
             else:
-                fdiff = fdiff * mask
+                fdiff = fdiff * atom_mask
                 floss = self.reduce_sum(fdiff,-1)
                 if self.reduction_forces == 'mean':
-                    floss = floss / num
+                    floss = floss / atoms_number
 
         y = eloss * self.ratio_energy + floss * self.ratio_forces
         if self.averaged_by_atoms:
-            if mask is None:
-                num = F.cast(label_forces.shape[-2],ms.int32)
-            norm = num * self.ratio_forces + self.ratio_energy
+            norm = atoms_number * self.ratio_forces + self.ratio_energy
             y = y / norm
 
         return self.get_loss(y)
@@ -263,77 +214,98 @@ class MSELoss(LossWithEnergyAndForces):
     def _calc_loss(self, diff):
         return self.square(diff)
 
-class WithForceLossCell(nn.Cell):
+class WithCell(nn.Cell):
     def __init__(self,
         datatypes,
-        backbone,
-        loss_fn,
-        do_whitening=False,
-        scale=1,
-        shift=0,
-        atom_ref=None,
-        mask=None,
-        # with_penalty=False,
     ):
         super().__init__(auto_prefix=False)
 
-        self.do_whitening = do_whitening
-        if do_whitening:
-            self.whitening = DatasetWhitening(
-                scale=scale,
-                shift=shift,
-                atom_ref=atom_ref,
-                mask=mask
-            )
-        else:
-            self.whitening = None
+        self.fulltypes = 'RZNnBbLlE'
+        
+        self.R = -1 # positions
+        self.Z = -1 # atom_types
+        self.N = -1 # neighbors
+        self.n = -1 # neighbor_mask
+        self.B = -1 # bonds
+        self.b = -1 # bond_mask
+        self.L = -1 # far_neighbors
+        self.l = -1 # far_mask
+        self.E = -1 # energy
 
+    def _find_type_indexes(self,datatypes):
         if not isinstance(datatypes,str):
             raise TypeError('Type of "datatypes" must be str')
 
-        fulltypes = 'RZANnBbLlFE'
         for datatype in datatypes:
-            if fulltypes.count(datatype) == 0:
+            if self.fulltypes.count(datatype) == 0:
                 raise ValueError('Unknown datatype: ' + datatype)
 
-        for datatype in fulltypes:
+        for datatype in self.fulltypes:
             num = datatypes.count(datatype)
             if num > 1:
                 raise ValueError('There are '+str(num)+' "' + datatype + '" in datatype "' + datatypes + '".')
 
         self.R = datatypes.find('R') # positions
-        self.Z = datatypes.find('Z') # node_types
-        self.A = datatypes.find('A') # atom_types
+        self.Z = datatypes.find('Z') # atom_types
         self.N = datatypes.find('N') # neighbors
         self.n = datatypes.find('n') # neighbor_mask
         self.B = datatypes.find('B') # bonds
         self.b = datatypes.find('b') # bond_mask
         self.L = datatypes.find('L') # far_neighbors
         self.l = datatypes.find('l') # far_mask
-        self.F = datatypes.find('F') # force
         self.E = datatypes.find('E') # energy
+
+        if self.E < 0:
+            raise TypeError('The datatype "E" must be included!')
+
+        self.keep_sum = P.ReduceSum(keep_dims=True)
+
+class WithForceLossCell(WithCell):
+    def __init__(self,
+        datatypes,
+        backbone,
+        loss_fn,
+        do_whitening=False,
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
+        atom_ref=None,
+    ):
+        super().__init__(datatypes=datatypes)
+
+        self.scale = mol_scale * atom_scale
+        self.do_whitening = do_whitening
+        if do_whitening:
+            self.whitening = DatasetWhitening(
+                mol_scale=mol_scale,
+                mol_shift=mol_shift,
+                atom_scale=atom_scale,
+                atom_shift=atom_shift,
+                atom_ref=atom_ref,
+            )
+        else:
+            self.whitening = None
+
+        self.fulltypes = 'RZNnBbLlFE'
+        self._find_type_indexes(datatypes)
+        self.F = datatypes.find('F') # force
 
         if self.F < 0:
             raise TypeError('The datatype "F" must be included in WithForceLossCell!')
 
-        if self.E < 0:
-            raise TypeError('The datatype "E" must be included in WithForceLossCell!')
-
         self._backbone = backbone
         self._loss_fn = loss_fn
 
-        self.node_types = self._backbone.node_types
+        self.atom_types = self._backbone.atom_types
 
         self.grad_op = C.GradOperation()
-        # self.with_penalty = with_penalty
-        self.reduce_sum = P.ReduceSum()
 
     def construct(self, *inputs):
         inputs = inputs + (None,)
 
         positions = inputs[self.R]
-        node_types = inputs[self.Z]
-        atom_types = inputs[self.A]
+        atom_types = inputs[self.Z]
         neighbors = inputs[self.N]
         neighbor_mask = inputs[self.n]
         bonds = inputs[self.B]
@@ -344,7 +316,6 @@ class WithForceLossCell(nn.Cell):
         energy = inputs[self.E]
         out = self._backbone(
             positions,
-            node_types,
             atom_types,
             neighbors,
             neighbor_mask,
@@ -357,7 +328,6 @@ class WithForceLossCell(nn.Cell):
         forces = inputs[self.F]
         fout = -1 * self.grad_op(self._backbone)(
             positions,
-            node_types,
             atom_types,
             neighbors,
             neighbor_mask,
@@ -367,38 +337,40 @@ class WithForceLossCell(nn.Cell):
             far_mask,
         )
 
-        if node_types is None:
-            node_types = self.node_types
+        if atom_types is None:
+            atom_types = self.atom_types
+
+        atoms_number = F.cast(atom_types>0,out.dtype)
+        atoms_number = self.keep_sum(atoms_number,-1)
 
         if self.do_whitening:
-            energy = self.whitening(energy,node_types)
-            forces = self.whitening(forces,node_types)
+            energy = self.whitening(energy,atoms_number,atom_types)
+            forces /= self.scale
 
-        if node_types is None:
+        if atom_types is None:
             return self._loss_fn(out,energy,fout,forces)
         else:
-            mask = node_types > 0
-            num = F.cast(node_types>0,fout.dtype)
-            num = self.reduce_sum(num,-1)
-            return self._loss_fn(out,energy,fout,forces,mask,num)
+            atom_mask = atom_types > 0
+            return self._loss_fn(out,energy,fout,forces,atoms_number,atom_mask)
 
     @property
     def backbone_network(self):
         return self._backbone
 
-class WithLabelLossCell(nn.Cell):
+class WithLabelLossCell(WithCell):
     def __init__(self,
         datatypes,
         backbone,
         loss_fn,
         do_whitening=False,
-        scale=1,
-        shift=0,
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
         atom_ref=None,
-        mask=None,
         # with_penalty=False,
     ):
-        super().__init__(auto_prefix=False)
+        super().__init__(datatypes=datatypes)
         self._backbone = backbone
         self._loss_fn = loss_fn
         # self.with_penalty = with_penalty
@@ -406,48 +378,23 @@ class WithLabelLossCell(nn.Cell):
         self.do_whitening = do_whitening
         if do_whitening:
             self.whitening = DatasetWhitening(
-                scale=scale,
-                shift=shift,
+                mol_scale=mol_scale,
+                mol_shift=mol_shift,
+                atom_scale=atom_scale,
+                atom_shift=atom_shift,
                 atom_ref=atom_ref,
-                mask=mask
             )
         else:
             self.whitening = None
 
-        if not isinstance(datatypes,str):
-            raise TypeError('Type of "datatypes" must be str')
-
-        fulltypes = 'RZANnBbLlE'
-        for datatype in datatypes:
-            if fulltypes.count(datatype) == 0:
-                raise ValueError('Unknown datatype: ' + datatype)
-
-        for datatype in fulltypes:
-            num = datatypes.count(datatype)
-            if num > 1:
-                raise ValueError('There are '+str(num)+' "' + datatype + '" in datatype "' + datatypes + '".')
-
-        self.R = datatypes.find('R') # positions
-        self.Z = datatypes.find('Z') # node_types
-        self.A = datatypes.find('A') # atom_types
-        self.N = datatypes.find('N') # neighbors
-        self.n = datatypes.find('n') # neighbor_mask
-        self.B = datatypes.find('B') # bonds
-        self.b = datatypes.find('b') # bond_mask
-        self.L = datatypes.find('L') # far_neighbors
-        self.l = datatypes.find('l') # far_mask
-        self.E = datatypes.find('E') # label
-
-        if self.E < 0:
-            raise TypeError('The datatype "E" must be included in WithLabelLossCell!')
+        self._find_type_indexes(datatypes)
 
     def construct(self, *inputs):
 
         inputs = inputs + (None,)
 
         positions = inputs[self.R]
-        node_types = inputs[self.Z]
-        atom_types = inputs[self.A]
+        atom_types = inputs[self.Z]
         neighbors = inputs[self.N]
         neighbor_mask = inputs[self.n]
         bonds = inputs[self.B]
@@ -457,7 +404,6 @@ class WithLabelLossCell(nn.Cell):
 
         out = self._backbone(
             positions,
-            node_types,
             atom_types,
             neighbors,
             neighbor_mask,
@@ -468,84 +414,63 @@ class WithLabelLossCell(nn.Cell):
         )
 
         label = inputs[self.E]
-        types = atom_types
-        if types is None:
-            types = node_types
+
+        atoms_number = F.cast(atom_types>0,out.dtype)
+        atoms_number = self.keep_sum(atoms_number,-1)
 
         if self.do_whitening:
-            label = self.whitening(label,types)
+            label = self.whitening(label,atoms_number,atom_types)
 
         return self._loss_fn(out,label)
 
-class WithForceEvalCell(nn.Cell):
+class WithForceEvalCell(WithCell):
     def __init__(self,
         datatypes,
         network,
         loss_fn=None,
         add_cast_fp32=False,
         do_scaleshift=False,
-        scale=1,
-        shift=0,
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
         atom_ref=None,
-        mask=None,
     ):
-        super().__init__(auto_prefix=False)
+        super().__init__(datatypes)
 
+        self.scale = mol_scale * atom_scale
         self.do_scaleshift = do_scaleshift
         self.scaleshift = None
         self.whitening = None
         if do_scaleshift:
             self.scaleshift = OutputScaleShift(
-                scale=scale,
-                shift=shift,
+                mol_scale=mol_scale,
+                mol_shift=mol_shift,
+                atom_scale=atom_scale,
+                atom_shift=atom_shift,
                 atom_ref=atom_ref,
-                mask=mask
             )
             if loss_fn is not None:
                 self.whitening = DatasetWhitening(
-                    scale=scale,
-                    shift=shift,
+                    mol_scale=mol_scale,
+                    mol_shift=mol_shift,
+                    atom_scale=atom_scale,
+                    atom_shift=atom_shift,
                     atom_ref=atom_ref,
-                    mask=mask
                 )
 
-        if not isinstance(datatypes,str):
-            raise TypeError('Type of "datatypes" must be str')
-
-        fulltypes = 'RZANnBbLlFE'
-        for datatype in datatypes:
-            if fulltypes.count(datatype) == 0:
-                raise ValueError('Unknown datatype: ' + datatype)
-
-        for datatype in fulltypes:
-            num = datatypes.count(datatype)
-            if num > 1:
-                raise ValueError('There are '+str(num)+' "' + datatype + '" in datatype "' + datatypes + '".')
-
-        self.node_types = network.node_types
-        self.max_nodes_number = network.max_nodes_number
-
-        self.R = datatypes.find('R') # positions
-        self.Z = datatypes.find('Z') # node_types
-        self.A = datatypes.find('A') # atom_types
-        self.N = datatypes.find('N') # neighbors
-        self.n = datatypes.find('n') # neighbor_mask
-        self.B = datatypes.find('B') # bonds
-        self.b = datatypes.find('b') # bond_mask
-        self.L = datatypes.find('L') # far_neighbors
-        self.l = datatypes.find('l') # far_mask
-        self.F = datatypes.find('F') # forces
-        self.E = datatypes.find('E') # energy
+        self.fulltypes = 'RZNnBbLlFE'
+        self._find_type_indexes(datatypes)
+        self.F = datatypes.find('F') # force
 
         if self.F < 0:
             raise TypeError('The datatype "F" must be included in WithForceEvalCell!')
 
-        if self.E < 0:
-            raise TypeError('The datatype "E" must be included in WithForceEvalCell!')
-
         self._network = network
         self._loss_fn = loss_fn
         self.add_cast_fp32 = add_cast_fp32
+
+        self.atom_types = self._network.atom_types
 
         self.reduce_sum = P.ReduceSum()
 
@@ -555,8 +480,7 @@ class WithForceEvalCell(nn.Cell):
         inputs = inputs + (None,)
 
         positions = inputs[self.R]
-        node_types = inputs[self.Z]
-        atom_types = inputs[self.A]
+        atom_types = inputs[self.Z]
         neighbors = inputs[self.N]
         neighbor_mask = inputs[self.n]
         bonds = inputs[self.B]
@@ -566,7 +490,6 @@ class WithForceEvalCell(nn.Cell):
 
         outputs = self._network(
             positions,
-            node_types,
             atom_types,
             neighbors,
             neighbor_mask,
@@ -578,7 +501,6 @@ class WithForceEvalCell(nn.Cell):
 
         foutputs = -1 * self.grad_op(self._network)(
             positions,
-            node_types,
             atom_types,
             neighbors,
             neighbor_mask,
@@ -596,112 +518,77 @@ class WithForceEvalCell(nn.Cell):
             energy = F.mixed_precision_cast(ms.float32, energy)
             outputs = F.cast(outputs, ms.float32)
 
-        if node_types is None:
-            node_types = self.node_types
-        
-        types = atom_types
-        if types is None:
-            types = node_types
+        if atom_types is None:
+            atom_types = self.atom_types
 
-        atom_num = None
-        if types is not None:
-            dataref = positions if positions is not None else outputs
-            atom_num = F.cast(types>0,dataref.dtype)
-            atom_num = self.reduce_sum(atom_num,-1)
+        atoms_number = F.cast(atom_types>0,outputs.dtype)
+        atoms_number = self.keep_sum(atoms_number,-1)
 
         loss = 0
         if self._loss_fn is not None:
             _energy = energy
             _forces = forces
             if self.do_scaleshift:
-                _energy = self.whitening(_energy,types)
-                _forces = self.whitening(_forces,types)
+                _energy = self.whitening(_energy,atoms_number,atom_types)
+                _forces /= self.scale
 
-            num = self.max_nodes_number
-            mask = None
-            if node_types is not None:
-                mask = node_types > 0
-                num = F.cast(node_types>0,foutputs.dtype)
-                num = self.reduce_sum(num,-1)
-            loss = self._loss_fn(outputs, _energy, foutputs, _forces, mask, num)
+            atom_mask = atom_types > 0
+            loss = self._loss_fn(outputs, _energy, foutputs, _forces, atoms_number, atom_mask)
 
         if self.do_scaleshift:
-            outputs = self.scaleshift(outputs,types)
-            foutputs = self.scaleshift(foutputs,types)
+            outputs = self.scaleshift(outputs,atoms_number,atom_types)
+            foutputs *= self.scale
         
-        return loss, outputs, energy, foutputs, forces, atom_num
+        return loss, outputs, energy, foutputs, forces, atoms_number
 
-class WithLabelEvalCell(nn.Cell):
+class WithLabelEvalCell(WithCell):
     def __init__(self,
         datatypes,
         network,
         loss_fn=None,
         add_cast_fp32=False,
         do_scaleshift=False,
-        scale=1,
-        shift=0,
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
         atom_ref=None,
-        mask=None,
     ):
-        super().__init__(auto_prefix=False)
+        super().__init__(datatypes=datatypes)
         self._network = network
         self._loss_fn = loss_fn
         self.add_cast_fp32 = add_cast_fp32
         self.reducesum = P.ReduceSum(keep_dims=True)
 
-        self.node_types = network.node_types
+        self.atom_types = self._network.atom_types
 
         self.do_scaleshift = do_scaleshift
         self.scaleshift = None
         self.whitening = None
         if do_scaleshift:
             self.scaleshift = OutputScaleShift(
-                scale=scale,
-                shift=shift,
+                mol_scale=mol_scale,
+                mol_shift=mol_shift,
+                atom_scale=atom_scale,
+                atom_shift=atom_shift,
                 atom_ref=atom_ref,
-                mask=mask
             )
             if loss_fn is not None:
                 self.whitening = DatasetWhitening(
-                    scale=scale,
-                    shift=shift,
+                    mol_scale=mol_scale,
+                    mol_shift=mol_shift,
+                    atom_scale=atom_scale,
+                    atom_shift=atom_shift,
                     atom_ref=atom_ref,
-                    mask=mask
                 )
 
-        if not isinstance(datatypes,str):
-            raise TypeError('Type of "datatypes" must be str')
-
-        fulltypes = 'RZANnBbLlE'
-        for datatype in datatypes:
-            if fulltypes.count(datatype) == 0:
-                raise ValueError('Unknown datatype: ' + datatype)
-
-        for datatype in fulltypes:
-            num = datatypes.count(datatype)
-            if num > 1:
-                raise ValueError('There are '+str(num)+' "' + datatype + '" in datatype "' + datatypes + '".')
-
-        self.R = datatypes.find('R') # positions
-        self.Z = datatypes.find('Z') # node_types
-        self.A = datatypes.find('A') # atom_types
-        self.N = datatypes.find('N') # neighbors
-        self.n = datatypes.find('n') # neighbor_mask
-        self.B = datatypes.find('B') # bonds
-        self.b = datatypes.find('b') # bond_mask
-        self.L = datatypes.find('L') # far_neighbors
-        self.l = datatypes.find('l') # far_mask
-        self.E = datatypes.find('E') # label
-
-        if self.E < 0:
-            raise TypeError('The datatype "E" must be included in WithLabelEvalCell!')
+        self._find_type_indexes(datatypes)
 
     def construct(self, *inputs):
         inputs = inputs + (None,)
 
         positions = inputs[self.R]
-        node_types = inputs[self.Z]
-        atom_types = inputs[self.A]
+        atom_types = inputs[self.Z]
         neighbors = inputs[self.N]
         neighbor_mask = inputs[self.n]
         bonds = inputs[self.B]
@@ -711,7 +598,6 @@ class WithLabelEvalCell(nn.Cell):
 
         outputs = self._network(
             positions,
-            node_types,
             atom_types,
             neighbors,
             neighbor_mask,
@@ -726,29 +612,23 @@ class WithLabelEvalCell(nn.Cell):
             label = F.mixed_precision_cast(ms.float32, label)
             outputs = F.cast(outputs, ms.float32)
 
-        types = atom_types
-        if types is None:
-            types = node_types
-        if types is None:
-            types = self.node_types
+        if atom_types is None:
+            atom_types = self.atom_types
+
+        atoms_number = F.cast(atom_types>0,outputs.dtype)
+        atoms_number = self.keep_sum(atoms_number,-1)
 
         loss = 0
         if self._loss_fn is not None:
             _label = label
             if self.do_scaleshift:
-                _label = self.whitening(label,types)
+                _label = self.whitening(label,atoms_number,atom_types)
             loss = self._loss_fn(outputs, _label)
 
         if self.do_scaleshift:
-            outputs = self.scaleshift(outputs,types)
+            outputs = self.scaleshift(outputs,atoms_number,atom_types)
 
-        atom_num = None
-        if types is not None:
-            dataref = positions if positions is not None else outputs
-            atom_num = F.cast(types>0,dataref.dtype)
-            atom_num = self.reducesum(atom_num,-1)
-
-        return loss, outputs, label, atom_num
+        return loss, outputs, label, atoms_number
 
 class TrainMonitor(Callback):
     def __init__(self, model, name, directory=None, per_epoch=1, per_step=0, avg_steps=0, eval_dataset=None, best_ckpt_metrics=None):
@@ -957,87 +837,140 @@ class MaxError(Metric):
     def eval(self):
         return self._max_error
 
-class MAE(Metric):
-    def __init__(self,indexes=[1,2],reduce_all_dims=True):
+class Error(Metric):
+    def __init__(self,
+        indexes=[1,2],
+        reduce_all_dims=True,
+        averaged_by_atoms=False,
+    ):
         super().__init__()
         self.clear()
         self._indexes = indexes
+        self.read_atoms_number = False
+        if len(self._indexes) > 2:
+            self.read_atoms_number = True
+
+        self.reduce_all_dims = reduce_all_dims
+
         if reduce_all_dims:
             self.axis = None
         else:
             self.axis = 0
 
-    def clear(self):
-        self._abs_error_sum = 0
+        if averaged_by_atoms and not self.read_atoms_number:
+            raise ValueError('When to use averaged_by_atoms, the index of atom number must be set at "indexes".')
+
+        self.averaged_by_atoms = averaged_by_atoms
+
+        self._error_sum = 0
         self._samples_num = 0
+
+    def clear(self):
+        self._error_sum = 0
+        self._samples_num = 0
+
+    def _calc_error(self,y,y_pred):
+        return y.reshape(y_pred.shape) - y_pred
 
     def update(self, *inputs):
         y_pred = self._convert_data(inputs[self._indexes[0]])
         y = self._convert_data(inputs[self._indexes[1]])
-        abs_error = np.abs(y.reshape(y_pred.shape) - y_pred)
-        self._abs_error_sum += np.average(abs_error,axis=self.axis) * y.shape[0]
-        self._samples_num += y.shape[0]
 
-    def eval(self):
-        if self._samples_num == 0:
-            raise RuntimeError('Total samples num must not be 0.')
-        return self._abs_error_sum / self._samples_num
+        error = self._calc_error(y,y_pred)
 
-class MAEAveragedByAtoms(Metric):
-    def __init__(self,indexes=[1,2,3],reduce_all_dims=True):
-        super().__init__()
-        self.clear()
-        self._indexes = indexes
-        if reduce_all_dims:
-            self.axis = None
+        if self.reduce_all_dims:
+            tot = error.size
         else:
-            self.axis = 0
+            tot = y.shape[0]
+        
+        if self.read_atoms_number:
+            natoms = self._convert_data(inputs[self._indexes[2]])
+            if self.averaged_by_atoms:
+                error /= natoms
+            if self.reduce_all_dims:
+                tot = np.sum(natoms)
+                if len(error.shape) > 2:
+                    tot *= np.prod(error.shape[2:])
+                if natoms.shape[0] != y.shape[0]:
+                    tot *= y.shape[0]
 
-    def clear(self):
-        self._abs_error_sum = 0
-        self._samples_num = 0
-
-    def update(self, *inputs):
-        y_pred = self._convert_data(inputs[self._indexes[0]])
-        y = self._convert_data(inputs[self._indexes[1]])
-        n = self._convert_data(inputs[self._indexes[2]])
-
-        abs_error = np.abs(y.reshape(y_pred.shape) - y_pred) / n
-        self._abs_error_sum += np.average(abs_error,axis=self.axis) * y.shape[0]
-        self._samples_num += y.shape[0]
-
-    def eval(self):
-        if self._samples_num == 0:
-            raise RuntimeError('Total samples num must not be 0.')
-        return self._abs_error_sum / self._samples_num
-
-class MSE(Metric):
-    def __init__(self,indexes=[3,4],reduce_all_dims=True):
-        super().__init__()
-        self.clear()
-        self._indexes = indexes
-        if reduce_all_dims:
-            self.axis = None
-        else:
-            self.axis = 0
-
-    def clear(self):
-        self._abs_error_sum = 0
-        self._samples_num = 0
-
-    def update(self, *inputs):
-        y_pred = self._convert_data(inputs[self._indexes[0]])
-        y = self._convert_data(inputs[self._indexes[1]])
-        error = y.reshape(y_pred.shape) - y_pred
-        error = np.linalg.norm(error,axis=-1)
-        self._abs_error_sum += np.average(error,axis=self.axis) * y.shape[0]
-        self._samples_num += y.shape[0]
+        self._error_sum += np.sum(error,axis=self.axis)
+        self._samples_num += tot
 
     def eval(self):
         if self._samples_num == 0:
             raise RuntimeError('Total samples num must not be 0.')
-        return self._abs_error_sum / self._samples_num
+        return self._error_sum / self._samples_num
 
+# mean absoulte error
+class MAE(Error):
+    def __init__(self,
+        indexes=[1,2],
+        reduce_all_dims=True,
+        averaged_by_atoms=False,
+    ):
+        super().__init__(
+            indexes=indexes,
+            reduce_all_dims=reduce_all_dims,
+            averaged_by_atoms=averaged_by_atoms,
+        )
+
+    def _calc_error(self,y,y_pred):
+        return np.abs(y.reshape(y_pred.shape) - y_pred)
+
+# mean square error
+class MSE(Error):
+    def __init__(self,
+        indexes=[1,2],
+        reduce_all_dims=True,
+        averaged_by_atoms=False,
+    ):
+        super().__init__(
+            indexes=indexes,
+            reduce_all_dims=reduce_all_dims,
+            averaged_by_atoms=averaged_by_atoms,
+        )
+
+    def _calc_error(self,y,y_pred):
+        return np.square(y.reshape(y_pred.shape) - y_pred)
+
+# mean norm error
+class MNE(Error):
+    def __init__(self,
+        indexes=[1,2],
+        reduce_all_dims=True,
+        averaged_by_atoms=False,
+    ):
+        super().__init__(
+            indexes=indexes,
+            reduce_all_dims=reduce_all_dims,
+            averaged_by_atoms=averaged_by_atoms,
+        )
+
+    def _calc_error(self,y,y_pred):
+        diff = y.reshape(y_pred.shape) - y_pred
+        return np.linalg.norm(diff,axis=-1)
+
+# root mean square error
+class RMSE(Error):
+    def __init__(self,
+        indexes=[1,2],
+        reduce_all_dims=True,
+        averaged_by_atoms=False,
+    ):
+        super().__init__(
+            indexes=indexes,
+            reduce_all_dims=reduce_all_dims,
+            averaged_by_atoms=averaged_by_atoms,
+        )
+
+    def _calc_error(self,y,y_pred):
+        return np.square(y.reshape(y_pred.shape) - y_pred)
+
+    def eval(self):
+        if self._samples_num == 0:
+            raise RuntimeError('Total samples num must not be 0.')
+        return np.sqrt(self._error_sum / self._samples_num)
 
 class MLoss(Metric):
     def __init__(self,index=0):
