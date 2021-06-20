@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import time
 import mindspore as ms
@@ -8,6 +9,7 @@ from mindspore.train import Model
 from mindspore import context
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
+sys.path.append('..')
 from cybertroncode.models import SchNet,MolCT,PhysNet
 from cybertroncode.readouts import GraphReadout,AtomwiseReadout
 from cybertroncode.cybertron import Cybertron
@@ -30,8 +32,8 @@ if __name__ == '__main__':
 
     atom_types = Tensor(train_data['z'],ms.int32)
     num_atom = atom_types.size
-    graph_scale = float(train_data['scale'][0] / num_atom)
-    graph_shift = float(train_data['shift'][0])
+    mol_scale = float(train_data['std'] / num_atom)
+    mol_shift = float(train_data['avg'])
 
     mod = MolCT(
         min_rbf_dis=0.1,
@@ -46,8 +48,8 @@ if __name__ == '__main__':
         unit_length='A',
         )
 
-    readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,graph_scale=graph_scale,graph_shift=graph_shift,unit_energy='kcal/mol')
-    net = Cybertron(mod,node_types=atom_types,full_connect=True,readout=readout,unit_dis='A',unit_energy='kcal/mol')
+    readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,mol_scale=mol_scale,mol_shift=mol_shift,unit_energy='kcal/mol')
+    net = Cybertron(mod,atom_types=atom_types,full_connect=True,readout=readout,unit_dis='A',unit_energy='kcal/mol')
 
     net.print_info()
 
@@ -73,8 +75,8 @@ if __name__ == '__main__':
     ds_test = ds_test.batch(1024)
     ds_test = ds_test.repeat(1)
     
-    from cybertroncode.train import WithForceLossCell,WithForceEvalCell
-    loss_network = WithForceLossCell('RFE',net,nn.MSELoss(),nn.MSELoss(),ratio_energy=0.01,ratio_force=0.99)
+    from cybertroncode.train import WithForceLossCell,WithForceEvalCell,MSELoss
+    loss_network = WithForceLossCell('RFE',net,MSELoss(ratio_energy=1,ratio_forces=100))
     eval_network = WithForceEvalCell('RFE',net)
 
     lr = nn.ExponentialDecayLR(learning_rate=1e-3, decay_rate=0.96, decay_steps=64, is_stair=True)
@@ -83,13 +85,13 @@ if __name__ == '__main__':
     outdir = sys_name + '_T07'
     outname = outdir + mod.network_name
 
-    from cybertroncode.train import MAE,MSE
+    from cybertroncode.train import MAE,RMSE
     energy_mae = 'EnergyMAE'
     forces_mae = 'ForcesMAE'
-    forces_mse = 'ForcesMSE'
-    model = Model(loss_network,eval_network=eval_network,optimizer=optim,metrics={energy_mae:MAE([2,3]),forces_mae:MAE([4,5]),forces_mse:MSE([4,5])},amp_level='O0')
+    forces_rmse = 'ForcesRMSE'
+    model = Model(loss_network,eval_network=eval_network,optimizer=optim,metrics={energy_mae:MAE([1,2]),forces_mae:MAE([3,4]),forces_rmse:RMSE([3,4],atom_aggregate='sum')})
 
-    record_cb = TrainMonitor(model, outname, per_epoch=1, avg_steps=32, directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=forces_mse)
+    record_cb = TrainMonitor(model, outname, per_epoch=1, avg_steps=32, directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=forces_rmse)
 
     config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
     ckpoint_cb = ModelCheckpoint(prefix=outname, directory=outdir, config=config_ck)

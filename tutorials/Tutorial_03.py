@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import time
 import mindspore as ms
@@ -8,11 +9,12 @@ from mindspore.train import Model
 from mindspore import context
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
+sys.path.append('..')
 from cybertroncode.models import SchNet,MolCT,PhysNet
 from cybertroncode.readouts import AtomwiseReadout
 from cybertroncode.cybertron import Cybertron
 from cybertroncode.train import WithLabelLossCell,WithLabelEvalCell
-from cybertroncode.train import MAE,MAEAveragedByAtoms,MLoss
+from cybertroncode.train import MAE,MLoss
 from cybertroncode.train import TrainMonitor
 
 if __name__ == '__main__':
@@ -49,7 +51,7 @@ if __name__ == '__main__':
         )
 
     readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,activation='swish',atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref,unit_energy='kcal/mol')
-    net = Cybertron(mod,max_nodes_number=num_atom,full_connect=True,readout=readout,unit_dis='A',unit_energy='kcal/mol')
+    net = Cybertron(mod,max_atoms_number=num_atom,full_connect=True,readout=readout,unit_dis='A',unit_energy='kcal/mol')
 
     # lr = 1e-3
     lr = nn.ExponentialDecayLR(learning_rate=1e-3, decay_rate=0.96, decay_steps=4, is_stair=True)
@@ -94,7 +96,7 @@ if __name__ == '__main__':
     eval_mae  = 'EvalMAE'
     atom_mae  = 'AtomMAE'
     eval_loss = 'Evalloss'
-    model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2]),atom_mae:MAEAveragedByAtoms([1,2,3]),eval_loss:MLoss(0)})
+    model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2]),atom_mae:MAE([1,2,3],averaged_by_atoms=True),eval_loss:MLoss(0)})
 
     record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=16, directory=outdir, eval_dataset=ds_valid)
     # record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=32, directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)

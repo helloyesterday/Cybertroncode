@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import time
 import mindspore as ms
@@ -8,6 +9,7 @@ from mindspore.train import Model
 from mindspore import context
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
+sys.path.append('..')
 from cybertroncode.models import SchNet,MolCT,PhysNet
 from cybertroncode.cybertron import Cybertron
 
@@ -49,7 +51,7 @@ if __name__ == '__main__':
     from cybertroncode.readouts import AtomwiseReadout,GraphReadout
     # readout = GraphReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,activation='swish',graph_scale=scale,graph_shift=shift,unit_energy=None)
     readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,activation='swish',atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref,unit_energy='kcal/mol')
-    net = Cybertron(mod,max_nodes_number=num_atom,full_connect=True,readout=readout,unit_dis='A',unit_energy='kcal/mol')
+    net = Cybertron(mod,max_atoms_number=num_atom,full_connect=True,readout=readout,unit_dis='A',unit_energy='kcal/mol')
 
     net.print_info()
 
@@ -82,11 +84,11 @@ if __name__ == '__main__':
     lr = 1e-3
     optim = nn.Adam(params=net.trainable_params(),learning_rate=lr)
 
-    from cybertroncode.train import MAE,MAEAveragedByAtoms,MLoss
+    from cybertroncode.train import MAE,MLoss
     eval_mae  = 'EvalMAE'
     atom_mae  = 'AtomMAE'
     eval_loss = 'Evalloss'
-    model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2]),atom_mae:MAEAveragedByAtoms([1,2,3]),eval_loss:MLoss(0)})
+    model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2]),atom_mae:MAE([1,2,3],averaged_by_atoms=True),eval_loss:MLoss(0)})
 
     outdir = sys_name + '_T02'
     outname = sys_name + mod.network_name

@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import time
 import mindspore as ms
@@ -8,12 +9,13 @@ from mindspore.train import Model
 from mindspore import context
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
+sys.path.append('..')
 from cybertroncode.models import SchNet,MolCT,PhysNet
 from cybertroncode.readouts import GraphReadout,AtomwiseReadout
 from cybertroncode.cybertron import Cybertron
 from cybertroncode.train import WithLabelLossCell,WithLabelEvalCell
 from cybertroncode.train import TransformerLR
-from cybertroncode.train import MAE,MAEAveragedByAtoms,MLoss
+from cybertroncode.train import MAE,MLoss
 from cybertroncode.train import TrainMonitor
 
 if __name__ == '__main__':
@@ -35,16 +37,22 @@ if __name__ == '__main__':
     idx = idx1 + idx2
 
     num_atom = int(train_data['Nmax'])
-    # graph_scale = Tensor(train_data['mol_std'][idx1],ms.float32)
-    # graph_shift = Tensor(train_data['mol_avg'][idx1],ms.float32)
-    # atom_scale = Tensor(train_data['atom_std'][idx2],ms.float32)
-    # atom_shift = Tensor(train_data['atom_avg'][idx2],ms.float32)
+    mol_scale = train_data['mol_std'][idx1]
+    mol_shift = train_data['mol_avg'][idx1]
+    atom_scale = train_data['atom_std'][idx2]
+    atom_shift = train_data['atom_avg'][idx2]
+
+    scale1 = np.ones_like(mol_scale)
+    shift1 = np.zeros_like(mol_scale)
+    scale2 = np.ones_like(atom_scale)
+    shift2 = np.zeros_like(atom_scale)
+
+    mol_scale = Tensor(np.concatenate([mol_scale,scale2]),ms.float32)
+    mol_shift = Tensor(np.concatenate([mol_shift,shift2]),ms.float32)
+    atom_scale = Tensor(np.concatenate([scale1,atom_scale]),ms.float32)
+    atom_shift = Tensor(np.concatenate([shift1,atom_shift]),ms.float32)
+
     atom_ref = Tensor(train_data['ref'][:,idx],ms.float32)
-
-    scale = Tensor(np.concatenate([train_data['mol_std'][idx1],train_data['atom_std'][idx2]],-1),ms.float32)
-    shift = Tensor(np.concatenate([train_data['mol_avg'][idx1],train_data['atom_avg'][idx2]],-1),ms.float32)
-
-    mask = [False,False,False,False,False,False,False,False,True,True,True,True]
 
     mod = MolCT(
         min_rbf_dis=0.1,
@@ -58,9 +66,9 @@ if __name__ == '__main__':
         unit_length='A',
         )
 
-    readout1 = GraphReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,3,1,1,1],activation='swish')
-    readout2 = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,1,1],activation='swish')
-    net = Cybertron(mod,max_nodes_number=num_atom,full_connect=True,readout=[readout1,readout2],unit_dis='A')
+    readout1 = GraphReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,3,1,1,1],activation='swish',unit_energy=None)
+    readout2 = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,1,1],activation='swish',unit_energy=None)
+    net = Cybertron(mod,max_atoms_number=num_atom,full_connect=True,readout=[readout1,readout2],unit_dis='A',unit_energy=None)
 
     net.print_info()
 
@@ -86,8 +94,8 @@ if __name__ == '__main__':
     ds_test = ds_test.batch(1024)
     ds_test = ds_test.repeat(1)
     
-    loss_network = WithLabelLossCell('RZE',net,nn.MAELoss(),do_whitening=True,scale=scale,shift=shift,atom_ref=atom_ref,mask=mask)
-    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),do_scaleshift=True,scale=scale,shift=shift,atom_ref=atom_ref,mask=mask)
+    loss_network = WithLabelLossCell('RZE',net,nn.MAELoss(),do_whitening=True,mol_scale=mol_scale,mol_shift=mol_shift,atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref)
+    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),do_whitening=True,mol_scale=mol_scale,mol_shift=mol_shift,atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref)
 
     lr = TransformerLR(learning_rate=1.,warmup_steps=4000,dimension=128)
     optim = nn.Adam(params=net.trainable_params(),learning_rate=lr)
@@ -98,7 +106,7 @@ if __name__ == '__main__':
     eval_mae  = 'EvalMAE'
     atom_mae  = 'AtomMAE'
     eval_loss = 'Evalloss'
-    model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2],reduce_all_dims=False),atom_mae:MAEAveragedByAtoms([1,2,3],reduce_all_dims=False),eval_loss:MLoss(0)})
+    model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2],reduce_all_dims=False),atom_mae:MAE([1,2,3],reduce_all_dims=False,averaged_by_atoms=True),eval_loss:MLoss(0)})
 
     record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=16, directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
 

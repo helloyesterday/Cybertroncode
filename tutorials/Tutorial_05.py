@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import time
 import mindspore as ms
@@ -8,12 +9,13 @@ from mindspore.train import Model
 from mindspore import context
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
+sys.path.append('..')
 from cybertroncode.models import SchNet,MolCT,PhysNet
 from cybertroncode.readouts import GraphReadout
 from cybertroncode.cybertron import Cybertron
 from cybertroncode.train import WithLabelLossCell,WithLabelEvalCell
 from cybertroncode.train import TransformerLR
-from cybertroncode.train import MAE,MAEAveragedByAtoms,MLoss
+from cybertroncode.train import MAE,MLoss
 from cybertroncode.train import TrainMonitor
 
 if __name__ == '__main__':
@@ -51,8 +53,8 @@ if __name__ == '__main__':
         unit_length='A',
         )
 
-    readout = GraphReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,3,1,1,1],activation='swish')
-    net = Cybertron(mod,max_nodes_number=num_atom,full_connect=True,readout=readout,unit_dis='A')
+    readout = GraphReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,3,1,1,1],activation='swish',unit_energy=None)
+    net = Cybertron(mod,max_atoms_number=num_atom,full_connect=True,readout=readout,unit_dis='A',unit_energy=None)
 
     net.print_info()
 
@@ -78,8 +80,8 @@ if __name__ == '__main__':
     ds_test = ds_test.batch(1024)
     ds_test = ds_test.repeat(1)
     
-    loss_network = WithLabelLossCell('RZE',net,nn.MAELoss(),do_whitening=True,scale=scale,shift=shift)
-    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),do_scaleshift=True,scale=scale,shift=shift)
+    loss_network = WithLabelLossCell('RZE',net,nn.MAELoss(),do_whitening=True,mol_scale=scale,mol_shift=shift)
+    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),do_whitening=True,mol_scale=scale,mol_shift=shift)
 
     lr = TransformerLR(learning_rate=1.,warmup_steps=4000,dimension=128)
     optim = nn.Adam(params=net.trainable_params(),learning_rate=lr)
@@ -90,7 +92,7 @@ if __name__ == '__main__':
     eval_mae  = 'EvalMAE'
     atom_mae  = 'AtomMAE'
     eval_loss = 'Evalloss'
-    model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2],reduce_all_dims=False),atom_mae:MAEAveragedByAtoms([1,2,3],reduce_all_dims=False),eval_loss:MLoss(0)})
+    model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2],reduce_all_dims=False),atom_mae:MAE([1,2,3],reduce_all_dims=False,averaged_by_atoms=True),eval_loss:MLoss(0)})
 
     record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=16, directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
 

@@ -1,8 +1,11 @@
+import sys
 import numpy as np
 import time
 import mindspore as ms
 from mindspore import nn
 from mindspore import Tensor
+
+sys.path.append('..')
 
 if __name__ == '__main__':
 
@@ -53,10 +56,10 @@ if __name__ == '__main__':
     #     )
 
     from cybertroncode.readouts import GraphReadout
-    readout = GraphReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,activation='swish',graph_scale=scale,graph_shift=shift,unit_energy=None)
+    readout = GraphReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,activation='swish',mol_scale=scale,mol_shift=shift,unit_energy=None)
 
     from cybertroncode.cybertron import Cybertron
-    net = Cybertron(mod,max_nodes_number=num_atom,full_connect=True,readout=readout,unit_dis='A')
+    net = Cybertron(mod,max_atoms_number=num_atom,full_connect=True,readout=readout,unit_dis='A')
 
     net.print_info()
 
