@@ -59,7 +59,7 @@ class DatasetWhitening(nn.Cell):
         ref = 0
         if self.atom_ref is not None:
             ref = F.gather(self.atom_ref,atom_types,0)
-            ref = self.reduce_sum(ref,axis=self.axis)
+            ref = self.reduce_sum(ref,self.axis)
 
         whiten_label = (label - self.mol_shift) / self.mol_scale
         whiten_label = (whiten_label - ref - self.atom_shift * atoms_number) / self.atom_scale
@@ -93,7 +93,7 @@ class OutputScaleShift(nn.Cell):
         ref = 0
         if self.atom_ref is not None:
             ref = F.gather(self.atom_ref,atom_types,0)
-            ref = self.reduce_sum(ref,axis=self.axis)
+            ref = self.reduce_sum(ref,self.axis)
 
         scaled_outputs = outputs * self.atom_scale + self.atom_shift * atoms_number + ref
         scaled_outputs = scaled_outputs * self.mol_scale + self.mol_shift
@@ -103,30 +103,27 @@ class OutputScaleShift(nn.Cell):
 class LossWithEnergyAndForces(nn.loss.loss.Loss):
     def __init__(self,
         ratio_energy=1,
-        ratio_forces=0,
-        reduction_vector='mean',
-        reduction_forces='mean',
-        reduction_batch='mean',
+        ratio_forces=100,
+        force_aggregate='sum',
+        reduction='mean',
         scale_dis=1,
-        averaged_by_atoms=False,
+        ratio_normlize=True,
     ):
-        super().__init__(reduction_batch)
+        super().__init__(reduction)
 
-        if reduction_vector not in ('mean', 'sum'):
-            raise ValueError(f"reduction_mol method for {reduction_vector} is not supported")
-        self.reduction_vector = reduction_vector
-
-        if reduction_forces not in ('mean', 'sum'):
-            raise ValueError(f"reduction_mol method for {reduction_forces} is not supported")
-        self.reduction_forces = reduction_forces
+        if force_aggregate not in ('mean', 'sum'):
+            raise ValueError(f"reduction_mol method for {force_aggregate} is not supported")
+        self.force_aggregate = force_aggregate
 
         self.scale_dis = scale_dis
-        if averaged_by_atoms and reduction_forces == 'mean':
-            print('Warning! The term "averaged_by_atoms" is "True" but reduction_forces is "mean".')
-        self.averaged_by_atoms = averaged_by_atoms
+        self.ratio_normlize = ratio_normlize
 
         self.ratio_energy = ratio_energy
         self.ratio_forces = ratio_forces
+
+        self.norm = 1
+        if self.ratio_normlize:
+            self.norm = ratio_energy + ratio_forces
 
         self.reduce_mean = P.ReduceMean()
         self.reduce_sum = P.ReduceSum()
@@ -134,58 +131,58 @@ class LossWithEnergyAndForces(nn.loss.loss.Loss):
     def _calc_loss(self,diff):
         return diff
 
-    def construct(self, pred_energy, label_energy, pred_forces, label_forces,  atoms_number, atom_mask=None):
+    def construct(self, pred_energy, label_energy, pred_forces=None, label_forces=None,  atoms_number=1, atom_mask=None):
+
+        if pred_forces is None:
+            loss = self._calc_loss(pred_energy - label_energy)
+            return self.get_loss(loss)
+
         eloss = 0
         if self.ratio_forces > 0:
-            ediff = pred_energy - label_energy
+            ediff = (pred_energy - label_energy) / atoms_number
             eloss = self._calc_loss(ediff)
 
         floss = 0
         if self.ratio_forces > 0:
             fdiff = (pred_forces - label_forces) * self.scale_dis
             fdiff = self._calc_loss(fdiff)
-            if self.reduction_vector == 'mean':
+            if self.force_aggregate == 'mean':
                 fdiff = self.reduce_mean(fdiff,-1)
             else:
                 fdiff = self.reduce_sum(fdiff,-1)
+
             if atom_mask is None:
-                if self.reduction_forces == 'mean':
-                    floss = self.reduce_mean(fdiff,-1)
-                else:
-                    floss = self.reduce_sum(fdiff,-1)
+                floss = self.reduce_mean(fdiff,-1)
             else:
                 fdiff = fdiff * atom_mask
                 floss = self.reduce_sum(fdiff,-1)
-                if self.reduction_forces == 'mean':
-                    floss = floss / atoms_number
+                floss = floss / atoms_number
 
-        y = eloss * self.ratio_energy + floss * self.ratio_forces
-        if self.averaged_by_atoms:
-            norm = atoms_number * self.ratio_forces + self.ratio_energy
-            y = y / norm
+        y = (eloss * self.ratio_energy + floss * self.ratio_forces) / self.norm
 
-        return self.get_loss(y)
+        natoms = F.cast(atoms_number,pred_energy.dtype)
+        weights = natoms / self.reduce_mean(natoms)
+
+        return self.get_loss(y,weights)
 
 class MAELoss(LossWithEnergyAndForces):
     def __init__(self,
         ratio_energy=1,
         ratio_forces=0,
-        reduction_vector='mean',
-        reduction_forces='mean',
-        reduction_batch='mean',
+        force_aggregate='sum',
+        reduction='mean',
         scale_dis=1,
-        averaged_by_atoms=False,
+        ratio_normlize=True,
     ):
         super().__init__(
             ratio_energy=ratio_energy,
             ratio_forces=ratio_forces,
-            reduction_vector=reduction_vector,
-            reduction_forces=reduction_forces,
-            reduction_batch=reduction_batch,
+            force_aggregate=force_aggregate,
+            reduction=reduction,
             scale_dis=scale_dis,
-            averaged_by_atoms=averaged_by_atoms,
+            ratio_normlize=ratio_normlize,
         )
-        self.abs = P.abs()
+        self.abs = P.Abs()
     
     def _calc_loss(self, diff):
         return self.abs(diff)
@@ -194,20 +191,18 @@ class MSELoss(LossWithEnergyAndForces):
     def __init__(self,
         ratio_energy=1,
         ratio_forces=0,
-        reduction_vector='mean',
-        reduction_forces='mean',
-        reduction_batch='mean',
+        force_aggregate='sum',
+        reduction='mean',
         scale_dis=1,
-        averaged_by_atoms=False,
+        ratio_normlize=True,
     ):
         super().__init__(
             ratio_energy=ratio_energy,
             ratio_forces=ratio_forces,
-            reduction_vector=reduction_vector,
-            reduction_forces=reduction_forces,
-            reduction_batch=reduction_batch,
+            force_aggregate=force_aggregate,
+            reduction=reduction,
             scale_dis=scale_dis,
-            averaged_by_atoms=averaged_by_atoms,
+            ratio_normlize=ratio_normlize,
         )
         self.square = P.Square()
     
@@ -429,7 +424,7 @@ class WithForceEvalCell(WithCell):
         network,
         loss_fn=None,
         add_cast_fp32=False,
-        do_scaleshift=False,
+        do_whitening=False,
         mol_scale=1,
         mol_shift=0,
         atom_scale=1,
@@ -439,10 +434,10 @@ class WithForceEvalCell(WithCell):
         super().__init__(datatypes)
 
         self.scale = mol_scale * atom_scale
-        self.do_scaleshift = do_scaleshift
+        self.do_whitening = do_whitening
         self.scaleshift = None
         self.whitening = None
-        if do_scaleshift:
+        if do_whitening:
             self.scaleshift = OutputScaleShift(
                 mol_scale=mol_scale,
                 mol_shift=mol_shift,
@@ -528,14 +523,14 @@ class WithForceEvalCell(WithCell):
         if self._loss_fn is not None:
             _energy = energy
             _forces = forces
-            if self.do_scaleshift:
+            if self.do_whitening:
                 _energy = self.whitening(_energy,atoms_number,atom_types)
                 _forces /= self.scale
 
             atom_mask = atom_types > 0
             loss = self._loss_fn(outputs, _energy, foutputs, _forces, atoms_number, atom_mask)
 
-        if self.do_scaleshift:
+        if self.do_whitening:
             outputs = self.scaleshift(outputs,atoms_number,atom_types)
             foutputs *= self.scale
         
@@ -547,7 +542,7 @@ class WithLabelEvalCell(WithCell):
         network,
         loss_fn=None,
         add_cast_fp32=False,
-        do_scaleshift=False,
+        do_whitening=False,
         mol_scale=1,
         mol_shift=0,
         atom_scale=1,
@@ -562,10 +557,10 @@ class WithLabelEvalCell(WithCell):
 
         self.atom_types = self._network.atom_types
 
-        self.do_scaleshift = do_scaleshift
+        self.do_whitening = do_whitening
         self.scaleshift = None
         self.whitening = None
-        if do_scaleshift:
+        if do_whitening:
             self.scaleshift = OutputScaleShift(
                 mol_scale=mol_scale,
                 mol_shift=mol_shift,
@@ -621,11 +616,11 @@ class WithLabelEvalCell(WithCell):
         loss = 0
         if self._loss_fn is not None:
             _label = label
-            if self.do_scaleshift:
+            if self.do_whitening:
                 _label = self.whitening(label,atoms_number,atom_types)
             loss = self._loss_fn(outputs, _label)
 
-        if self.do_scaleshift:
+        if self.do_whitening:
             outputs = self.scaleshift(outputs,atoms_number,atom_types)
 
         return loss, outputs, label, atoms_number
@@ -842,6 +837,7 @@ class Error(Metric):
         indexes=[1,2],
         reduce_all_dims=True,
         averaged_by_atoms=False,
+        atom_aggregate='mean',
     ):
         super().__init__()
         self.clear()
@@ -851,6 +847,10 @@ class Error(Metric):
             self.read_atoms_number = True
 
         self.reduce_all_dims = reduce_all_dims
+
+        if atom_aggregate.lower() not in ('mean','sum'):
+            raise ValueError('aggregate_by_atoms method must be "mean" or "sum"')
+        self.atom_aggregate = atom_aggregate.lower()
 
         if reduce_all_dims:
             self.axis = None
@@ -877,6 +877,12 @@ class Error(Metric):
         y = self._convert_data(inputs[self._indexes[1]])
 
         error = self._calc_error(y,y_pred)
+        if len(error.shape) > 2:
+            axis = tuple(range(2,len(error.shape)))
+            if self.atom_aggregate == 'mean':
+                error = np.mean(error,axis=axis)
+            else:
+                error = np.sum(error,axis=axis)
 
         if self.reduce_all_dims:
             tot = error.size
@@ -889,8 +895,6 @@ class Error(Metric):
                 error /= natoms
             if self.reduce_all_dims:
                 tot = np.sum(natoms)
-                if len(error.shape) > 2:
-                    tot *= np.prod(error.shape[2:])
                 if natoms.shape[0] != y.shape[0]:
                     tot *= y.shape[0]
 
@@ -908,11 +912,13 @@ class MAE(Error):
         indexes=[1,2],
         reduce_all_dims=True,
         averaged_by_atoms=False,
+        atom_aggregate='mean',
     ):
         super().__init__(
             indexes=indexes,
             reduce_all_dims=reduce_all_dims,
             averaged_by_atoms=averaged_by_atoms,
+            atom_aggregate=atom_aggregate,
         )
 
     def _calc_error(self,y,y_pred):
@@ -924,11 +930,13 @@ class MSE(Error):
         indexes=[1,2],
         reduce_all_dims=True,
         averaged_by_atoms=False,
+        atom_aggregate='mean',
     ):
         super().__init__(
             indexes=indexes,
             reduce_all_dims=reduce_all_dims,
             averaged_by_atoms=averaged_by_atoms,
+            atom_aggregate=atom_aggregate,
         )
 
     def _calc_error(self,y,y_pred):
@@ -940,11 +948,13 @@ class MNE(Error):
         indexes=[1,2],
         reduce_all_dims=True,
         averaged_by_atoms=False,
+        atom_aggregate='mean',
     ):
         super().__init__(
             indexes=indexes,
             reduce_all_dims=reduce_all_dims,
             averaged_by_atoms=averaged_by_atoms,
+            atom_aggregate=atom_aggregate,
         )
 
     def _calc_error(self,y,y_pred):
@@ -957,11 +967,13 @@ class RMSE(Error):
         indexes=[1,2],
         reduce_all_dims=True,
         averaged_by_atoms=False,
+        atom_aggregate='mean',
     ):
         super().__init__(
             indexes=indexes,
             reduce_all_dims=reduce_all_dims,
             averaged_by_atoms=averaged_by_atoms,
+            atom_aggregate=atom_aggregate,
         )
 
     def _calc_error(self,y,y_pred):
