@@ -35,6 +35,11 @@ __all__ = [
 ]
 
 class GatherNeighbors(nn.Cell):
+    r"""Gathering the positions of every atom to its neighbors.
+
+    Args:
+
+    """
     def __init__(self,dim,fixed_neigh=False):
         super().__init__()
         self.fixed_neigh = fixed_neigh
@@ -62,11 +67,10 @@ class GatherNeighbors(nn.Cell):
             return F.reshape(outputs,(ns[0],ns[1],ns[2],-1))
 
 class Distances(nn.Cell):
-    r"""Layer for computing distance of every atom to its neighbors.
+    r"""Computing distance of every atom to its neighbors.
 
     Args:
-        neighbors_fixed (bool, optional): if True, the `forward` method also returns
-            normalized direction vectors.
+
 
     """
 
@@ -82,9 +86,7 @@ class Distances(nn.Cell):
         self.gather_neighbors = GatherNeighbors(dim,fixed_atoms)
         self.maximum = P.Maximum()
 
-    def construct(
-        self, positions, neighbors, neighbor_mask=None, cell=None, cell_offsets=None
-        ):
+    def construct(self, positions, neighbors, neighbor_mask=None):
         r"""Compute distance of every atom to its neighbors.
 
         Args:
@@ -92,9 +94,6 @@ class Distances(nn.Cell):
                 (N_b x N_at x 3) shape.
             neighbors (ms.Tensor[int]): indices of neighboring atoms to consider
                 with (N_b x N_at x N_nbh) or (N_at x N_nbh) shape.
-            cell (ms.tensor[float], optional): periodic cell of (N_b x 3 x 3) shape.
-            cell_offsets (ms.Tensor[float], optional): offset of atom in cell coordinates
-                with (N_b x N_at x N_nbh x 3) shape.
             neighbor_mask (ms.Tensor[bool], optional): boolean mask for neighbor
                 positions. Required for the stable computation of forces in
                 molecules with different sizes.

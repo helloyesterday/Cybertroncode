@@ -393,7 +393,7 @@ class Cybertron(nn.Cell):
                 far_rij = r_ij
             else:
                 far_rij = self.dis_scale * \
-                    self.distances(positions,far_neighbors,far_mask,None,None)
+                    self.distances(positions,far_neighbors,far_mask)
         
         if self.multi_readouts:
             ytuple = ()
