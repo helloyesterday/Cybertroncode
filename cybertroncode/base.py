@@ -144,7 +144,6 @@ class Aggregate(nn.Cell):
     Args:
         axis (int): axis along which pooling is done.
         mean (bool, optional): if True, use average instead for sum pooling.
-        keepdim (bool, optional): whether the output tensor has dim retained or not.
 
     """
 
@@ -152,7 +151,6 @@ class Aggregate(nn.Cell):
         super().__init__()
         self.average = mean
         self.axis = axis
-        # ~ self.keepdim = keepdim
         self.reduce_sum=P.ReduceSum()
         self.maximum=P.Maximum()
 
@@ -321,7 +319,7 @@ class MultiheadAttention(nn.Cell):
         n_heads     (int): Number of heads (h)
         dim_tensor  (int): Dimension of input tensor (D)
 
-    Marks:
+    Signs:
         X:  Dimension to be aggregated
         F:  Dimension of Feature space
         h:  Number of heads for multi-head attention
