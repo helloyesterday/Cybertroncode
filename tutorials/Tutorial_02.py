@@ -4,10 +4,11 @@ import mindspore as ms
 from mindspore import nn
 from mindspore import Tensor
 from mindspore import dataset as ds
+import mindspore.ops as ops
 from mindspore.train import Model
 from mindspore import context
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
-
+from mindspore.nn.loss.loss import Loss
 import sys
 sys.path.append('..')
 
@@ -77,6 +78,43 @@ if __name__ == '__main__':
     ds_test = ds.NumpySlicesDataset({'R':test_data['R'],'z':test_data['z'],'E':test_data['properties'][:,idx]},shuffle=False)
     ds_test = ds_test.batch(1024)
     ds_test = ds_test.repeat(1)
+
+    class L1Loss(Loss):
+        def __init__(self, reduction="mean", config=False, lbd=0.5):
+            super(L1Loss, self).__init__(reduction)
+            self.square = ops.Square()
+            self.sort = ops.Sort()
+            self.config = config
+            self.lbd = lbd
+
+        def construct(self, base, target):
+            x = self.square(base - target)
+            return self.get_loss(x) + self.lbd * self.get_distributed(base, target)
+        
+        def get_loss(self, x, weights=1.0):
+            input_dtype = x.dtype
+            x = self.cast(x, ms.common.dtype.float32)
+            weights = self.cast(weights, ms.common.dtype.float32)
+            x = self.mul(weights, x)
+            if self.reduce and self.average:
+                x = self.reduce_mean(x, self.get_axis(x))
+            if self.reduce and not self.average:
+                x = self.reduce_sum(x, self.get_axis(x))
+            x = self.cast(x, input_dtype)
+            return x
+        
+        def get_distributed(self, base, target):
+            input_dtype = base.dtype
+            base = self.cast(base, ms.common.dtype.float32)
+            target = self.cast(target, ms.common.dtype.float32)
+            base = self.sort(base)[0]
+            target = self.sort(target)[0]
+            base = self.cast(base, ms.common.dtype.float32)
+            target = self.cast(target, ms.common.dtype.float32)
+            x = self.square(base - target)
+            x = self.reduce_mean(x, self.get_axis(x))
+            x = self.cast(x, input_dtype)
+            return x
 
     from cybertroncode.train import WithLabelLossCell,WithLabelEvalCell
     loss_network = WithLabelLossCell('RZE',net,nn.MAELoss())
