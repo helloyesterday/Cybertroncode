@@ -1,3 +1,27 @@
+# ============================================================================
+# Copyright 2021 The AIMM team at Shenzhen Bay Laboratory & Peking University
+#
+# People: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yaqiang Zhou, Huiyang Zhang,
+#         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
+# 
+# This code is a part of Cybertron-Code package.
+#
+# The Cybertron-Code is open-source software based on the AI-framework:
+# MindSpore (https://www.mindspore.cn/)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+
 import numpy as np
 import mindspore as ms
 import mindspore.nn as nn
@@ -384,4 +408,68 @@ class Cybertron(nn.Cell):
             if self.unit_energy is not None:
                 y = y * self.output_scale
 
+        return y
+
+class CybertronFF(Cybertron):
+    def __init__(self,
+        model,
+        dim_output=1,
+        unit_dis='nm',
+        unit_energy=None,
+        readout='atomwise',
+        max_atoms_number=0,
+        atom_types=None,
+        bond_types=None,
+        full_connect=False,
+        cut_shape=False,
+    ):
+        super().__init__(
+            model=model,
+            dim_output=dim_output,
+            unit_dis=unit_dis,
+            unit_energy=unit_energy,
+            readout=readout,
+            max_atoms_number=max_atoms_number,
+            atom_types=atom_types,
+            bond_types=bond_types,
+            full_connect=full_connect,
+            cut_shape=cut_shape,
+        )
+
+    def construct(self, positions, atom_types=None, neighbors=None, neighbor_mask=None):
+        y = 0
+        if self.full_connect:
+            if self.atom_types is not None:
+                y = super().construct(
+                    positions=positions,
+                    atom_types=self.atom_types,
+                    neighbors=None,
+                    neighbor_mask=None,
+                    bonds=None,
+                    bond_mask=None,
+                    far_neighbors=None,
+                    far_mask=None
+                    )
+            else:
+                y = super().construct(
+                    positions=positions,
+                    atom_types=atom_types,
+                    neighbors=None,
+                    neighbor_mask=None,
+                    bonds=None,
+                    bond_mask=None,
+                    far_neighbors=None,
+                    far_mask=None
+                    )
+        else:
+            y = super().construct(
+                positions=positions,
+                atom_types=atom_types,
+                neighbors=neighbors,
+                neighbor_mask=neighbor_mask,
+                bonds=None,
+                bond_mask=None,
+                far_neighbors=None,
+                far_mask=None
+                )
         return y
