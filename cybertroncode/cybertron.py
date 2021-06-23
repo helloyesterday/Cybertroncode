@@ -57,6 +57,7 @@ class Cybertron(nn.Cell):
         max_atoms_number=0,
         atom_types=None,
         bond_types=None,
+        cell=None,
         full_connect=False,
         cut_shape=False,
     ):
@@ -64,7 +65,6 @@ class Cybertron(nn.Cell):
         
         self.model = model
         self.dim_output = dim_output
-        self.full_connect=full_connect
         self.cut_shape = cut_shape
 
         self.unit_dis = unit_dis
@@ -104,6 +104,24 @@ class Cybertron(nn.Cell):
             atoms_number = F.cast(atom_types>0,ms.float32)
             self.atoms_number = self.molsum(atoms_number,-1)
 
+        self._box = None
+        self.use_fixed_cell = False
+        if cell is not None:
+            if isinstance(cell,(list,tuple)):
+                cell = Tensor(cell,ms.float32)
+            if not isinstance(cell,Tensor):
+                raise TypeError("Unsupported cells type '{}'.".format(type(cell)))
+            if len(cell.shape) == 1:
+                cell = F.expand_dims(cell,0)
+            if len(cell.shape) != 2:
+                raise ValueError("The length of shape of cells must be 1 or 2")
+            if cell.shape[-1] != 3:
+                raise ValueError("The last dimenstion of cells must be 3")
+            if cell.shape[0] != 1:
+                raise ValueError("The first dimenstion of cells must be 1")
+            self._box = cell
+            self.use_fixed_cell = True
+
         self.use_bonds = self.model.use_bonds
         self.fixed_bonds = False
         self.bonds = None
@@ -115,6 +133,8 @@ class Cybertron(nn.Cell):
         self.cutoff = self.model.cutoff
 
         self.use_distances = self.model.use_distances
+
+        self.full_connect=full_connect
 
         if self.fixed_bonds and (not self.use_distances):
             raise ValueError('"fixed_bonds" cannot be used without using distances')
@@ -292,6 +312,7 @@ class Cybertron(nn.Cell):
     def construct(self,
             positions=None,
             atom_types=None,
+            cells=None,
             neighbors=None,
             neighbor_mask=None,
             bonds=None,
@@ -341,6 +362,9 @@ class Cybertron(nn.Cell):
             atoms_number = F.cast(atom_types>0,ms.float32)
             atoms_number = self.molsum(atoms_number,-1)
 
+        if cells is None and self.use_fixed_cell:
+            cells = self._box
+
         if self.use_bonds:
             if bonds is None:
                 if self.fixed_bonds:
@@ -373,7 +397,7 @@ class Cybertron(nn.Cell):
                 return None
         
         if self.use_distances:
-            r_ij = self.distances(positions,neighbors,neighbor_mask) * self.dis_scale
+            r_ij = self.distances(positions,neighbors,neighbor_mask,cells) * self.dis_scale
         else:
             r_ij = 1
             neighbor_mask = bond_mask
@@ -393,7 +417,7 @@ class Cybertron(nn.Cell):
                 far_rij = r_ij
             else:
                 far_rij = self.dis_scale * \
-                    self.distances(positions,far_neighbors,far_mask)
+                    self.distances(positions,far_neighbors,far_mask,cells)
         
         if self.multi_readouts:
             ytuple = ()
@@ -421,6 +445,7 @@ class CybertronFF(Cybertron):
         atom_types=None,
         bond_types=None,
         full_connect=False,
+        cell=None,
         cut_shape=False,
     ):
         super().__init__(
@@ -433,38 +458,22 @@ class CybertronFF(Cybertron):
             atom_types=atom_types,
             bond_types=bond_types,
             full_connect=full_connect,
+            cell=cell,
             cut_shape=cut_shape,
         )
 
-    def construct(self, positions, atom_types=None, neighbors=None, neighbor_mask=None):
+    def construct(self, positions, atom_types=None, cells=None, neighbors=None, neighbor_mask=None):
         y = 0
-        if self.full_connect:
-            if self.atom_types is not None:
-                y = super().construct(
-                    positions=positions,
-                    atom_types=self.atom_types,
-                    neighbors=None,
-                    neighbor_mask=None,
-                    bonds=None,
-                    bond_mask=None,
-                    far_neighbors=None,
-                    far_mask=None
-                    )
-            else:
-                y = super().construct(
-                    positions=positions,
-                    atom_types=atom_types,
-                    neighbors=None,
-                    neighbor_mask=None,
-                    bonds=None,
-                    bond_mask=None,
-                    far_neighbors=None,
-                    far_mask=None
-                    )
-        else:
-            y = super().construct(
+        if self.full_connect and  self.atom_types is not None:
+            atom_types = self.atom_types,
+
+        if self.use_fixed_cell:
+            cells = self._box
+
+        return super().construct(
                 positions=positions,
                 atom_types=atom_types,
+                cells = cells,
                 neighbors=neighbors,
                 neighbor_mask=neighbor_mask,
                 bonds=None,
@@ -472,4 +481,3 @@ class CybertronFF(Cybertron):
                 far_neighbors=None,
                 far_mask=None
                 )
-        return y

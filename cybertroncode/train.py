@@ -239,10 +239,11 @@ class WithCell(nn.Cell):
     ):
         super().__init__(auto_prefix=False)
 
-        self.fulltypes = 'RZNnBbLlE'
+        self.fulltypes = 'RZCNnBbLlE'
         
         self.R = -1 # positions
         self.Z = -1 # atom_types
+        self.C = -1 # cells
         self.N = -1 # neighbors
         self.n = -1 # neighbor_mask
         self.B = -1 # bonds
@@ -266,6 +267,7 @@ class WithCell(nn.Cell):
 
         self.R = datatypes.find('R') # positions
         self.Z = datatypes.find('Z') # atom_types
+        self.C = datatypes.find('C') # cells
         self.N = datatypes.find('N') # neighbors
         self.n = datatypes.find('n') # neighbor_mask
         self.B = datatypes.find('B') # bonds
@@ -306,7 +308,7 @@ class WithForceLossCell(WithCell):
         else:
             self.whitening = None
 
-        self.fulltypes = 'RZNnBbLlFE'
+        self.fulltypes = 'RZCNnBbLlFE'
         self._find_type_indexes(datatypes)
         self.F = datatypes.find('F') # force
 
@@ -325,6 +327,7 @@ class WithForceLossCell(WithCell):
 
         positions = inputs[self.R]
         atom_types = inputs[self.Z]
+        cells = inputs[self.C]
         neighbors = inputs[self.N]
         neighbor_mask = inputs[self.n]
         bonds = inputs[self.B]
@@ -336,6 +339,7 @@ class WithForceLossCell(WithCell):
         out = self._backbone(
             positions,
             atom_types,
+            cells,
             neighbors,
             neighbor_mask,
             bonds,
@@ -348,6 +352,7 @@ class WithForceLossCell(WithCell):
         fout = -1 * self.grad_op(self._backbone)(
             positions,
             atom_types,
+            cells,
             neighbors,
             neighbor_mask,
             bonds,
@@ -414,6 +419,7 @@ class WithLabelLossCell(WithCell):
 
         positions = inputs[self.R]
         atom_types = inputs[self.Z]
+        cells = inputs[self.C]
         neighbors = inputs[self.N]
         neighbor_mask = inputs[self.n]
         bonds = inputs[self.B]
@@ -424,6 +430,7 @@ class WithLabelLossCell(WithCell):
         out = self._backbone(
             positions,
             atom_types,
+            cells,
             neighbors,
             neighbor_mask,
             bonds,
@@ -478,7 +485,7 @@ class WithForceEvalCell(WithCell):
                     atom_ref=atom_ref,
                 )
 
-        self.fulltypes = 'RZNnBbLlFE'
+        self.fulltypes = 'RZCNnBbLlFE'
         self._find_type_indexes(datatypes)
         self.F = datatypes.find('F') # force
 
@@ -500,6 +507,7 @@ class WithForceEvalCell(WithCell):
 
         positions = inputs[self.R]
         atom_types = inputs[self.Z]
+        cells = inputs[self.C]
         neighbors = inputs[self.N]
         neighbor_mask = inputs[self.n]
         bonds = inputs[self.B]
@@ -510,6 +518,7 @@ class WithForceEvalCell(WithCell):
         outputs = self._network(
             positions,
             atom_types,
+            cells,
             neighbors,
             neighbor_mask,
             bonds,
@@ -521,6 +530,7 @@ class WithForceEvalCell(WithCell):
         foutputs = -1 * self.grad_op(self._network)(
             positions,
             atom_types,
+            cells,
             neighbors,
             neighbor_mask,
             bonds,
@@ -608,6 +618,7 @@ class WithLabelEvalCell(WithCell):
 
         positions = inputs[self.R]
         atom_types = inputs[self.Z]
+        cells = inputs[self.C]
         neighbors = inputs[self.N]
         neighbor_mask = inputs[self.n]
         bonds = inputs[self.B]
@@ -618,6 +629,7 @@ class WithLabelEvalCell(WithCell):
         outputs = self._network(
             positions,
             atom_types,
+            cells,
             neighbors,
             neighbor_mask,
             bonds,

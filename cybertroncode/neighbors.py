@@ -86,17 +86,18 @@ class Distances(nn.Cell):
         self.gather_neighbors = GatherNeighbors(dim,fixed_atoms)
         self.maximum = P.Maximum()
 
-    def construct(self, positions, neighbors, neighbor_mask=None):
+        self.ceil = P.Ceil()
+
+    def construct(self, positions, neighbors, neighbor_mask=None, cells=None):
         r"""Compute distance of every atom to its neighbors.
 
         Args:
-            positions (ms.Tensor[float]): atomic Cartesian coordinates with
-                (N_b x N_at x 3) shape.
-            neighbors (ms.Tensor[int]): indices of neighboring atoms to consider
-                with (N_b x N_at x N_nbh) or (N_at x N_nbh) shape.
-            neighbor_mask (ms.Tensor[bool], optional): boolean mask for neighbor
+            positions (ms.Tensor[float], [B, A, 3]): atomic Cartesian coordinates
+            neighbors (ms.Tensor[int], [B, A, N] or [1, A, N]): indices of neighboring atoms to consider
+            neighbor_mask (ms.Tensor[bool], [B, A, N] or [1, A, N]): boolean mask for neighbor
                 positions. Required for the stable computation of forces in
                 molecules with different sizes.
+            cells (ms.Tensor[float], [B, 3] or [1, 3])
 
         Returns:
             ms.Tensor[float]: layer output of (N_b x N_at x N_nbh) shape.
@@ -105,7 +106,25 @@ class Distances(nn.Cell):
 
         pos_xyz = self.gather_neighbors(positions,neighbors)
         pos_diff = pos_xyz - F.expand_dims(positions,-2)
-        
+
+        if cells is not None:
+            # [B, 3] -> [B, 1, 1, 3] or [1, 3] -> [1, 1, 1, 3]
+            cells = F.expand_dims(cells,-2)
+            cells = F.expand_dims(cells,-2)
+            box2 = F.ones_like(pos_diff) * (cells/2)
+            lmask = pos_diff > box2
+            smask = pos_diff < -box2
+
+            if(lmask.any()):
+                nbox = self.ceil(pos_diff/cells - 0.5)
+                pos = pos_diff - nbox * cells
+                pos_diff = F.select(lmask,pos,pos_diff)
+            
+            if(smask.any()):
+                nbox = self.ceil(-pos_diff/cells - 0.5)
+                pos = pos_diff + nbox * cells
+                pos_diff = F.select(smask,pos,pos_diff)
+
         if neighbor_mask is not None:
             large_diff = pos_diff + self.long_dis
             smask = (F.ones_like(pos_diff) * F.expand_dims(neighbor_mask,-1)) > 0
