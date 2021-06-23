@@ -908,19 +908,17 @@ class Error(Metric):
             else:
                 error = np.sum(error,axis=axis)
 
-        if self.reduce_all_dims:
-            tot = error.size
-        else:
-            tot = y.shape[0]
-        
+        tot = y.shape[0]
         if self.read_atoms_number:
             natoms = self._convert_data(inputs[self._indexes[2]])
             if self.averaged_by_atoms:
                 error /= natoms
-            if self.reduce_all_dims:
+            elif self.reduce_all_dims:
                 tot = np.sum(natoms)
                 if natoms.shape[0] != y.shape[0]:
                     tot *= y.shape[0]
+        elif self.reduce_all_dims:
+            tot = error.size
 
         self._error_sum += np.sum(error,axis=self.axis)
         self._samples_num += tot

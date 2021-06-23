@@ -303,7 +303,7 @@ class Cybertron(nn.Cell):
 
         Args:
             positions     (mindspore.Tensor[float], [B, A, 3]): Cartesian coordinates for each atom.
-            atom_types    (mindspore.Tensor[int],   [B, A]):    Types (ID) of input atoms.
+            atom_types    (mindspore.Tensor[int],   [B, A]):    Types (nuclear charge) of input atoms.
                                                                 If the attribute "self.atom_types" have been set and
                                                                 atom_types is not given here, atom_types = self.atom_types
             neighbors     (mindspore.Tensor[int],   [B, A, N]): Indices of other near neighbor atoms around a atom
