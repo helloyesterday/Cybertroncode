@@ -88,7 +88,7 @@ class Distances(nn.Cell):
 
         self.ceil = P.Ceil()
 
-    def construct(self, positions, neighbors, neighbor_mask=None, cells=None):
+    def construct(self, positions, neighbors, neighbor_mask=None, pbcbox=None):
         r"""Compute distance of every atom to its neighbors.
 
         Args:
@@ -97,7 +97,7 @@ class Distances(nn.Cell):
             neighbor_mask (ms.Tensor[bool], [B, A, N] or [1, A, N]): boolean mask for neighbor
                 positions. Required for the stable computation of forces in
                 molecules with different sizes.
-            cells (ms.Tensor[float], [B, 3] or [1, 3])
+            pbcbox (ms.Tensor[float], [B, 3] or [1, 3])
 
         Returns:
             ms.Tensor[float]: layer output of (N_b x N_at x N_nbh) shape.
@@ -107,22 +107,22 @@ class Distances(nn.Cell):
         pos_xyz = self.gather_neighbors(positions,neighbors)
         pos_diff = pos_xyz - F.expand_dims(positions,-2)
 
-        if cells is not None:
+        if pbcbox is not None:
             # [B, 3] -> [B, 1, 1, 3] or [1, 3] -> [1, 1, 1, 3]
-            cells = F.expand_dims(cells,-2)
-            cells = F.expand_dims(cells,-2)
-            box2 = F.ones_like(pos_diff) * (cells/2)
-            lmask = pos_diff > box2
-            smask = pos_diff < -box2
+            pbcbox = F.expand_dims(pbcbox,-2)
+            pbcbox = F.expand_dims(pbcbox,-2)
+            halfbox = F.ones_like(pos_diff) * (pbcbox/2)
+            lmask = pos_diff > halfbox
+            smask = pos_diff < -halfbox
 
             if(lmask.any()):
-                nbox = self.ceil(pos_diff/cells - 0.5)
-                pos = pos_diff - nbox * cells
+                nbox = self.ceil(pos_diff/pbcbox - 0.5)
+                pos = pos_diff - nbox * pbcbox
                 pos_diff = F.select(lmask,pos,pos_diff)
             
             if(smask.any()):
-                nbox = self.ceil(-pos_diff/cells - 0.5)
-                pos = pos_diff + nbox * cells
+                nbox = self.ceil(-pos_diff/pbcbox - 0.5)
+                pos = pos_diff + nbox * pbcbox
                 pos_diff = F.select(smask,pos,pos_diff)
 
         if neighbor_mask is not None:
