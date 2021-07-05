@@ -86,7 +86,8 @@ class Distances(nn.Cell):
         self.gather_neighbors = GatherNeighbors(dim,fixed_atoms)
         self.maximum = P.Maximum()
 
-        self.ceil = P.Ceil()
+        # self.ceil = P.Ceil()
+        self.floor = P.Floor()
 
     def construct(self, positions, neighbors, neighbor_mask=None, pbcbox=None):
         r"""Compute distance of every atom to its neighbors.
@@ -116,12 +117,14 @@ class Distances(nn.Cell):
             smask = pos_diff < -halfbox
 
             if(lmask.any()):
-                nbox = self.ceil(pos_diff/pbcbox - 0.5)
+                # nbox = self.ceil(pos_diff/pbcbox - 0.5)
+                nbox = self.floor(pos_diff/pbcbox - 0.5) + 1
                 pos = pos_diff - nbox * pbcbox
                 pos_diff = F.select(lmask,pos,pos_diff)
             
             if(smask.any()):
-                nbox = self.ceil(-pos_diff/pbcbox - 0.5)
+                # nbox = self.ceil(-pos_diff/pbcbox - 0.5)
+                nbox = self.floor(-pos_diff/pbcbox - 0.5) + 1
                 pos = pos_diff + nbox * pbcbox
                 pos_diff = F.select(smask,pos,pos_diff)
 

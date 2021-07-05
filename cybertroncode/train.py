@@ -399,6 +399,8 @@ class WithLabelLossCell(WithCell):
         self._loss_fn = loss_fn
         # self.with_penalty = with_penalty
 
+        self.atom_types = self._backbone.atom_types
+
         self.do_whitening = do_whitening
         if do_whitening:
             self.whitening = DatasetWhitening(
@@ -440,6 +442,9 @@ class WithLabelLossCell(WithCell):
         )
 
         label = inputs[self.E]
+
+        if atom_types is None:
+            atom_types = self.atom_types
 
         atoms_number = F.cast(atom_types>0,out.dtype)
         atoms_number = self.keep_sum(atoms_number,-1)
