@@ -57,14 +57,14 @@ if __name__ == '__main__':
     lr = nn.ExponentialDecayLR(learning_rate=1e-3, decay_rate=0.96, decay_steps=4, is_stair=True)
     optim = nn.Adam(params=net.trainable_params(),learning_rate=lr)
 
-    outdir = sys_name + '_T03'
+    outdir = 'tutorial_03'
     outname = outdir + mod.network_name
 
-    # from mindspore.train.serialization import load_checkpoint,load_param_into_net
-    # param_file = outdir + '/' + outname + '-8_32.ckpt'
-    # param_dict = load_checkpoint(param_file)
-    # load_param_into_net(net,param_dict)
-    # load_param_into_net(optim,param_dict)
+    from mindspore.train.serialization import load_checkpoint,load_param_into_net
+    param_file = outdir + '/' + outname + '-8_32.ckpt'
+    param_dict = load_checkpoint(param_file)
+    load_param_into_net(net,param_dict)
+    load_param_into_net(optim,param_dict)
 
     net.print_info()
 
@@ -114,8 +114,8 @@ if __name__ == '__main__':
     print ("Training Fininshed!")
     print ("Training Time: %02d:%02d:%02d" % (h, m, s))
 
-    # param_file = outdir + '/' + outname + '-best.ckpt'
-    # load_checkpoint(param_file, net=net)
+    param_file = outdir + '/' + outname + '-best.ckpt'
+    load_checkpoint(param_file, net=net)
 
     print('Test dataset:')
     eval_metrics = model.eval(ds_test, dataset_sink_mode=False)

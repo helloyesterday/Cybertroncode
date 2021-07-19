@@ -91,7 +91,7 @@ if __name__ == '__main__':
     lr = TransformerLR(learning_rate=1.,warmup_steps=4000,dimension=128)
     optim = nn.Adam(params=net.trainable_params(),learning_rate=lr)
 
-    outdir = sys_name + '_T04'
+    outdir = 'tutorial_04'
     outname = outdir + mod.network_name
 
     eval_mae  = 'EvalMAE'

@@ -82,7 +82,7 @@ if __name__ == '__main__':
     lr = nn.ExponentialDecayLR(learning_rate=1e-3, decay_rate=0.96, decay_steps=64, is_stair=True)
     optim = nn.Adam(params=net.trainable_params(),learning_rate=lr)
 
-    outdir = sys_name + '_T07'
+    outdir = 'tutorial_07'
     outname = outdir + mod.network_name
 
     from cybertroncode.train import MAE,RMSE

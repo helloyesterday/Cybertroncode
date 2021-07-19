@@ -90,7 +90,7 @@ if __name__ == '__main__':
     eval_loss = 'Evalloss'
     model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2]),atom_mae:MAE([1,2,3],averaged_by_atoms=True),eval_loss:MLoss(0)})
 
-    outdir = sys_name + '_T02'
+    outdir = 'tutorial_02'
     outname = sys_name + mod.network_name
 
     from cybertroncode.train import TrainMonitor

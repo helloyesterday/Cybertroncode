@@ -91,7 +91,7 @@ if __name__ == '__main__':
     monitor_cb = LossMonitor(16)
 
     from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
-    outdir = 'qm9_ev_A_T01'
+    outdir = 'tutorial_01'
     params_name = outdir + mod.network_name
     config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
     ckpoint_cb = ModelCheckpoint(prefix=params_name, directory=outdir, config=config_ck)
