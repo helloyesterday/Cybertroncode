@@ -124,7 +124,7 @@ class OutputScaleShift(nn.Cell):
         
         return scaled_outputs
 
-class LossWithEnergyAndForces(nn.loss.loss.Loss):
+class LossWithEnergyAndForces(nn.loss.loss.LossBase):
     def __init__(self,
         ratio_energy=1,
         ratio_forces=100,
