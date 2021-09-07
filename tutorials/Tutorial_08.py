@@ -22,7 +22,7 @@ if __name__ == '__main__':
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    sys_name = 'ethanol_kcal_A'
+    sys_name = 'ds_ethanol_kJ-mol_nm_normed'
 
     train_file = sys_name + '_train_1024.npz'
     valid_file = sys_name + '_valid_128.npz'
@@ -32,14 +32,14 @@ if __name__ == '__main__':
     valid_data = np.load(valid_file)
     test_data = np.load(test_file)
 
-    atom_types = Tensor(train_data['z'],ms.int32)
-    num_atom = atom_types.size
-    mol_scale = float(train_data['std'] / num_atom)
-    mol_shift = float(train_data['avg'])
+    atom_types = Tensor(train_data['Z'],ms.int32)
+    num_atom = train_data['natom']
+    mol_scale = train_data['mol_scale']
+    mol_shift = train_data['mol_shift']
 
     mod = MolCT(
-        min_rbf_dis=0.1,
-        max_rbf_dis=10,
+        min_rbf_dis=0.01,
+        max_rbf_dis=1,
         num_rbf=32,
         rbf_sigma=0.2,
         n_interactions=3,
@@ -47,11 +47,12 @@ if __name__ == '__main__':
         n_heads=8,
         max_cycles=1,
         self_dis=0.1,
-        unit_length='A',
+        unit_length='nm',
         )
 
-    readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,unit_energy=None)
-    net = Cybertron(mod,atom_types=atom_types,full_connect=True,readout=readout,unit_dis='A',unit_energy=None)
+    readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,mol_scale=mol_scale,mol_shift=mol_shift,unit_energy='kJ/mol')
+    net = Cybertron(mod,atom_types=atom_types,full_connect=True,readout=readout,unit_dis='nm',unit_energy='kJ/mol')
+    net.disable_scaleshift()
 
     net.print_info()
 
@@ -77,12 +78,13 @@ if __name__ == '__main__':
     ds_test = ds_test.batch(1024)
     ds_test = ds_test.repeat(1)
     
-    scale_dis = train_data['std'] / train_data['force_avg'] / num_atom
+    scale_dis = train_data['mol_scale'] / train_data['avg_force']
     loss_fn = MSELoss(ratio_energy=1,ratio_forces=100,force_aggregate='sum',scale_dis=scale_dis,ratio_normlize=True)
-    loss_network = WithForceLossCell('RFE',net,loss_fn,do_whitening=True,mol_scale=mol_scale,mol_shift=mol_shift)
-    eval_network = WithForceEvalCell('RFE',net,loss_fn,do_whitening=True,mol_scale=mol_scale,mol_shift=mol_shift)
+    loss_network = WithForceLossCell('RFE',net,loss_fn)
+    eval_network = WithForceEvalCell('RFE',net,loss_fn,train_data_normed=True,eval_data_normed=True,mol_scale=mol_scale,mol_shift=mol_shift)
 
     lr = TransformerLR(learning_rate=1.,warmup_steps=4000,dimension=128)
+    # lr = nn.ExponentialDecayLR(learning_rate=1e-3, decay_rate=0.96, decay_steps=4, is_stair=True)
     optim = nn.Adam(params=net.trainable_params(),learning_rate=lr)
 
     outdir = 'tutorial_08'

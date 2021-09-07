@@ -26,6 +26,7 @@ import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import nn
 from mindspore import Tensor
+from mindspore import Parameter
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 
@@ -94,17 +95,18 @@ class Readout(nn.Cell):
     def __init__(self,
         n_in,
         n_out=1,
-        atom_scale=1,
-        atom_shift=0,
-        mol_scale=1,
-        mol_shift=0,
         axis=-2,
-        atom_ref=None,
+        do_scaleshift=True,
         scaled_by_atoms_number=True,
         averaged_by_atoms_number=False,
         activation=None,
         decoder=None,
         aggregator=None,
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
+        atom_ref=None,
         unit_energy='kJ/mol',
         multi_aggregators=False,
         read_all_interactions=False,
@@ -127,8 +129,6 @@ class Readout(nn.Cell):
         self.unit_energy = unit_energy
 
         self.averaged_by_atoms_number=averaged_by_atoms_number
-        
-        self.atom_ref = atom_ref
 
         if not isinstance(n_in,int):
             raise TypeError('Type of n_in must be int')
@@ -139,29 +139,19 @@ class Readout(nn.Cell):
         self.multi_n_out = n_out
         self.total_out = n_out
 
-        self.multi_output_number = False
+        self.has_diff_out_dim = False
         if num_output_dim > 1:
             n_out = list(set(n_out))
             if len(n_out) > 1:
-                self.multi_output_number = True
+                self.has_diff_out_dim = True
             else:
                 n_out = n_out[0]
         
         self.n_out = n_out
 
-        atom_scale, num_atom_scale = self._check_type_and_number(atom_scale,'atom_scale',(int,float,Tensor))
-        self.atom_scale = atom_scale
+        self.do_scaleshift = do_scaleshift
 
-        atom_shift, num_atom_shift = self._check_type_and_number(atom_shift,'atom_shift',(int,float,Tensor))
-        self.atom_shift = atom_shift
-
-        if not isinstance(mol_scale,(float,int,Tensor)): raise TypeError('Type of mol_scale must be float, int or Tensor')
-        self.mol_scale = mol_scale
-
-        if not isinstance(mol_shift,(float,int,Tensor)): raise TypeError('Type of mol_shift must be float, int or Tensor')
-        self.mol_shift = mol_shift
-
-        if not isinstance(axis,int): raise TypeError('Type of mol_shift must be int')
+        if not isinstance(axis,int): raise TypeError('Type of axis must be int')
         self.axis = axis
 
         activation, num_activation = self._check_type_and_number(activation,'activation')
@@ -241,22 +231,19 @@ class Readout(nn.Cell):
                 else:
                     raise ValueError('Number of activation missmatch')
         else:
-            if num_atom_scale > 1: raise ValueError('Number of atom_scale mismatch')
-            if num_atom_shift > 1: raise ValueError('Number of atom_shift mismatch')
             if num_activation > 1: raise ValueError('Number of activation mismatch')
 
-        self.str_unit_energy = (" " + unit_energy) if self.output_is_energy else ""
-
-        self.split = P.Split(-1,self.num_decoder)
-
-        self.multi_atom_scale = None
-        self.multi_atom_shift = None
-        self.multi_atom_ref = None
         if self.multi_decoders:
-            self.multi_atom_scale = self._split_by_decoders(self.atom_scale,'atom_scale')
-            self.multi_atom_shift = self._split_by_decoders(self.atom_shift,'atom_scale')
-            if atom_ref is not None:
-                self.multi_atom_ref = self._split_by_decoders(self.atom_ref,'atom_ref')
+            decoders = []
+            for i in range(self.num_decoder):
+                _decoder = get_decoder(self.decoder[i],self.n_in,self.multi_n_out[i],self.activation[i])
+                if _decoder is not None:
+                    decoders.append(_decoder)
+                else:
+                    raise ValueError('Multi decorders cannot include None type')
+            self.decoder = nn.CellList(decoders)
+        else:
+            self.decoder = get_decoder(decoder,self.n_in,self.n_out,self.activation)
 
         self.read_all_interactions = read_all_interactions
         self.n_interactions = n_interactions
@@ -284,7 +271,72 @@ class Readout(nn.Cell):
             self.interactions_aggregator = None
             self.interaction_decoders = None
 
+        self.mol_scale = self._set_scaleshift(mol_scale,'mol_scale')
+        self.mol_shift = self._set_scaleshift(mol_shift,'mol_shift')
+        self.atom_scale = self._set_scaleshift(atom_scale,'atom_scale')
+        self.atom_shift = self._set_scaleshift(atom_shift,'atom_shift')
+        self.atom_ref = None
+        if atom_ref is not None:
+            self.atom_ref = Parameter(Tensor(atom_ref,ms.float32),name='atom_ref',requires_grad=False)
+            if self.atom_ref.ndim != 2:
+                raise ValueError('the rank of atom_ref must be 2')
+
+        self.str_unit_energy = (" " + unit_energy) if self.output_is_energy else ""
+
+        self.split = P.Split(-1,self.num_decoder)
+
+        self.multi_atom_scale = None
+        self.multi_atom_shift = None
+        self.multi_atom_ref = None
+        if self.multi_decoders:
+            self.multi_atom_scale = self._split_by_decoders(self.atom_scale,'atom_scale')
+            self.multi_atom_shift = self._split_by_decoders(self.atom_shift,'atom_scale')
+            if atom_ref is not None:
+                self.multi_atom_ref = self._split_by_decoders(self.atom_ref,'atom_ref')
+
         self.concat = P.Concat(-1)
+
+    def set_mol_scale(self,mol_scale=1):
+        self.mol_scale = self._set_scaleshift(mol_scale,'mol_scale')
+    
+    def set_mol_shift(self,mol_shift=0):
+        self.mol_shift = self._set_scaleshift(mol_shift,'mol_shift')
+
+    def set_atom_scale(self,atom_scale=1):
+        self.atom_scale = self._set_scaleshift(atom_scale,'atom_scale')
+        if self.multi_decoders:
+            self.multi_atom_scale = self._split_by_decoders(self.atom_scale,'atom_scale')
+    
+    def set_atom_shift(self,atom_shift=0):
+        self.atom_shift = self._set_scaleshift(atom_shift,'atom_shift')
+        if self.multi_decoders:
+            self.multi_atom_shift = self._split_by_decoders(self.atom_shift,'atom_shift')
+
+    def set_atom_ref(self,atom_ref=None):
+        if atom_ref is None:
+            self.atom_ref = None
+        else:
+            self.atom_ref = Parameter(Tensor(atom_ref,ms.float32),name='atom_ref',requires_grad=False)
+            if self.atom_ref.ndim != 2:
+                raise ValueError('the rank of atom_ref must be 2')
+            if self.multi_decoders:
+                self.multi_atom_ref = self._split_by_decoders(self.atom_ref,'atom_ref')
+
+    def _set_scaleshift(self, inputs, name):
+        inputs = Tensor(inputs,ms.float32)
+        if inputs.ndim > 1:
+            raise ValueError('the rank of ' + name + ' must be 0 or 1')
+
+        num_inputs = 1
+        if inputs.ndim == 1:
+            num_inputs = inputs.shape[-1]
+            if num_inputs == 1:
+                inputs = inputs[0]
+        
+        if num_inputs != self.total_out and num_inputs != 1:
+            raise ValueError('The dimension of output is '+str(self.total_out)+' but the dimension of '+name+' is '+str(num_inputs))
+
+        return Parameter(inputs,name=name,requires_grad=False)
 
     def print_info(self):
 
@@ -316,8 +368,8 @@ class Readout(nn.Cell):
             print("------with multiple scale and shift:")
             for i in range(self.num_decoder):
                 print("------"+str(i+1)+". output with dimension: "+str(self.multi_n_out[i]))
-                print("---------with atom scale: "+str(self.multi_atom_scale[i])+self.str_unit_energy)
-                print("---------with atom shift: "+str(self.multi_atom_shift[i])+self.str_unit_energy)
+                print("---------with atom scale: "+str(self.multi_atom_scale[i].asnumpy())+self.str_unit_energy)
+                print("---------with atom shift: "+str(self.multi_atom_shift[i].asnumpy())+self.str_unit_energy)
             print("------scaled by atoms number: "+str(self.scaled_by_atoms_number))
 
         else:
@@ -325,14 +377,14 @@ class Readout(nn.Cell):
                 print("------with decoder: "+str(self.decoder))
                 print("------with activation function: "+str(self.decoder.activation))
             print("------with readout dimension: "+str(self.n_out))
-            print("------with atom scale: "+str(self.atom_scale)+self.str_unit_energy)
-            print("------with atom shift: "+str(self.atom_shift)+self.str_unit_energy)
+            print("------with atom scale: "+str(self.atom_scale.asnumpy())+self.str_unit_energy)
+            print("------with atom shift: "+str(self.atom_shift.asnumpy())+self.str_unit_energy)
             print("------scaled by atoms number: "+str(self.scaled_by_atoms_number))
 
 
         print("------with total readout dimension: "+str(self.total_out))
-        print("------with molecular scale: "+str(self.mol_scale)+self.str_unit_energy)
-        print("------with molecular shift: "+str(self.mol_shift)+self.str_unit_energy)
+        print("------with molecular scale: "+str(self.mol_scale.asnumpy())+self.str_unit_energy)
+        print("------with molecular shift: "+str(self.mol_shift.asnumpy())+self.str_unit_energy)
         print("------averaged by atoms number: "+('Yes' if self.averaged_by_atoms_number else 'No'))
 
     def _print_plus_info(self):
@@ -356,28 +408,18 @@ class Readout(nn.Cell):
 
     def _split_by_decoders(self,inputs,name):
         if self.multi_decoders:
-            if isinstance(inputs,(tuple,list)):
-                if len(inputs) != self.num_decoder:
-                    if len(inputs) == 1:
-                        inputs = inputs * self.num_decoder
-                    else:
-                        raise ValueError('Number of '+name+' mismatch')
-            elif isinstance(inputs,(float,int)):
-                if isinstance(input,float): inputs = Tensor(inputs,ms.float32)
-                if isinstance(input,int): inputs = Tensor(inputs,ms.int32)
-                inputs = [inputs,] * self.num_decoder
-            elif isinstance(inputs,Tensor):
-                if inputs.shape[-1] != self.total_out:
-                    raise ValueError('Last dimension of '+name+' mismatch')
-
-                if self.multi_output_number:
-                    inputs = msnp.split(inputs,self.split_slice,-1)
-                else:
-                    inputs = self.split(inputs)
+            if inputs.ndim == 0 or inputs.shape[-1] == 1:
+                return [inputs,] * self.num_decoder
             else:
-                raise TypeError("Unsupported Decoder type '{}'.".format(type(inputs)))
-        
-        return inputs
+                if inputs.shape[-1] != self.total_out:
+                    raise ValueError('Last dimension of '+name+' mismatch: '+str(inputs.shape[-1])+' vs '+str(self.total_out))
+
+                if self.has_diff_out_dim:
+                    return msnp.split(inputs,self.split_slice,-1)
+                else:
+                    return self.split(inputs)
+        else:
+            return [inputs,]
 
 class AtomwiseReadout(Readout):
     """
@@ -416,17 +458,18 @@ class AtomwiseReadout(Readout):
         self,
         n_in,
         n_out=1,
-        atom_scale=1,
-        atom_shift=0,
-        mol_scale=1,
-        mol_shift=0,
         axis=-2,
-        atom_ref=None,
+        do_scaleshift=True,
         scaled_by_atoms_number=False,
         averaged_by_atoms_number=False,
         activation=None,
         decoder='halve',
         aggregator='sum',
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
+        atom_ref=None,
         unit_energy='kJ/mol',
         multi_aggregators=False,
         read_all_interactions=False,
@@ -438,17 +481,18 @@ class AtomwiseReadout(Readout):
         super().__init__(
             n_in=n_in,
             n_out=n_out,
-            atom_scale=atom_scale,
-            atom_shift=atom_shift,
-            mol_scale=mol_scale,
-            mol_shift=mol_shift,
             axis=axis,
-            atom_ref=atom_ref,
+            do_scaleshift=do_scaleshift,
             scaled_by_atoms_number=scaled_by_atoms_number,
             averaged_by_atoms_number=averaged_by_atoms_number,
             activation=activation,
             decoder=decoder,
             aggregator=aggregator,
+            mol_scale=mol_scale,
+            mol_shift=mol_shift,
+            atom_scale=atom_scale,
+            atom_shift=atom_shift,
+            atom_ref=atom_ref,
             unit_energy=unit_energy,
             multi_aggregators=multi_aggregators,
             read_all_interactions=read_all_interactions,
@@ -458,18 +502,6 @@ class AtomwiseReadout(Readout):
             interaction_decoders=interaction_decoders,
         )
         self.name = 'Atomwise'
-
-        if self.multi_decoders:
-            decoders = []
-            for i in range(self.num_decoder):
-                _decoder = get_decoder(self.decoder[i],self.n_in,self.multi_n_out[i],self.activation[i])
-                if _decoder is not None:
-                    decoders.append(_decoder)
-                else:
-                    raise ValueError('Multi decorders cannot include None type')
-            self.decoder = nn.CellList(decoders)
-        else:
-            self.decoder = get_decoder(decoder,self.n_in,self.n_out,self.activation)
         
         if self.decoder is None and self.interaction_decoders is None and self.n_in != self.n_out:
             raise ValueError("When decoder is None, n_out ("+str(n_out)+") must be equal to n_in ("+str(n_in)+")")
@@ -483,9 +515,8 @@ class AtomwiseReadout(Readout):
                 else:
                     raise ValueError('Multi aggregators cannot include None type')
             self.aggregator = nn.CellList(aggregators)
-
         else:
-            if self.multi_output_number:
+            if self.has_diff_out_dim:
                 agg_dict = {}
                 for n_out in self.n_out:
                     _aggregator = get_aggregator(self.aggregator,n_out,axis)
@@ -514,10 +545,11 @@ class AtomwiseReadout(Readout):
             for i in range(self.num_decoder):
                 yi = self.decoder[i](x)
                 if self.multi_aggregators:
-                    yi = yi * self.multi_atom_scale[i] + self.multi_atom_shift[i]
+                    if self.do_scaleshift:
+                        yi = yi * self.multi_atom_scale[i] + self.multi_atom_shift[i]
                     if self.scaled_by_atoms_number:
                         yi = yi / atoms_number
-                    if self.atom_ref is not None:
+                    if self.do_scaleshift and self.atom_ref is not None:
                         yi += F.gather(self.multi_atom_ref[i],atoms_types,0)
                     yi = self.aggregator[i](yi,atom_mask,atoms_number)
 
@@ -526,10 +558,11 @@ class AtomwiseReadout(Readout):
             y = self.concat(ytuple)
 
             if not self.multi_aggregators:
-                y = y * self.atom_scale + self.atom_shift
+                if self.do_scaleshift:
+                    y = y * self.atom_scale + self.atom_shift
                 if self.scaled_by_atoms_number:
                     y = y / atoms_number
-                if self.atom_ref is not None:
+                if self.do_scaleshift and self.atom_ref is not None:
                     y += F.gather(self.atom_ref,atoms_types,0)
                 y = self.aggregator(y,atom_mask,atoms_number)
         else:
@@ -538,17 +571,20 @@ class AtomwiseReadout(Readout):
             else:
                 y = x
             
-            y = y * self.atom_scale + self.atom_shift
+            if self.do_scaleshift:
+                y = y * self.atom_scale + self.atom_shift
+
             if self.scaled_by_atoms_number:
                 y = y / atoms_number
 
-            if self.atom_ref is not None:
+            if self.do_scaleshift and self.atom_ref is not None:
                 y += F.gather(self.atom_ref,atoms_types,0)
             
             if self.aggregator is not None:
                 y = self.aggregator(y,atom_mask,atoms_number)
 
-        y = y * self.mol_scale + self.mol_shift
+        if self.do_scaleshift:
+            y = y * self.mol_scale + self.mol_shift
 
         if self.averaged_by_atoms_number:
             if atoms_number is None:
@@ -570,17 +606,18 @@ class GraphReadout(Readout):
         self,
         n_in,
         n_out=1,
-        atom_scale=1,
-        atom_shift=0,
-        mol_scale=1,
-        mol_shift=0,
         axis=-2,
-        atom_ref=None,
+        do_scaleshift=True,
         scaled_by_atoms_number=False,
         averaged_by_atoms_number=False,
         activation=None,
         decoder='halve',
         aggregator='mean',
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
+        atom_ref=None,
         unit_energy=None,
         multi_aggregators=False,
         read_all_interactions=False,
@@ -592,17 +629,18 @@ class GraphReadout(Readout):
         super().__init__(
             n_in=n_in,
             n_out=n_out,
-            atom_scale=atom_scale,
-            atom_shift=atom_shift,
-            mol_scale=mol_scale,
-            mol_shift=mol_shift,
             axis=axis,
-            atom_ref=atom_ref,
+            do_scaleshift=do_scaleshift,
             scaled_by_atoms_number=scaled_by_atoms_number,
             averaged_by_atoms_number=averaged_by_atoms_number,
             activation=activation,
             decoder=decoder,
             aggregator=aggregator,
+            mol_scale=mol_scale,
+            mol_shift=mol_shift,
+            atom_scale=atom_scale,
+            atom_shift=atom_shift,
+            atom_ref=atom_ref,
             unit_energy=unit_energy,
             multi_aggregators=multi_aggregators,
             read_all_interactions=read_all_interactions,
@@ -613,6 +651,9 @@ class GraphReadout(Readout):
         )
 
         self.name = 'Graph'
+
+        if self.decoder is None and n_in != n_out:
+            raise ValueError("When decoder is None, n_out ("+str(n_out)+") must be equal to n_in ("+str(n_in)+")")
 
         if self.interaction_decoders is not None:
             raise ValueError('GraphReadout cannot use interaction_decoders')
@@ -631,19 +672,6 @@ class GraphReadout(Readout):
             if self.aggregator is None:
                 raise ValueError("aggregator cannot be None at GraphReadout")
 
-        if self.multi_decoders:
-            decoders = []
-            for i in range(self.num_decoder):
-                _decoder = get_decoder(self.decoder[i],self.n_in,self.multi_n_out[i],self.activation[i])
-                if _decoder is not None:
-                    decoders.append(_decoder)
-                else:
-                    raise ValueError('Multi decorders cannot include None type')
-            self.decoder = nn.CellList(decoders)
-        else:
-            self.decoder = get_decoder(decoder,self.n_in,self.n_out,self.activation)
-            if self.decoder is None and n_in != n_out:
-                raise ValueError("When decoder is None, n_out ("+str(n_out)+") must be equal to n_in ("+str(n_in)+")")
 
         self.reduce_sum = P.ReduceSum()
 
@@ -673,7 +701,8 @@ class GraphReadout(Readout):
 
             y = self.concat(ytuple)
 
-            y = y * self.atom_scale + self.atom_shift
+            if self.do_scaleshift:
+                y = y * self.atom_scale + self.atom_shift
             if self.scaled_by_atoms_number:
                 y = y / atoms_number
 
@@ -685,16 +714,17 @@ class GraphReadout(Readout):
             else:
                 y = agg
             
-            y = y * self.atom_scale + self.atom_shift
+            if self.do_scaleshift:
+                y = y * self.atom_scale + self.atom_shift
             if self.scaled_by_atoms_number:
                 y = y / atoms_number
 
-        if self.atom_ref is not None:
-            ref = F.gather(self.atom_ref,atoms_types,0)
-            ref = self.reduce_sum(ref,self.axis)
-            y += ref
-        
-        y = y * self.mol_scale + self.mol_shift
+        if self.do_scaleshift:
+            if self.atom_ref is not None:
+                ref = F.gather(self.atom_ref,atoms_types,0)
+                ref = self.reduce_sum(ref,self.axis)
+                y += ref
+            y = y * self.mol_scale + self.mol_shift
 
         if self.averaged_by_atoms_number:
             if atoms_number is None:
@@ -706,15 +736,16 @@ class GraphReadout(Readout):
 class LongeRangeReadout(Readout):
     def __init__(self,
         dim_feature,
-        atom_scale=1,
-        atom_shift=0,
-        mol_scale=1,
-        mol_shift=0,
         axis=-2,
-        atom_ref=None,
+        do_scaleshift=True,
         activation=None,
         decoder='halve',
         longrange_decoder=None,
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
+        atom_ref=None,
         unit_energy='kcal/mol',
         cutoff_function='gaussian',
         cutoff_max=units.length(1,'nm'),
@@ -729,17 +760,18 @@ class LongeRangeReadout(Readout):
         super().__init__(
             n_in=dim_feature,
             n_out=1,
-            atom_scale=atom_scale,
-            atom_shift=atom_shift,
-            mol_scale=mol_scale,
-            mol_shift=mol_shift,
             axis=axis,
-            atom_ref=atom_ref,
+            do_scaleshift=do_scaleshift,
             scaled_by_atoms_number=False,
             averaged_by_atoms_number=False,
             activation=activation,
             decoder=decoder,
             aggregator='sum',
+            mol_scale=mol_scale,
+            mol_shift=mol_shift,
+            atom_scale=atom_scale,
+            atom_shift=atom_shift,
+            atom_ref=atom_ref,
             unit_energy=unit_energy,
             multi_aggregators=False,
             read_all_interactions=read_all_interactions,
@@ -814,16 +846,17 @@ class CoulombReadout(LongeRangeReadout):
 
     def __init__(
         self,
-        dim_feature,
-        atom_scale=1,
-        atom_shift=0,
-        mol_scale=1,
-        mol_shift=0,
+        dim_feature,        
         axis=-2,
-        atom_ref=None,
+        do_scaleshift=True,
         activation=None,
         decoder='halve',
         longrange_decoder=None,
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
+        atom_ref=None,
         unit_energy='kcal/mol',
         cutoff_function='gaussian',
         cutoff_max=units.length(1,'nm'),
@@ -837,15 +870,16 @@ class CoulombReadout(LongeRangeReadout):
     ):
         super().__init__(
             dim_feature=dim_feature,
-            atom_scale=atom_scale,
-            atom_shift=atom_shift,
-            mol_scale=mol_scale,
-            mol_shift=mol_shift,
             axis=axis,
-            atom_ref=atom_ref,
+            do_scaleshift=do_scaleshift,
             activation=activation,
             decoder=decoder,
             longrange_decoder=longrange_decoder,
+            mol_scale=mol_scale,
+            mol_shift=mol_shift,
+            atom_scale=atom_scale,
+            atom_shift=atom_shift,
+            atom_ref=atom_ref,
             unit_energy=unit_energy,
             cutoff_function=cutoff_function,
             cutoff_max=cutoff_max,
@@ -859,7 +893,6 @@ class CoulombReadout(LongeRangeReadout):
         )
         self.name = 'Coulumb'
 
-        self.decoder = get_decoder(decoder,dim_feature,2,self.activation)
         if self.decoder is None:
             raise ValueError("Decoder in CoulombReadout cannot be None")
 
@@ -896,29 +929,31 @@ class CoulombReadout(LongeRangeReadout):
         Eq = self.reduce_sum(Eq,-1)
         Eq = self.aggregator(Eq,atom_mask,atoms_number) * self.coulomb_const / 2.
         
-        Ei = Ei * self.atom_scale + self.atom_shift
-
-        if self.atom_ref is not None:
-            Ei += F.gather(self.atom_ref,atoms_types,0)
+        if self.do_scaleshift:
+            Ei = Ei * self.atom_scale + self.atom_shift
+            if self.atom_ref is not None:
+                Ei += F.gather(self.atom_ref,atoms_types,0)
 
         Ei = self.aggregator(Ei,atom_mask,atoms_number)
 
-        Ei = Ei * self.mol_scale + self.mol_shift
+        if self.do_scaleshift:
+            Ei = Ei * self.mol_scale + self.mol_shift
 
         return Ei + Eq
 
 class PairwiseReadout(LongeRangeReadout):
     def __init__(self,
-        dim_feature,
-        atom_scale=1,
-        atom_shift=0,
-        mol_scale=1,
-        mol_shift=0,
+        dim_feature,        
         axis=-2,
-        atom_ref=None,
+        do_scaleshift=True,
         activation=None,
         decoder='halve',
         longrange_decoder=None,
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
+        atom_ref=None,
         unit_energy='kcal/mol',
         cutoff_function='gaussian',
         cutoff_max=units.length(1,'nm'),
@@ -931,16 +966,17 @@ class PairwiseReadout(LongeRangeReadout):
         interaction_decoders=None,
     ):
         super().__init__(
-            dim_feature=dim_feature,
-            atom_scale=atom_scale,
-            atom_shift=atom_shift,
-            mol_scale=mol_scale,
-            mol_shift=mol_shift,
+            dim_feature=dim_feature,            
             axis=axis,
-            atom_ref=atom_ref,
+            do_scaleshift=do_scaleshift,
             activation=activation,
             decoder=decoder,
             longrange_decoder=longrange_decoder,
+            mol_scale=mol_scale,
+            mol_shift=mol_shift,
+            atom_scale=atom_scale,
+            atom_shift=atom_shift,
+            atom_ref=atom_ref,
             unit_energy=unit_energy,
             cutoff_function=cutoff_function,
             cutoff_max=cutoff_max,
@@ -955,7 +991,6 @@ class PairwiseReadout(LongeRangeReadout):
 
         self.name = 'pairwise'
 
-        self.decoder = get_decoder(decoder,dim_feature,1,self.activation)
         if self.decoder is None:
             raise ValueError("Decoder in CoulombReadout cannot be None")
 
@@ -993,13 +1028,14 @@ class PairwiseReadout(LongeRangeReadout):
         Eq = self.reduce_sum(Eq,-1)
         Eq = self.aggregator(Eq,atom_mask,atoms_number) * self.coulomb_const / 2.
         
-        Ei = Ei * self.atom_scale + self.atom_shift
-
-        if self.atom_ref is not None:
-            Ei += F.gather(self.atom_ref,atoms_types,0)
+        if self.do_scaleshift:
+            Ei = Ei * self.atom_scale + self.atom_shift
+            if self.atom_ref is not None:
+                Ei += F.gather(self.atom_ref,atoms_types,0)
 
         Ei = self.aggregator(Ei,atom_mask,atoms_number)
 
-        Ei = Ei * self.mol_scale + self.mol_shift
+        if self.do_scaleshift:
+            Ei = Ei * self.mol_scale + self.mol_shift
 
         return Ei + Eq

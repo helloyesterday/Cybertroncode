@@ -24,6 +24,7 @@
 
 import mindspore as ms
 from mindspore import nn
+from mindspore.nn.layer.image import PSNR
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 
@@ -120,12 +121,18 @@ class Distances(nn.Cell):
                 # nbox = self.ceil(pos_diff/pbcbox - 0.5)
                 nbox = self.floor(pos_diff/pbcbox - 0.5) + 1
                 pos = pos_diff - nbox * pbcbox
+                print(lmask.shape)
+                print(pos.shape)
+                print(pos_diff.shape)
                 pos_diff = F.select(lmask,pos,pos_diff)
             
             if(smask.any()):
                 # nbox = self.ceil(-pos_diff/pbcbox - 0.5)
                 nbox = self.floor(-pos_diff/pbcbox - 0.5) + 1
                 pos = pos_diff + nbox * pbcbox
+                print(smask.shape)
+                print(pos.shape)
+                print(pos_diff.shape)
                 pos_diff = F.select(smask,pos,pos_diff)
 
         if neighbor_mask is not None:

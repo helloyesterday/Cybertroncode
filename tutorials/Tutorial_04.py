@@ -24,10 +24,9 @@ if __name__ == '__main__':
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    sys_name = 'qm9_ev_A'
-    # sys_name = 'qm9_kcal_A'
-
+    sys_name = 'ds_qm9_kJ-mol_nm_normed'
     train_file = sys_name + '_train_1024.npz'
+    # sys_name = 'qm9_kJ-mol_nm'
     valid_file = sys_name + '_valid_128.npz'
     test_file  = sys_name + '_test_1024.npz'
 
@@ -38,30 +37,30 @@ if __name__ == '__main__':
     idx = [7,8,9,10] # U0,U,G,H
 
     num_atom = int(train_data['Nmax'])
-    atom_scale = Tensor(train_data['atom_std'][idx],ms.float32)
-    atom_shift = Tensor(train_data['atom_avg'][idx],ms.float32)
-    atom_ref = Tensor(train_data['ref'][:,idx],ms.float32)
+    atom_scale = Tensor(train_data['atom_scale'][idx],ms.float32)
+    atom_shift = Tensor(train_data['atom_shift'][idx],ms.float32)
+    atom_ref = Tensor(train_data['atom_ref'][:,idx],ms.float32)
 
     mod = MolCT(
-        min_rbf_dis=0.1,
-        max_rbf_dis=20,
+        min_rbf_dis=0.01,
+        max_rbf_dis=2,
         num_rbf=64,
         n_interactions=3,
         dim_feature=128,
         n_heads=8,
         activation='swish',
         max_cycles=1,
-        unit_length='A',
+        unit_length='nm',
         )
 
-    # readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,activation='swish',atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref,unit_energy='kcal/mol')
-    readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,1,1],activation='swish',unit_energy=None)
-    net = Cybertron(mod,max_atoms_number=num_atom,full_connect=True,readout=readout,unit_dis='A',unit_energy=None)
+    readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,1,1],activation='swish',atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref,unit_energy='kJ/mol')
+    net = Cybertron(mod,max_atoms_number=num_atom,full_connect=True,readout=readout,unit_dis='nm',unit_energy=None)
+    net.disable_scaleshift()
 
     net.print_info()
 
     tot_params = 0
-    for i,param in enumerate(net.trainable_params()):
+    for i,param in enumerate(net.get_parameters()):
         tot_params += param.size
         print(i,param.name,param.shape)
     print('Total parameters: ',tot_params)
@@ -70,22 +69,21 @@ if __name__ == '__main__':
     repeat_time = 1
     batch_size = 32
 
-    ds_train = ds.NumpySlicesDataset({'R':train_data['R'],'z':train_data['z'],'E':train_data['properties'][:,idx]},shuffle=True)
+    ds_train = ds.NumpySlicesDataset({'R':train_data['R'],'Z':train_data['Z'],'E':train_data['properties'][:,idx]},shuffle=True)
     ds_train = ds_train.batch(batch_size,drop_remainder=True)
     ds_train = ds_train.repeat(repeat_time)
 
-    ds_valid = ds.NumpySlicesDataset({'R':valid_data['R'],'z':valid_data['z'],'E':valid_data['properties'][:,idx]},shuffle=False)
+    ds_valid = ds.NumpySlicesDataset({'R':valid_data['R'],'Z':valid_data['Z'],'E':valid_data['properties'][:,idx]},shuffle=False)
     ds_valid = ds_valid.batch(128)
     ds_valid = ds_valid.repeat(1)
 
-    ds_test = ds.NumpySlicesDataset({'R':test_data['R'],'z':test_data['z'],'E':test_data['properties'][:,idx]},shuffle=False)
+    ds_test = ds.NumpySlicesDataset({'R':test_data['R'],'Z':test_data['Z'],'E':test_data['properties'][:,idx]},shuffle=False)
     ds_test = ds_test.batch(1024)
     ds_test = ds_test.repeat(1)
     
-    # loss_network = WithLabelLossCell('RZE',net,nn.MAELoss())
-    # eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss())
-    loss_network = WithLabelLossCell('RZE',net,nn.MAELoss(),do_whitening=True,atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref)
-    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),do_whitening=True,atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref)
+    loss_network = WithLabelLossCell('RZE',net,nn.MAELoss())
+    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),train_data_normed=True,eval_data_normed=True,atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref)
+    # eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),train_data_normed=True,eval_data_normed=False,atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref)
 
     from cybertroncode.train import TransformerLR
     lr = TransformerLR(learning_rate=1.,warmup_steps=4000,dimension=128)

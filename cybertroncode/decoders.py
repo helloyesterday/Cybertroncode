@@ -75,7 +75,7 @@ class Decoder(nn.Cell):
         return self.output(x)
 
 @_decoder_register('halve')
-class SimpleDecoder(Decoder):
+class HalveDecoder(Decoder):
     def __init__(self,
         n_in,
         n_out,

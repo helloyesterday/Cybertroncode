@@ -75,6 +75,8 @@ class Cybertron(nn.Cell):
         
         self.molsum = P.ReduceSum(keep_dims=True)
 
+        # print(atom_types)
+
         self.atom_mask = None
         self.atom_types = None
         if atom_types is None:
@@ -103,6 +105,8 @@ class Cybertron(nn.Cell):
 
             atoms_number = F.cast(atom_types>0,ms.float32)
             self.atoms_number = self.molsum(atoms_number,-1)
+
+        # print(self.atom_types)
 
         self.pbcbox = None
         self.use_fixed_box = False
@@ -250,6 +254,32 @@ class Cybertron(nn.Cell):
         self.reducemean = P.ReduceMean(keep_dims=False)
         self.concat = P.Concat(-1)
 
+    def enable_scaleshift(self):
+        if self.multi_readouts:
+            for i in range(self.num_readout):
+                self.readout[i].do_scaleshift = True
+        else:
+            self.readout.do_scaleshift = True
+
+    def disable_scaleshift(self):
+        if self.multi_readouts:
+            for i in range(self.num_readout):
+                self.readout[i].do_scaleshift = False
+        else:
+            self.readout.do_scaleshift = False
+
+    def trainable_gnn_params(self, recurse=True):
+        return self.model.trainable_params(recurse=recurse)
+
+    def trainable_readout_params(self, recurse=True):
+        if self.multi_readouts:
+            params = []
+            for i in range(self.num_readout):
+                params += self.readout.trainable_params(recurse=recurse)
+            return params
+        else:
+            return self.readout.trainable_params(recurse=recurse)
+
     def _get_readout(self,
         readout,
         n_in,
@@ -299,6 +329,7 @@ class Cybertron(nn.Cell):
             print("---with multiple readouts: ")
             for i in range(self.num_readout):
                 print("---"+str(i+1)+(". "+self.readout[i].name+" readout"))
+                self.readout[i].print_info()
         else:
             print("---with readout type: "+self.readout.name)
             self.readout.print_info()
@@ -346,6 +377,7 @@ class Cybertron(nn.Cell):
 
         atom_mask = None
         atoms_number = None
+
         if atom_types is None:
             if self.fixed_atoms:
                 atom_types = self.atom_types
@@ -462,10 +494,11 @@ class CybertronFF(Cybertron):
             cut_shape=cut_shape,
         )
 
-    def construct(self, positions, atom_types=None, pbcbox=None, neighbors=None, neighbor_mask=None):
-        y = 0
+    def construct(self, positions, pbcbox=None, neighbors=None, neighbor_mask=None):
         if self.full_connect and  self.atom_types is not None:
-            atom_types = self.atom_types,
+            atom_types = self.atom_types
+        else:
+            atom_types = None
 
         if self.use_fixed_box:
             pbcbox = self.pbcbox

@@ -72,6 +72,8 @@ class GaussianSmearing(nn.Cell):
             self.width = ms.Parameter(width,"widths")
             self.offset = ms.Parameter(offset,"offset")
 
+        self.exp = P.Exp()
+
     def construct(self, distances):
         """Compute smeared-gaussian distance values.
 
@@ -96,8 +98,8 @@ class GaussianSmearing(nn.Cell):
             # if Gaussian functions are centered, no offset is subtracted
             diff = ex_dis
         # compute smear distance values
-        exp = P.Exp()
-        gauss = exp(coeff * F.square(diff))
+        
+        gauss = self.exp(coeff * F.square(diff))
         return gauss
         
 class LogGaussianDistribution(nn.Cell):

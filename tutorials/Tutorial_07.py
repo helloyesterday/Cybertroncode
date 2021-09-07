@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    sys_name = 'ethanol_kcal_A'
+    sys_name = 'ds_ethanol_kJ-mol_nm'
 
     train_file = sys_name + '_train_1024.npz'
     valid_file = sys_name + '_valid_128.npz'
@@ -30,14 +30,14 @@ if __name__ == '__main__':
     valid_data = np.load(valid_file)
     test_data = np.load(test_file)
 
-    atom_types = Tensor(train_data['z'],ms.int32)
-    num_atom = atom_types.size
-    mol_scale = float(train_data['std'] / num_atom)
-    mol_shift = float(train_data['avg'])
+    atom_types = Tensor(train_data['Z'],ms.int32)
+    num_atom = train_data['natom']
+    mol_scale = train_data['mol_std'] / num_atom
+    mol_shift = train_data['mol_avg']
 
     mod = MolCT(
-        min_rbf_dis=0.1,
-        max_rbf_dis=10,
+        min_rbf_dis=0.01,
+        max_rbf_dis=1,
         num_rbf=32,
         rbf_sigma=0.2,
         n_interactions=3,
@@ -45,16 +45,16 @@ if __name__ == '__main__':
         n_heads=8,
         max_cycles=1,
         self_dis=0.1,
-        unit_length='A',
+        unit_length='nm',
         )
 
-    readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,mol_scale=mol_scale,mol_shift=mol_shift,unit_energy='kcal/mol')
-    net = Cybertron(mod,atom_types=atom_types,full_connect=True,readout=readout,unit_dis='A',unit_energy='kcal/mol')
+    readout = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=1,mol_scale=mol_scale,mol_shift=mol_shift,unit_energy='kJ/mol')
+    net = Cybertron(mod,atom_types=atom_types,full_connect=True,readout=readout,unit_dis='nm',unit_energy='kJ/mol')
 
     net.print_info()
 
     tot_params = 0
-    for i,param in enumerate(net.trainable_params()):
+    for i,param in enumerate(net.get_parameters()):
         tot_params += param.size
         print(i,param.name,param.shape)
     print('Total parameters: ',tot_params)

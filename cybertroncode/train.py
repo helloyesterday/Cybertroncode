@@ -42,8 +42,7 @@ from mindspore._checkparam import Validator as validator
 _cur_dir = os.getcwd()
 
 __all__ = [
-    "DatasetWhitening",
-    "OutputScaleShift",
+    "EvalScaleShift",
     "WithForceLossCell",
     "WithLabelLossCell",
     "WithForceEvalCell",
@@ -56,40 +55,6 @@ __all__ = [
     "TransformerLR",
     ]
 
-class DatasetWhitening(nn.Cell):
-    def __init__(self,
-        mol_scale=1,
-        mol_shift=0,
-        atom_scale=1,
-        atom_shift=0,
-        atom_ref=None,
-        axis=-2,
-    ):
-        super().__init__()
-
-        self.mol_scale = mol_scale
-        self.mol_shift = mol_shift
-
-        self.atom_scale = atom_scale
-        self.atom_shift = atom_shift
-
-        self.atom_ref = atom_ref
-        self.axis = axis
-
-        self.reduce_sum = P.ReduceSum()
-        self.keep_sum = P.ReduceSum(keep_dims=True)
-
-    def construct(self, label, atoms_number, atom_types=None):
-        ref = 0
-        if self.atom_ref is not None:
-            ref = F.gather(self.atom_ref,atom_types,0)
-            ref = self.reduce_sum(ref,self.axis)
-
-        whiten_label = (label - self.mol_shift) / self.mol_scale
-        whiten_label = (whiten_label - ref - self.atom_shift * atoms_number) / self.atom_scale
-        
-        return whiten_label
-
 class OutputScaleShift(nn.Cell):
     def __init__(self,
         mol_scale=1,
@@ -101,13 +66,15 @@ class OutputScaleShift(nn.Cell):
     ):
         super().__init__()
 
-        self.mol_scale = mol_scale
-        self.mol_shift = mol_shift
+        self.mol_scale = Tensor(mol_scale,ms.float32)
+        self.mol_shift = Tensor(mol_shift,ms.float32)
 
-        self.atom_scale = atom_scale
-        self.atom_shift = atom_shift
+        self.atom_scale = Tensor(atom_scale,ms.float32)
+        self.atom_shift = Tensor(atom_shift,ms.float32)
+        self.atom_ref = None
+        if atom_ref is not None:
+            self.atom_ref = Tensor(atom_ref,ms.float32)
 
-        self.atom_ref = atom_ref
         self.axis = axis
 
         self.reduce_sum = P.ReduceSum()
@@ -118,11 +85,47 @@ class OutputScaleShift(nn.Cell):
         if self.atom_ref is not None:
             ref = F.gather(self.atom_ref,atom_types,0)
             ref = self.reduce_sum(ref,self.axis)
-
+        
         scaled_outputs = outputs * self.atom_scale + self.atom_shift * atoms_number + ref
         scaled_outputs = scaled_outputs * self.mol_scale + self.mol_shift
         
         return scaled_outputs
+
+class DatasetNormalization(nn.Cell):
+    def __init__(self,
+        mol_scale=1,
+        mol_shift=0,
+        atom_scale=1,
+        atom_shift=0,
+        atom_ref=None,
+        axis=-2,
+    ):
+        super().__init__()
+
+        self.mol_scale = mol_scale
+        self.mol_shift = mol_shift
+
+        self.atom_scale = atom_scale
+        self.atom_shift = atom_shift
+        self.atom_ref = None
+        if atom_ref is not None:
+            self.atom_ref = Tensor(atom_ref,ms.float32)
+
+        self.axis = axis
+
+        self.reduce_sum = P.ReduceSum()
+        self.keep_sum = P.ReduceSum(keep_dims=True)
+
+    def construct(self, label, atoms_number, atom_types=None):
+        ref = 0
+        if self.atom_ref is not None:
+            ref = F.gather(self.atom_ref,atom_types,0)
+            ref = self.reduce_sum(ref,self.axis)
+
+        noramlized_label = (label - self.mol_shift) / self.mol_scale
+        noramlized_label = (noramlized_label - ref - self.atom_shift * atoms_number) / self.atom_scale
+        
+        return noramlized_label
 
 class LossWithEnergyAndForces(nn.loss.loss.LossBase):
     def __init__(self,
@@ -286,27 +289,8 @@ class WithForceLossCell(WithCell):
         datatypes,
         backbone,
         loss_fn,
-        do_whitening=False,
-        mol_scale=1,
-        mol_shift=0,
-        atom_scale=1,
-        atom_shift=0,
-        atom_ref=None,
     ):
         super().__init__(datatypes=datatypes)
-
-        self.scale = mol_scale * atom_scale
-        self.do_whitening = do_whitening
-        if do_whitening:
-            self.whitening = DatasetWhitening(
-                mol_scale=mol_scale,
-                mol_shift=mol_shift,
-                atom_scale=atom_scale,
-                atom_shift=atom_shift,
-                atom_ref=atom_ref,
-            )
-        else:
-            self.whitening = None
 
         self.fulltypes = 'RZCNnBbLlFE'
         self._find_type_indexes(datatypes)
@@ -367,10 +351,6 @@ class WithForceLossCell(WithCell):
         atoms_number = F.cast(atom_types>0,out.dtype)
         atoms_number = self.keep_sum(atoms_number,-1)
 
-        if self.do_whitening:
-            energy = self.whitening(energy,atoms_number,atom_types)
-            forces /= self.scale
-
         if atom_types is None:
             return self._loss_fn(out,energy,fout,forces)
         else:
@@ -386,12 +366,6 @@ class WithLabelLossCell(WithCell):
         datatypes,
         backbone,
         loss_fn,
-        do_whitening=False,
-        mol_scale=1,
-        mol_shift=0,
-        atom_scale=1,
-        atom_shift=0,
-        atom_ref=None,
         # with_penalty=False,
     ):
         super().__init__(datatypes=datatypes)
@@ -400,18 +374,6 @@ class WithLabelLossCell(WithCell):
         # self.with_penalty = with_penalty
 
         self.atom_types = self._backbone.atom_types
-
-        self.do_whitening = do_whitening
-        if do_whitening:
-            self.whitening = DatasetWhitening(
-                mol_scale=mol_scale,
-                mol_shift=mol_shift,
-                atom_scale=atom_scale,
-                atom_shift=atom_shift,
-                atom_ref=atom_ref,
-            )
-        else:
-            self.whitening = None
 
         self._find_type_indexes(datatypes)
 
@@ -449,9 +411,6 @@ class WithLabelLossCell(WithCell):
         atoms_number = F.cast(atom_types>0,out.dtype)
         atoms_number = self.keep_sum(atoms_number,-1)
 
-        if self.do_whitening:
-            label = self.whitening(label,atoms_number,atom_types)
-
         return self._loss_fn(out,label)
 
 class WithForceEvalCell(WithCell):
@@ -460,7 +419,8 @@ class WithForceEvalCell(WithCell):
         network,
         loss_fn=None,
         add_cast_fp32=False,
-        do_whitening=False,
+        train_data_normed=False,
+        eval_data_normed=False,
         mol_scale=1,
         mol_shift=0,
         atom_scale=1,
@@ -470,10 +430,20 @@ class WithForceEvalCell(WithCell):
         super().__init__(datatypes)
 
         self.scale = mol_scale * atom_scale
-        self.do_whitening = do_whitening
+        self._loss_fn = loss_fn
+
+        self.train_data_normed = train_data_normed
+        self.eval_data_normed = eval_data_normed
+
         self.scaleshift = None
-        self.whitening = None
-        if do_whitening:
+        self.normalization = None
+
+        if train_data_normed and eval_data_normed:
+            mol_shift = 0
+            atom_shift = 0
+            atom_ref = None
+
+        if train_data_normed or eval_data_normed:
             self.scaleshift = OutputScaleShift(
                 mol_scale=mol_scale,
                 mol_shift=mol_shift,
@@ -481,14 +451,15 @@ class WithForceEvalCell(WithCell):
                 atom_shift=atom_shift,
                 atom_ref=atom_ref,
             )
-            if loss_fn is not None:
-                self.whitening = DatasetWhitening(
-                    mol_scale=mol_scale,
-                    mol_shift=mol_shift,
-                    atom_scale=atom_scale,
-                    atom_shift=atom_shift,
-                    atom_ref=atom_ref,
-                )
+        
+        if (loss_fn is not None) and train_data_normed and (not eval_data_normed):
+            self.normalization = DatasetNormalization(
+                mol_scale=mol_scale,
+                mol_shift=mol_shift,
+                atom_scale=atom_scale,
+                atom_shift=atom_shift,
+                atom_ref=atom_ref,
+            )
 
         self.fulltypes = 'RZCNnBbLlFE'
         self._find_type_indexes(datatypes)
@@ -498,7 +469,7 @@ class WithForceEvalCell(WithCell):
             raise TypeError('The datatype "F" must be included in WithForceEvalCell!')
 
         self._network = network
-        self._loss_fn = loss_fn
+        
         self.add_cast_fp32 = add_cast_fp32
 
         self.atom_types = self._network.atom_types
@@ -520,7 +491,7 @@ class WithForceEvalCell(WithCell):
         far_neighbors = inputs[self.L]
         far_mask = inputs[self.l]
 
-        outputs = self._network(
+        eoutputs = self._network(
             positions,
             atom_types,
             pbcbox,
@@ -550,30 +521,39 @@ class WithForceEvalCell(WithCell):
         if self.add_cast_fp32:
             forces = F.mixed_precision_cast(ms.float32, forces)
             energy = F.mixed_precision_cast(ms.float32, energy)
-            outputs = F.cast(outputs, ms.float32)
+            eoutputs = F.cast(eoutputs, ms.float32)
 
         if atom_types is None:
             atom_types = self.atom_types
 
-        atoms_number = F.cast(atom_types>0,outputs.dtype)
+        atoms_number = F.cast(atom_types>0,eoutputs.dtype)
         atoms_number = self.keep_sum(atoms_number,-1)
+
+        energy0 = energy
+        forces0 = forces
+        if self.eval_data_normed:
+            energy = self.scaleshift(energy, atoms_number, atom_types)
+            forces *= self.scale
 
         loss = 0
         if self._loss_fn is not None:
-            _energy = energy
-            _forces = forces
-            if self.do_whitening:
-                _energy = self.whitening(_energy,atoms_number,atom_types)
-                _forces /= self.scale
-
             atom_mask = atom_types > 0
-            loss = self._loss_fn(outputs, _energy, foutputs, _forces, atoms_number, atom_mask)
 
-        if self.do_whitening:
-            outputs = self.scaleshift(outputs,atoms_number,atom_types)
+            if self.train_data_normed:
+                if self.eval_data_normed:
+                    loss = self._loss_fn(eoutputs, energy0, foutputs, forces0, atoms_number, atom_mask)
+                else:
+                    normed_energy = self.normalization(energy0, atoms_number, atom_types)
+                    normed_forces = forces0 / self.scale
+                    loss = self._loss_fn(eoutputs, normed_energy, foutputs, normed_forces, atoms_number, atom_mask)
+            else:
+                loss = self._loss_fn(eoutputs, energy, foutputs, forces, atoms_number, atom_mask)
+
+        if self.train_data_normed:
+            eoutputs = self.scaleshift(eoutputs,atoms_number,atom_types)
             foutputs *= self.scale
         
-        return loss, outputs, energy, foutputs, forces, atoms_number
+        return loss, eoutputs, energy, foutputs, forces, atoms_number
 
 class WithLabelEvalCell(WithCell):
     def __init__(self,
@@ -581,7 +561,8 @@ class WithLabelEvalCell(WithCell):
         network,
         loss_fn=None,
         add_cast_fp32=False,
-        do_whitening=False,
+        train_data_normed=False,
+        eval_data_normed=False,
         mol_scale=1,
         mol_shift=0,
         atom_scale=1,
@@ -596,10 +577,18 @@ class WithLabelEvalCell(WithCell):
 
         self.atom_types = self._network.atom_types
 
-        self.do_whitening = do_whitening
+        self.train_data_normed = train_data_normed
+        self.eval_data_normed = eval_data_normed
+
         self.scaleshift = None
-        self.whitening = None
-        if do_whitening:
+        self.normalization = None
+
+        if train_data_normed and eval_data_normed:
+            mol_shift = 0
+            atom_shift = 0
+            atom_ref = None
+
+        if train_data_normed or eval_data_normed:
             self.scaleshift = OutputScaleShift(
                 mol_scale=mol_scale,
                 mol_shift=mol_shift,
@@ -607,14 +596,15 @@ class WithLabelEvalCell(WithCell):
                 atom_shift=atom_shift,
                 atom_ref=atom_ref,
             )
-            if loss_fn is not None:
-                self.whitening = DatasetWhitening(
-                    mol_scale=mol_scale,
-                    mol_shift=mol_shift,
-                    atom_scale=atom_scale,
-                    atom_shift=atom_shift,
-                    atom_ref=atom_ref,
-                )
+        
+        if (loss_fn is not None) and train_data_normed and (not eval_data_normed):
+            self.normalization = DatasetNormalization(
+                mol_scale=mol_scale,
+                mol_shift=mol_shift,
+                atom_scale=atom_scale,
+                atom_shift=atom_shift,
+                atom_ref=atom_ref,
+            )
 
         self._find_type_indexes(datatypes)
 
@@ -654,15 +644,23 @@ class WithLabelEvalCell(WithCell):
         atoms_number = F.cast(atom_types>0,outputs.dtype)
         atoms_number = self.keep_sum(atoms_number,-1)
 
+        label0 = label
+        if self.eval_data_normed:
+            label = self.scaleshift(label, atoms_number, atom_types)
+
         loss = 0
         if self._loss_fn is not None:
-            _label = label
-            if self.do_whitening:
-                _label = self.whitening(label,atoms_number,atom_types)
-            loss = self._loss_fn(outputs, _label)
+            if self.train_data_normed:
+                if self.eval_data_normed:
+                    loss = self._loss_fn(outputs, label0)
+                else:
+                    normed_label = self.normalization(label0, atoms_number, atom_types)
+                    loss = self._loss_fn(outputs, normed_label)
+            else:
+                loss = self._loss_fn(outputs, label)
 
-        if self.do_whitening:
-            outputs = self.scaleshift(outputs,atoms_number,atom_types)
+        if self.train_data_normed:
+            outputs = self.scaleshift(outputs, atoms_number, atom_types)
 
         return loss, outputs, label, atoms_number
 
@@ -698,7 +696,7 @@ class TrainMonitor(Callback):
 
         self._filename = name + '-info.data'
         self._ckptfile = name + '-best'
-        self._ckptdata = name + '-cpkt.data'
+        self._ckptdata = name + '-ckpt.data'
 
         self.num_ckpt = 1
         self.best_value = 5e4
@@ -715,7 +713,7 @@ class TrainMonitor(Callback):
                 if len(lines) > 1:
                     os.remove(filename)
 
-    def _write_cpkt_file(self,filename,info,network):
+    def _write_ckpt_file(self,filename,info,network):
         ckptfile = os.path.join(self._directory, filename + '.ckpt')
         ckptbck = os.path.join(self._directory, filename + '.bck.ckpt')
         ckptdata = os.path.join(self._directory, self._ckptdata)
@@ -793,7 +791,7 @@ class TrainMonitor(Callback):
                     output_ckpt = vnow < self.best_value
                     num_best = np.count_nonzero(output_ckpt)
                     if num_best > 0:
-                        self._write_cpkt_file(self._ckptfile,info,cb_params.train_network)
+                        self._write_ckpt_file(self._ckptfile,info,cb_params.train_network)
                         source_ckpt = os.path.join(self._directory, self._ckptfile + '.ckpt')
                         for i in range(len(vnow)):
                             if output_ckpt[i]:
@@ -805,7 +803,7 @@ class TrainMonitor(Callback):
                         self.best_value = np.minimum(vnow,self.best_value)
                 else:
                     if vnow < self.best_value:
-                        self._write_cpkt_file(self._ckptfile,info,cb_params.train_network)
+                        self._write_ckpt_file(self._ckptfile,info,cb_params.train_network)
                         self.best_value = vnow
 
         print(info, flush=True)
@@ -1063,12 +1061,18 @@ class TransformerLR(LearningRateSchedule):
         self.learning_rate = learning_rate
 
         self.pow = P.Pow()
-        self.warmup_scale = self.pow(F.cast(warmup_steps,ms.float32),-1.5)
-        self.dim_scale = self.pow(F.cast(dimension,ms.float32),-0.5)
+        self.warmup_steps = F.cast(warmup_steps,ms.float32)
+        # self.warmup_scale = self.pow(F.cast(warmup_steps,ms.float32),-1.5)
+        self.dimension = F.cast(dimension,ms.float32)
+        # self.dim_scale = self.pow(F.cast(dimension,ms.float32),-0.5)
 
         self.min = P.Minimum()
 
     def construct(self, global_step):
         step_num = F.cast(global_step,ms.float32)
-        lr_percent = self.dim_scale * self.min(self.pow(step_num,-0.5), step_num*self.warmup_scale)
+        warmup_scale = self.pow(self.warmup_steps,-1.5)
+        dim_scale = self.pow(self.dimension,-0.5)
+        lr1 = self.pow(step_num,-0.5)
+        lr2 = step_num*warmup_scale
+        lr_percent = dim_scale * self.min(lr1, lr2)
         return self.learning_rate * lr_percent

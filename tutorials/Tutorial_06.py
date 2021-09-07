@@ -21,8 +21,9 @@ from cybertroncode.train import TrainMonitor
 if __name__ == '__main__':
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
+    # context.set_context(mode=context.PYNATIVE_MODE, device_target="GPU")
 
-    sys_name = 'qm9_ev_A'
+    sys_name = 'ds_qm9_kJ-mol_nm_normed'
 
     train_file = sys_name + '_train_1024.npz'
     valid_file = sys_name + '_valid_128.npz'
@@ -37,65 +38,63 @@ if __name__ == '__main__':
     idx = idx1 + idx2
 
     num_atom = int(train_data['Nmax'])
-    mol_scale = train_data['mol_std'][idx1]
-    mol_shift = train_data['mol_avg'][idx1]
-    atom_scale = train_data['atom_std'][idx2]
-    atom_shift = train_data['atom_avg'][idx2]
 
-    scale1 = np.ones_like(mol_scale)
-    shift1 = np.zeros_like(mol_scale)
-    scale2 = np.ones_like(atom_scale)
-    shift2 = np.zeros_like(atom_scale)
-
-    mol_scale = Tensor(np.concatenate([mol_scale,scale2]),ms.float32)
-    mol_shift = Tensor(np.concatenate([mol_shift,shift2]),ms.float32)
-    atom_scale = Tensor(np.concatenate([scale1,atom_scale]),ms.float32)
-    atom_shift = Tensor(np.concatenate([shift1,atom_shift]),ms.float32)
-
-    atom_ref = Tensor(train_data['ref'][:,idx],ms.float32)
+    mol_scale = Tensor(train_data['mol_scale'],ms.float32)
+    mol_shift = Tensor(train_data['mol_shift'],ms.float32)
+    atom_scale = Tensor(train_data['atom_scale'],ms.float32)
+    atom_shift = Tensor(train_data['atom_shift'],ms.float32)
+    atom_ref = Tensor(train_data['atom_ref'],ms.float32)
 
     mod = MolCT(
-        min_rbf_dis=0.1,
-        max_rbf_dis=20,
+        min_rbf_dis=0.01,
+        max_rbf_dis=2,
         num_rbf=64,
         n_interactions=3,
         dim_feature=128,
         n_heads=8,
         activation='swish',
         max_cycles=1,
-        unit_length='A',
+        unit_length='nm',
         )
 
-    readout1 = GraphReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,3,1,1,1],activation='swish',unit_energy=None)
-    readout2 = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,1,1],activation='swish',unit_energy=None)
-    net = Cybertron(mod,max_atoms_number=num_atom,full_connect=True,readout=[readout1,readout2],unit_dis='A',unit_energy=None)
+    readout1 = GraphReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,3,1,1,1],activation='swish',mol_scale=mol_scale[idx1],mol_shift=mol_shift[idx1],unit_energy=None)
+    readout2 = AtomwiseReadout(n_in=mod.dim_feature,n_interactions=mod.n_interactions,n_out=[1,1,1,1],activation='swish',atom_scale=atom_scale[idx2],atom_shift=atom_shift[idx2],atom_ref=atom_ref[:,idx2],unit_energy='kJ/mol')
+    net = Cybertron(mod,max_atoms_number=num_atom,full_connect=True,readout=[readout1,readout2],unit_dis='nm',unit_energy=None)
+    net.disable_scaleshift()
 
     net.print_info()
 
     tot_params = 0
-    for i,param in enumerate(net.trainable_params()):
+    for i,param in enumerate(net.get_parameters()):
         tot_params += param.size
         print(i,param.name,param.shape)
     print('Total parameters: ',tot_params)
+
+    num = 8
+    R = Tensor(train_data['R'][0:num],ms.float32)
+    Z = Tensor(train_data['Z'][0:num],ms.int32)
+
+    E = net(R,Z)
+    print(E.shape)
 
     n_epoch = 8
     repeat_time = 1
     batch_size = 32
 
-    ds_train = ds.NumpySlicesDataset({'R':train_data['R'],'z':train_data['z'],'E':train_data['properties'][:,idx]},shuffle=True)
+    ds_train = ds.NumpySlicesDataset({'R':train_data['R'],'Z':train_data['Z'],'E':train_data['properties'][:,idx]},shuffle=True)
     ds_train = ds_train.batch(batch_size,drop_remainder=True)
     ds_train = ds_train.repeat(repeat_time)
 
-    ds_valid = ds.NumpySlicesDataset({'R':valid_data['R'],'z':valid_data['z'],'E':valid_data['properties'][:,idx]},shuffle=False)
+    ds_valid = ds.NumpySlicesDataset({'R':valid_data['R'],'Z':valid_data['Z'],'E':valid_data['properties'][:,idx]},shuffle=False)
     ds_valid = ds_valid.batch(128)
     ds_valid = ds_valid.repeat(1)
 
-    ds_test = ds.NumpySlicesDataset({'R':test_data['R'],'z':test_data['z'],'E':test_data['properties'][:,idx]},shuffle=False)
+    ds_test = ds.NumpySlicesDataset({'R':test_data['R'],'Z':test_data['Z'],'E':test_data['properties'][:,idx]},shuffle=False)
     ds_test = ds_test.batch(1024)
     ds_test = ds_test.repeat(1)
     
-    loss_network = WithLabelLossCell('RZE',net,nn.MAELoss(),do_whitening=True,mol_scale=mol_scale,mol_shift=mol_shift,atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref)
-    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),do_whitening=True,mol_scale=mol_scale,mol_shift=mol_shift,atom_scale=atom_scale,atom_shift=atom_shift,atom_ref=atom_ref)
+    loss_network = WithLabelLossCell('RZE',net,nn.MAELoss())
+    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),train_data_normed=True,eval_data_normed=True,mol_scale=mol_scale[idx],mol_shift=mol_shift[idx],atom_scale=atom_scale[idx],atom_shift=atom_shift[idx],atom_ref=atom_ref[:,idx])
 
     lr = TransformerLR(learning_rate=1.,warmup_steps=4000,dimension=128)
     optim = nn.Adam(params=net.trainable_params(),learning_rate=lr)
@@ -109,7 +108,6 @@ if __name__ == '__main__':
     model = Model(loss_network,optimizer=optim,eval_network=eval_network,metrics={eval_mae:MAE([1,2],reduce_all_dims=False),atom_mae:MAE([1,2,3],reduce_all_dims=False,averaged_by_atoms=True),eval_loss:MLoss(0)})
 
     record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=16, directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
-
     config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
     ckpoint_cb = ModelCheckpoint(prefix=outname, directory=outdir, config=config_ck)
 
