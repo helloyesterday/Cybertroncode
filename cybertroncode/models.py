@@ -686,13 +686,13 @@ class MolCT(DeepGraphMolecularModel):
                         self.interaction_typenames.append('M0')
             else:
                 if use_dis_inter:
-                    interaction_list = [self.dis_interaction * self.n_interactions]
+                    interaction_list = [self.dis_interaction,] * self.n_interactions
                     self.interaction_typenames = ['D0',] * self.n_interactions
                 elif use_bond_inter:
-                    interaction_list = [self.bond_interaction * self.n_interactions]
+                    interaction_list = [self.bond_interaction,] * self.n_interactions
                     self.interaction_typenames = ['B0',] * self.n_interactions
                 else:
-                    interaction_list = [self.mix_interaction * self.n_interactions]
+                    interaction_list = [self.mix_interaction,] * self.n_interactions
                     self.interaction_typenames = ['M0',] * self.n_interactions
         else:
             if self.interaction_types is not None:
