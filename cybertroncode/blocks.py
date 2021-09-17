@@ -49,7 +49,7 @@ class Dense(nn.Dense):
             weight_init=weight_init,
             bias_init=bias_init,
             has_bias=has_bias,
-            activation=get_activation(activation),
+            activation=get_activation(activation,True),
         )
 
 class MLP(nn.Cell):
@@ -98,7 +98,7 @@ class MLP(nn.Cell):
                     weight_init=weight_init,
                     bias_init=bias_init,
                     has_bias=True,
-                    activation=get_activation(activation),
+                    activation=get_activation(activation,True),
                     )
                 )
                 indim=ldim
@@ -112,7 +112,7 @@ class MLP(nn.Cell):
                     weight_init=weight_init,
                     bias_init=bias_init,
                     has_bias=True,
-                    activation=get_activation(activation),
+                    activation=get_activation(activation,True),
                     )
                 )
             else:
