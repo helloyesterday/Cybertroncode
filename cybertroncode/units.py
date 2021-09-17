@@ -22,7 +22,6 @@
 # limitations under the License.
 # ============================================================================
 
-import numpy as np
 import mindspore as ms
 
 class Units:

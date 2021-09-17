@@ -22,9 +22,9 @@
 # limitations under the License.
 # ============================================================================
 
-import math
-import numpy as np
+import scipy
 import mindspore as ms
+import mindspore.numpy as msnp
 from mindspore import nn
 from mindspore import Tensor
 from mindspore.ops import operations as P
@@ -35,6 +35,7 @@ from cybertroncode.units import units
 __all__ = [
     "GaussianSmearing",
     "LogGaussianDistribution",
+    "LogLegendreBasisExpansion"
 ]
 
 # radial_filter in RadialDistribution
@@ -57,7 +58,7 @@ class GaussianSmearing(nn.Cell):
     ):
         super().__init__()
         # compute offset and width of Gaussian functions
-        offset = Tensor(np.linspace(d_min, d_max, num_rbf),ms.float32)
+        offset = msnp.linspace(d_min, d_max, num_rbf, dtype=ms.float32)
 
         if sigma is None:
             sigma = (d_max-d_min) / (num_rbf-1)
@@ -127,26 +128,18 @@ class LogGaussianDistribution(nn.Cell):
         self.min_cutoff=min_cutoff
         self.max_cutoff=max_cutoff
         
-        self.log = P.Log()
-        self.exp = P.Exp()
-        self.max = P.Maximum()
-        self.min = P.Minimum()
-        self.zeroslike = P.ZerosLike()
-        self.oneslike = P.OnesLike()
-
-        # linspace = nn.LinSpace(log_dmin,0,n_gaussians)
-        
-        log_dmin=math.log(self.d_min)
-        # self.centers = linspace()
-        # self.ones = self.oneslike(self.centers)
-        centers = np.linspace(log_dmin,0,num_rbf)
-        self.centers = Tensor(centers,ms.float32)
-        ones = np.ones_like(centers)
-        self.ones = Tensor(ones,ms.float32)
+        log_dmin = msnp.log(self.d_min,dtype=ms.float32)
+        self.centers = msnp.linspace(log_dmin,0,num_rbf,dtype=ms.float32)
+        self.ones = F.ones_like(self.centers)
         
         if sigma is None:
             sigma = -log_dmin / (num_rbf-1)
         self.rescale = -0.5 / (sigma * sigma)
+
+        self.log = P.Log()
+        self.exp = P.Exp()
+        self.max = P.Maximum()
+        self.min = P.Minimum()
 
     def construct(self, distance):
         dis = distance / self.d_max
@@ -163,9 +156,79 @@ class LogGaussianDistribution(nn.Cell):
         log_gauss = self.exp( self.rescale * log_diff2  )
 
         if self.max_cutoff:
-            ones = self.oneslike(exdis)
-            zeros = self.zeroslike(exdis)
+            ones = F.ones_like(exdis)
+            zeros = F.zeros_like(exdis)
             cuts = F.select(exdis < 1.0, ones, zeros)
             log_gauss = log_gauss * cuts
         
         return log_gauss
+
+
+class LogLegendreBasisExpansion(nn.Cell):
+    def __init__(
+        self,
+        d_min=0.,
+        d_max=units.length(1,'nm'),
+        num_rbf=8,
+        min_cutoff=True,
+        max_cutoff=True,
+        ###
+        sigma=None,
+        trainable=False,
+    ):
+        super().__init__()
+        if d_max <= d_min:
+            raise ValueError('The argument "d_max" must be larger'+
+                'than the argument "d_min" in LogGaussianDistribution!')
+            
+        if d_min <= 0:
+            raise ValueError('The argument "d_min" must be '+
+                ' larger than 0 in LogGaussianDistribution!')
+            
+        self.d_max = d_max
+        self.d_min = d_min / d_max
+
+        self.scale = -2.0 / msnp.log(self.d_min)
+        
+        # K
+        self.num_rbf = num_rbf
+        # K+1
+        self.nbasis = num_rbf + 1
+
+        ### Create Legendre Table:
+        c_pad_list = []
+        for i in range(1,self.nbasis):
+            # [i+1]
+            constant = Tensor(scipy.special.legendre(i).c,ms.float32)
+            zero_pad = msnp.zeros([num_rbf - i],dtype=ms.float32)
+            # [1,K+1]
+            c_pad = msnp.concatenate([zero_pad, constant],axis=0).reshape(1,-1)
+            c_pad_list.append( c_pad )
+
+        # [K, K+1]
+        self.c_matrix = msnp.concatenate(c_pad_list,axis=1)
+
+        # list(K,K-1,K-2,...,2,1,0)
+        power_num = msnp.arange(num_rbf,-1,-1,dtype=ms.int32)
+        self.power_num = F.reshape(power_num,(1,1,1,-1))
+
+        self.log = P.Log()
+        self.pow = P.Pow()
+        self.mmt = nn.MatMul(transpose_x2=True)
+    
+    def construct(self, distance):
+        # [B,A,N]
+        r = self.log(distance/self.d_max) * self.scale + 1
+
+        # [B,A,N,K+1]
+        new_shape = r.shape + (self.nbasis,)
+        r_power = msnp.broadcast_to(F.expand_dims(r,-1),new_shape)
+        r_power = self.pow(r_power,self.power_num)
+
+        # [K, K+1] -> [1,1,1,K,K+1]
+        c_matrix = F.reshape(self.c_matrix,(1,1,self.num_rbf,self.nbasis))
+
+        # [B,A,N,K+1]@[1,1,K,K+1].T -> [B,A,N,K]
+        rbf = self.mmt(r_power,c_matrix)
+
+        return rbf

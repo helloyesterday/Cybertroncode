@@ -23,8 +23,6 @@
 # ============================================================================
 
 from mindspore import nn
-from mindspore.ops import operations as P
-from mindspore.ops import functional as F
 from cybertroncode.activations import get_activation
 
 __all__ = [

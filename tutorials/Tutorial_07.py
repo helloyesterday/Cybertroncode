@@ -19,12 +19,13 @@ from cybertroncode.train import TrainMonitor
 if __name__ == '__main__':
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
+    # context.set_context(mode=context.PYNATIVE_MODE, device_target="GPU")
 
-    sys_name = 'ds_ethanol_kJ-mol_nm'
+    sys_name = 'ds-ethanol-kJ_per_mol-nm'
 
-    train_file = sys_name + '_train_1024.npz'
-    valid_file = sys_name + '_valid_128.npz'
-    test_file  = sys_name + '_test_1024.npz'
+    train_file = sys_name + '-train-1024.npz'
+    valid_file = sys_name + '-valid-128.npz'
+    test_file  = sys_name + '-test-1024.npz'
 
     train_data = np.load(train_file)
     valid_data = np.load(valid_file)
@@ -43,8 +44,8 @@ if __name__ == '__main__':
         n_interactions=3,
         dim_feature=128,
         n_heads=8,
-        max_cycles=1,
-        self_dis=0.1,
+        max_cycles=5,
+        self_dis=0.01,
         unit_length='nm',
         )
 

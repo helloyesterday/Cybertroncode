@@ -1,0 +1,1489 @@
+# [No.1] construct_wrapper.19
+# In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(376)/    def construct(self, *inputs):/
+funcgraph fg_19(
+        %para1 : Tensor(F32)[32, 9, 3]    # inputs0
+        , %para2 : Tensor(F32)[32, 9, 3]    # inputs1
+        , %para3 : Tensor(F32)[32, 1]    # inputs2
+        , %para4 : Ref[Tensor(I32)][]    # step
+        , %para5 : Ref[Tensor(F32)][100, 128]    # model.atom_embedding.embedding_table
+        , %para6 : Ref[Tensor(F32)][128, 32]    # model.dis_filter.linear.weight
+        , %para7 : Ref[Tensor(F32)][128]    # model.dis_filter.linear.bias
+        , %para8 : Ref[Tensor(F32)][128, 128]    # model.dis_filter.residual.nonlinear.mlp.0.weight
+        , %para9 : Ref[Tensor(F32)][128]    # model.dis_filter.residual.nonlinear.mlp.0.bias
+        , %para10 : Ref[Tensor(F32)][128, 128]    # model.dis_filter.residual.nonlinear.mlp.1.weight
+        , %para11 : Ref[Tensor(F32)][128]    # model.dis_filter.residual.nonlinear.mlp.1.bias
+        , %para12 : Ref[Tensor(F32)][128]    # model.interactions.0.positional_embedding.norm.gamma
+        , %para13 : Ref[Tensor(F32)][128]    # model.interactions.0.positional_embedding.norm.beta
+        , %para14 : Ref[Tensor(F32)][128, 128]    # model.interactions.0.positional_embedding.x2q.weight
+        , %para15 : Ref[Tensor(F32)][128, 128]    # model.interactions.0.positional_embedding.x2k.weight
+        , %para16 : Ref[Tensor(F32)][128, 128]    # model.interactions.0.positional_embedding.x2v.weight
+        , %para17 : Ref[Tensor(F32)][128, 128]    # model.interactions.0.multi_head_attention.output.weight
+        , %para18 : Ref[Tensor(F32)][128]    # model.interactions.1.positional_embedding.norm.gamma
+        , %para19 : Ref[Tensor(F32)][128]    # model.interactions.1.positional_embedding.norm.beta
+        , %para20 : Ref[Tensor(F32)][128, 128]    # model.interactions.1.positional_embedding.x2q.weight
+        , %para21 : Ref[Tensor(F32)][128, 128]    # model.interactions.1.positional_embedding.x2k.weight
+        , %para22 : Ref[Tensor(F32)][128, 128]    # model.interactions.1.positional_embedding.x2v.weight
+        , %para23 : Ref[Tensor(F32)][128, 128]    # model.interactions.1.multi_head_attention.output.weight
+        , %para24 : Ref[Tensor(F32)][128]    # model.interactions.2.positional_embedding.norm.gamma
+        , %para25 : Ref[Tensor(F32)][128]    # model.interactions.2.positional_embedding.norm.beta
+        , %para26 : Ref[Tensor(F32)][128, 128]    # model.interactions.2.positional_embedding.x2q.weight
+        , %para27 : Ref[Tensor(F32)][128, 128]    # model.interactions.2.positional_embedding.x2k.weight
+        , %para28 : Ref[Tensor(F32)][128, 128]    # model.interactions.2.positional_embedding.x2v.weight
+        , %para29 : Ref[Tensor(F32)][128, 128]    # model.interactions.2.multi_head_attention.output.weight
+        , %para30 : Ref[Tensor(F32)][64, 128]    # readout.decoder.output.mlp.0.weight
+        , %para31 : Ref[Tensor(F32)][64]    # readout.decoder.output.mlp.0.bias
+        , %para32 : Ref[Tensor(F32)][1, 64]    # readout.decoder.output.mlp.1.weight
+        , %para33 : Ref[Tensor(F32)][1]    # readout.decoder.output.mlp.1.bias
+        , %para34 : Ref[Tensor(F32)][1]    # beta1_power
+        , %para35 : Ref[Tensor(F32)][1]    # beta2_power
+        , %para36 : Ref[Tensor(F32)][100, 128]    # moment1.model.atom_embedding.embedding_table
+        , %para37 : Ref[Tensor(F32)][128, 32]    # moment1.model.dis_filter.linear.weight
+        , %para38 : Ref[Tensor(F32)][128]    # moment1.model.dis_filter.linear.bias
+        , %para39 : Ref[Tensor(F32)][128, 128]    # moment1.model.dis_filter.residual.nonlinear.mlp.0.weight
+        , %para40 : Ref[Tensor(F32)][128]    # moment1.model.dis_filter.residual.nonlinear.mlp.0.bias
+        , %para41 : Ref[Tensor(F32)][128, 128]    # moment1.model.dis_filter.residual.nonlinear.mlp.1.weight
+        , %para42 : Ref[Tensor(F32)][128]    # moment1.model.dis_filter.residual.nonlinear.mlp.1.bias
+        , %para43 : Ref[Tensor(F32)][128]    # moment1.model.interactions.0.positional_embedding.norm.gamma
+        , %para44 : Ref[Tensor(F32)][128]    # moment1.model.interactions.0.positional_embedding.norm.beta
+        , %para45 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.0.positional_embedding.x2q.weight
+        , %para46 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.0.positional_embedding.x2k.weight
+        , %para47 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.0.positional_embedding.x2v.weight
+        , %para48 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.0.multi_head_attention.output.weight
+        , %para49 : Ref[Tensor(F32)][128]    # moment1.model.interactions.1.positional_embedding.norm.gamma
+        , %para50 : Ref[Tensor(F32)][128]    # moment1.model.interactions.1.positional_embedding.norm.beta
+        , %para51 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.1.positional_embedding.x2q.weight
+        , %para52 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.1.positional_embedding.x2k.weight
+        , %para53 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.1.positional_embedding.x2v.weight
+        , %para54 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.1.multi_head_attention.output.weight
+        , %para55 : Ref[Tensor(F32)][128]    # moment1.model.interactions.2.positional_embedding.norm.gamma
+        , %para56 : Ref[Tensor(F32)][128]    # moment1.model.interactions.2.positional_embedding.norm.beta
+        , %para57 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.2.positional_embedding.x2q.weight
+        , %para58 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.2.positional_embedding.x2k.weight
+        , %para59 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.2.positional_embedding.x2v.weight
+        , %para60 : Ref[Tensor(F32)][128, 128]    # moment1.model.interactions.2.multi_head_attention.output.weight
+        , %para61 : Ref[Tensor(F32)][64, 128]    # moment1.readout.decoder.output.mlp.0.weight
+        , %para62 : Ref[Tensor(F32)][64]    # moment1.readout.decoder.output.mlp.0.bias
+        , %para63 : Ref[Tensor(F32)][1, 64]    # moment1.readout.decoder.output.mlp.1.weight
+        , %para64 : Ref[Tensor(F32)][1]    # moment1.readout.decoder.output.mlp.1.bias
+        , %para65 : Ref[Tensor(F32)][100, 128]    # moment2.model.atom_embedding.embedding_table
+        , %para66 : Ref[Tensor(F32)][128, 32]    # moment2.model.dis_filter.linear.weight
+        , %para67 : Ref[Tensor(F32)][128]    # moment2.model.dis_filter.linear.bias
+        , %para68 : Ref[Tensor(F32)][128, 128]    # moment2.model.dis_filter.residual.nonlinear.mlp.0.weight
+        , %para69 : Ref[Tensor(F32)][128]    # moment2.model.dis_filter.residual.nonlinear.mlp.0.bias
+        , %para70 : Ref[Tensor(F32)][128, 128]    # moment2.model.dis_filter.residual.nonlinear.mlp.1.weight
+        , %para71 : Ref[Tensor(F32)][128]    # moment2.model.dis_filter.residual.nonlinear.mlp.1.bias
+        , %para72 : Ref[Tensor(F32)][128]    # moment2.model.interactions.0.positional_embedding.norm.gamma
+        , %para73 : Ref[Tensor(F32)][128]    # moment2.model.interactions.0.positional_embedding.norm.beta
+        , %para74 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.0.positional_embedding.x2q.weight
+        , %para75 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.0.positional_embedding.x2k.weight
+        , %para76 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.0.positional_embedding.x2v.weight
+        , %para77 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.0.multi_head_attention.output.weight
+        , %para78 : Ref[Tensor(F32)][128]    # moment2.model.interactions.1.positional_embedding.norm.gamma
+        , %para79 : Ref[Tensor(F32)][128]    # moment2.model.interactions.1.positional_embedding.norm.beta
+        , %para80 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.1.positional_embedding.x2q.weight
+        , %para81 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.1.positional_embedding.x2k.weight
+        , %para82 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.1.positional_embedding.x2v.weight
+        , %para83 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.1.multi_head_attention.output.weight
+        , %para84 : Ref[Tensor(F32)][128]    # moment2.model.interactions.2.positional_embedding.norm.gamma
+        , %para85 : Ref[Tensor(F32)][128]    # moment2.model.interactions.2.positional_embedding.norm.beta
+        , %para86 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.2.positional_embedding.x2q.weight
+        , %para87 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.2.positional_embedding.x2k.weight
+        , %para88 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.2.positional_embedding.x2v.weight
+        , %para89 : Ref[Tensor(F32)][128, 128]    # moment2.model.interactions.2.multi_head_attention.output.weight
+        , %para90 : Ref[Tensor(F32)][64, 128]    # moment2.readout.decoder.output.mlp.0.weight
+        , %para91 : Ref[Tensor(F32)][64]    # moment2.readout.decoder.output.mlp.0.bias
+        , %para92 : Ref[Tensor(F32)][1, 64]    # moment2.readout.decoder.output.mlp.1.weight
+        , %para93 : Ref[Tensor(F32)][1]    # moment2.readout.decoder.output.mlp.1.bias
+        , %para94 : Ref[Tensor(I32)][1]    # global_step
+        , %para95 : Ref[Tensor(F32)][]    # readout.atom_scale
+        , %para96 : Ref[Tensor(F32)][]    # readout.atom_shift
+        , %para97 : Ref[Tensor(F32)][]    # readout.mol_scale
+        , %para98 : Ref[Tensor(F32)][]    # readout.mol_shift
+    ) {
+    %1 : Tuple[Tensor(F32)*3] = Primitive::MakeTuple{prim_type=1}(%para1, %para2, %para3)    #(Tensor(F32)[32, 9, 3], Tensor(F32)[32, 9, 3], Tensor(F32)[32, 1]) #scope: Default
+      # #[CNode]72
+
+#------------------------> 0
+    %2 = UnpackCall::unpack_call(FuncGraph::fg_73, %1)    #(Func, Tuple[Tensor(F32)*3])    # fg_73=construct.73 #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(377)/        if self.freeze:/#[CNode]74
+    Primitive::Return{prim_type=1}(%2)    #(Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(377)/        if self.freeze:/#[CNode]75
+}
+# order:
+#   1: construct_wrapper.19:[CNode]74{[0]: ValueNode<UnpackCall> unpack_call, [1]: ValueNode<FuncGraph> construct.73, [2]: [CNode]72}
+#   2: construct_wrapper.19:[CNode]75{[0]: ValueNode<Primitive> Return, [1]: [CNode]74}
+
+
+# [No.2] UnpackCall.20
+# 
+funcgraph fg_20(
+        %para99 : Func    # 21
+        , %para100 : Tuple[Tensor(F32)*3]    # 22
+    ) {
+    %1 : Tensor(F32)[32, 9, 3] = Primitive::TupleGetItem{prim_type=1}(%para100, I64(0))    #(Tuple[Tensor(F32)*3], I64) #scope: Default
+      # #76
+    %2 : Tensor(F32)[32, 9, 3] = Primitive::TupleGetItem{prim_type=1}(%para100, I64(1))    #(Tuple[Tensor(F32)*3], I64) #scope: Default
+      # #77
+    %3 : Tensor(F32)[32, 1] = Primitive::TupleGetItem{prim_type=1}(%para100, I64(2))    #(Tuple[Tensor(F32)*3], I64) #scope: Default
+      # #78
+
+#------------------------> 1
+    %4 = %para99(%1, %2, %3)    #(Tensor(F32)[32, 9, 3], Tensor(F32)[32, 9, 3], Tensor(F32)[32, 1]) #scope: Default
+      # #79
+    Primitive::Return{prim_type=1}(%4)    #(Undefined) #scope: Default
+      # #80
+}
+# order:
+#   1: UnpackCall.20:79{[0]: 21, [1]: 76, [2]: 77, [3]: 78}
+#   2: UnpackCall.20:80{[0]: ValueNode<Primitive> Return, [1]: 79}
+
+
+# [No.3] construct.23
+# In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(376)/    def construct(self, *inputs):/
+funcgraph fg_23[fg_19](
+        %para101 : Tensor(F32)[32, 9, 3]    # inputs0
+        , %para102 : Tensor(F32)[32, 9, 3]    # inputs1
+        , %para103 : Tensor(F32)[32, 1]    # inputs2
+    ) {
+    %1 : Bool = FuncGraph::fg_81(Bool(0))    #(Bool)    # fg_81=bool_.81 #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(377)/        if self.freeze:/#82
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_83, FuncGraph::fg_24)    #(Bool, Func, Func)    # fg_83=✓construct.83, fg_24=✗construct.24 #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(377)/        if self.freeze:/#[CNode]84
+
+#------------------------> 2
+    %3 = %2() #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(377)/        if self.freeze:/#[CNode]85
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(377)/        if self.freeze:/#[CNode]86
+}
+# order:
+#   1: construct.23:82{[0]: ValueNode<FuncGraph> bool_.81, [1]: ValueNode<BoolImm> false}
+#   2: construct.23:[CNode]84{[0]: ValueNode<Primitive> Switch, [1]: 82, [2]: ValueNode<FuncGraph> ✓construct.83, [3]: ValueNode<FuncGraph> ✗construct.24}
+#   3: construct.23:[CNode]85{[0]: [CNode]84}
+#   4: construct.23:[CNode]86{[0]: ValueNode<Primitive> Return, [1]: [CNode]85}
+
+
+# [No.4] ✗construct.24
+# In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(377)/        if self.freeze:/
+funcgraph fg_24[fg_23](
+) {
+    %1 : Bool = FuncGraph::fg_81(Bool(0))    #(Bool)    # fg_81=bool_.81 #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(394)/            if self.use_grad_accumulation:/#87
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_88, FuncGraph::fg_25)    #(Bool, Func, Func)    # fg_88=✓✗construct.88, fg_25=✗✗construct.25 #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(394)/            if self.use_grad_accumulation:/#[CNode]89
+
+#------------------------> 3
+    %3 = %2() #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(394)/            if self.use_grad_accumulation:/#[CNode]90
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(394)/            if self.use_grad_accumulation:/#[CNode]91
+}
+# order:
+#   1: ✗construct.24:loss{[0]: ValueNode<UnpackCall> unpack_call, [1]: ValueNode<FuncGraph> construct.92, [2]: [CNode]93}
+#   2: ✗construct.24:[CNode]94{[0]: ValueNode<Primitive> getattr, [1]: loss, [2]: ValueNode<StringImm> dtype}
+#   3: ✗construct.24:[CNode]95{[0]: ValueNode<Primitive> getattr, [1]: loss, [2]: ValueNode<StringImm> shape}
+#   4: ✗construct.24:sens{[0]: ValueNode<DoSignaturePrimitive> S-Prim-Fill, [1]: [CNode]94, [2]: [CNode]95, [3]: ValueNode<FP32Imm> 1.000000}
+#   5: ✗construct.24:[CNode]96{[0]: ValueNode<DoSignaturePrimitive> S-Prim-MakeTuple, [1]: sens}
+#   6: ✗construct.24:grads{[0]: ValueNode<UnpackGraphPrimitive> UnpackGraph, [1]: ValueNode<FuncGraph> construct.92, [2]: [CNode]93, [3]: [CNode]96}
+#   7: ✗construct.24:grads{[0]: ValueNode<DoSignaturePrimitive> S-Prim-grad, [1]: grads, [2]: [CNode]97}
+#   8: ✗construct.24:grads{[0]: ValueNode<UnpackCall> unpack_call, [1]: grads, [2]: [CNode]93, [3]: [CNode]96}
+#   9: ✗construct.24:grads{[0]: ValueNode<DoSignaturePrimitive> S-Prim-identity, [1]: grads}
+#  10: ✗construct.24:87{[0]: ValueNode<FuncGraph> bool_.81, [1]: ValueNode<BoolImm> false}
+#  11: ✗construct.24:[CNode]89{[0]: ValueNode<Primitive> Switch, [1]: 87, [2]: ValueNode<FuncGraph> ✓✗construct.88, [3]: ValueNode<FuncGraph> ✗✗construct.25}
+#  12: ✗construct.24:[CNode]90{[0]: [CNode]89}
+#  13: ✗construct.24:[CNode]91{[0]: ValueNode<Primitive> Return, [1]: [CNode]90}
+
+
+# [No.5] ✗✗construct.25
+# In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(394)/            if self.use_grad_accumulation:/
+funcgraph fg_25[fg_24](
+) {
+    %1 : $(✗✗construct.25):Tuple[Tensor(F32)*3] = Primitive::MakeTuple{prim_type=1}(%para101, %para102, %para103)    #(Tensor(F32)[32, 9, 3], Tensor(F32)[32, 9, 3], Tensor(F32)[32, 1]) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(384)/            loss = self.freeze_nets[step](*inputs)/#[CNode]93
+
+#------------------------> 4
+    %2 = $(✗✗construct.25):UnpackCall::unpack_call(FuncGraph::fg_92, %1)    #(Func, Tuple[Tensor(F32)*3])    # fg_92=construct.92 #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(390)/            loss = self.network(*inputs)/#loss
+    %3 = $(✗✗construct.25):Primitive::getattr{prim_type=1}(%2, "dtype")    #(Undefined, Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(391)/            sens = F.fill(loss.dtype, loss.shape, self.sens)/#[CNode]94
+    %4 = $(✗✗construct.25):Primitive::getattr{prim_type=1}(%2, "shape")    #(Undefined, Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(391)/            sens = F.fill(loss.dtype, loss.shape, self.sens)/#[CNode]95
+    %5 = $(✗✗construct.25):DoSignaturePrimitive::S-Prim-Fill{prim_type=1}(%3, %4, F32(1))    #(Undefined, Undefined, Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(391)/            sens = F.fill(loss.dtype, loss.shape, self.sens)/#sens
+    %6 = $(✗✗construct.25):DoSignaturePrimitive::S-Prim-MakeTuple{prim_type=1}(%5)    #(Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(392)/            grads = self.grad(self.network, self.weights)(*inputs, sens)/#[CNode]96
+    %7 = $(✗✗construct.25):UnpackGraphPrimitive::UnpackGraph{prim_type=1}(FuncGraph::fg_92, %1, %6)    #(Undefined, Tuple[Tensor(F32)*3], Undefined)    # fg_92=construct.92 #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(392)/            grads = self.grad(self.network, self.weights)(*inputs, sens)/#grads
+    %8 = $(✗✗construct.25):Primitive::MakeTuple{prim_type=1}(%para5, %para6, %para7, %para8, %para9, %para10, %para11, %para12, %para13, %para14, %para15, %para16, %para17, %para18, %para19, %para20, %para21, %para22, %para23, %para24, %para25, %para26, %para27, %para28, %para29, %para30, %para31, %para32, %para33)    #(Ref[Tensor(F32)][100, 128], Ref[Tensor(F32)][128, 32], Ref[Tensor(F32)][128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128], Ref[Tensor(F32)][128], Ref[Tensor(F32)][128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128], Ref[Tensor(F32)][128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128], Ref[Tensor(F32)][128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][128, 128], Ref[Tensor(F32)][64, 128], Ref[Tensor(F32)][64], Ref[Tensor(F32)][1, 64], Ref[Tensor(F32)][1]) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(392)/            grads = self.grad(self.network, self.weights)(*inputs, sens)/#[CNode]97
+    %9 = $(✗✗construct.25):DoSignaturePrimitive::S-Prim-grad{prim_type=1}(%7, %8)    #(Undefined, Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(392)/            grads = self.grad(self.network, self.weights)(*inputs, sens)/#grads
+    %10 = $(✗✗construct.25):UnpackCall::unpack_call(%9, %1, %6)    #(Undefined, Tuple[Tensor(F32)*3], Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(392)/            grads = self.grad(self.network, self.weights)(*inputs, sens)/#grads
+    %11 = $(✗✗construct.25):DoSignaturePrimitive::S-Prim-identity{prim_type=1}[side_effect_propagate=I64(1)](%10)    #(Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(393)/            grads = self.grad_reducer(grads)/#grads
+    %12 = FuncGraph::fg_98(%11)    #(Undefined)    # fg_98=construct.98 #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(397)/                loss = F.depend(loss, self.optimizer(grads))/#[CNode]99
+    %13 = DoSignaturePrimitive::S-Prim-Depend{prim_type=1}[side_effect_propagate=I64(1)](%2, %12)    #(Undefined, Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(397)/                loss = F.depend(loss, self.optimizer(grads))/#loss
+    %14 = FuncGraph::fg_100(%13)    #(Undefined)    # fg_100=↓✗construct.100 #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(394)/            if self.use_grad_accumulation:/#[CNode]101
+    Primitive::Return{prim_type=1}(%14)    #(Undefined) #scope: Default
+      # In file /home/isaac/miniconda3/envs/mindspore-1.3/lib/python3.7/site-packages/mindspore/nn/wrap/cell_wrapper.py(394)/            if self.use_grad_accumulation:/#[CNode]102
+}
+# order:
+#   1: ✗✗construct.25:[CNode]99{[0]: ValueNode<FuncGraph> construct.98, [1]: grads}
+#   2: ✗✗construct.25:loss{[0]: ValueNode<DoSignaturePrimitive> S-Prim-Depend, [1]: loss, [2]: [CNode]99}
+#   3: ✗✗construct.25:[CNode]101{[0]: ValueNode<FuncGraph> ↓✗construct.100, [1]: loss}
+#   4: ✗✗construct.25:[CNode]102{[0]: ValueNode<Primitive> Return, [1]: [CNode]101}
+
+
+# [No.6] UnpackCall.26
+# 
+funcgraph fg_26(
+        %para104 : Func    # 27
+        , %para105 : Tuple[Tensor(F32)*3]    # 28
+    ) {
+    %1 : Tensor(F32)[32, 9, 3] = Primitive::TupleGetItem{prim_type=1}(%para105, I64(0))    #(Tuple[Tensor(F32)*3], I64) #scope: Default
+      # #103
+    %2 : Tensor(F32)[32, 9, 3] = Primitive::TupleGetItem{prim_type=1}(%para105, I64(1))    #(Tuple[Tensor(F32)*3], I64) #scope: Default
+      # #104
+    %3 : Tensor(F32)[32, 1] = Primitive::TupleGetItem{prim_type=1}(%para105, I64(2))    #(Tuple[Tensor(F32)*3], I64) #scope: Default
+      # #105
+
+#------------------------> 5
+    %4 = %para104(%1, %2, %3)    #(Tensor(F32)[32, 9, 3], Tensor(F32)[32, 9, 3], Tensor(F32)[32, 1]) #scope: Default
+      # #106
+    Primitive::Return{prim_type=1}(%4)    #(Undefined) #scope: Default
+      # #107
+}
+# order:
+#   1: UnpackCall.26:106{[0]: 27, [1]: 103, [2]: 104, [3]: 105}
+#   2: UnpackCall.26:107{[0]: ValueNode<Primitive> Return, [1]: 106}
+
+
+# [No.7] construct.29
+# In file ../cybertroncode/train.py(309)/    def construct(self, *inputs):/
+funcgraph fg_29[fg_19](
+        %para106 : Tensor(F32)[32, 9, 3]    # inputs0
+        , %para107 : Tensor(F32)[32, 9, 3]    # inputs1
+        , %para108 : Tensor(F32)[32, 1]    # inputs2
+    ) {
+    %1 : Tuple[Tensor(F32)*3] = Primitive::MakeTuple{prim_type=1}(%para106, %para107, %para108)    #(Tensor(F32)[32, 9, 3], Tensor(F32)[32, 9, 3], Tensor(F32)[32, 1]) #scope: Default
+      # In file ../cybertroncode/train.py(309)/    def construct(self, *inputs):/#[CNode]108
+    %2 : Tuple[NoneType] = DoSignaturePrimitive::S-Prim-MakeTuple{prim_type=1}(None)    #(NoneType) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(310)/        inputs = inputs + (None,)/#[CNode]109
+    %3 : Tuple[Tensor(F32)*3,NoneType] = DoSignaturePrimitive::S-Prim-add{prim_type=1}(%1, %2)    #(Tuple[Tensor(F32)*3], Tuple[NoneType]) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(310)/        inputs = inputs + (None,)/#inputs
+    %4 : NoneType = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(-1))    #(Tuple[Tensor(F32)*3,NoneType], I64) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(313)/        atom_types = inputs[self.Z]/#atom_types
+    %5 : Bool = DoSignaturePrimitive::S-Prim-is_{prim_type=1}(%4, None)    #(NoneType, NoneType) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(348)/        if atom_types is None:/#[CNode]110
+    %6 : Bool = FuncGraph::fg_111(%5)    #(Bool)    # fg_111=bool_.111 #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(348)/        if atom_types is None:/#[CNode]110
+    %7 : Func = Primitive::Switch{prim_type=1}(%6, FuncGraph::fg_30, FuncGraph::fg_112)    #(Bool, Func, Func)    # fg_30=✓construct.30, fg_112=✗construct.112 #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(348)/        if atom_types is None:/#[CNode]113
+
+#------------------------> 6
+    %8 = %7() #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(348)/        if atom_types is None:/#[CNode]114
+    Primitive::Return{prim_type=1}(%8)    #(Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(348)/        if atom_types is None:/#[CNode]115
+}
+# order:
+#   1: construct.29:[CNode]109{[0]: ValueNode<DoSignaturePrimitive> S-Prim-MakeTuple, [1]: ValueNode<None> None}
+#   2: construct.29:inputs{[0]: ValueNode<DoSignaturePrimitive> S-Prim-add, [1]: [CNode]108, [2]: [CNode]109}
+#   3: construct.29:positions{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: inputs, [2]: ValueNode<Int64Imm> 0}
+#   4: construct.29:atom_types{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: inputs, [2]: ValueNode<Int64Imm> -1}
+#   5: construct.29:pbcbox{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: inputs, [2]: ValueNode<Int64Imm> -1}
+#   6: construct.29:neighbors{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: inputs, [2]: ValueNode<Int64Imm> -1}
+#   7: construct.29:neighbor_mask{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: inputs, [2]: ValueNode<Int64Imm> -1}
+#   8: construct.29:bonds{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: inputs, [2]: ValueNode<Int64Imm> -1}
+#   9: construct.29:bond_mask{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: inputs, [2]: ValueNode<Int64Imm> -1}
+#  10: construct.29:far_neighbors{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: inputs, [2]: ValueNode<Int64Imm> -1}
+#  11: construct.29:far_mask{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: inputs, [2]: ValueNode<Int64Imm> -1}
+#  12: construct.29:Φenergy{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: inputs, [2]: ValueNode<Int64Imm> 2}
+#  13: construct.29:Φout{[0]: ValueNode<FuncGraph> construct.116, [1]: positions, [2]: atom_types, [3]: pbcbox, [4]: neighbors, [5]: neighbor_mask, [6]: bonds, [7]: bond_mask, [8]: far_neighbors, [9]: far_mask}
+#  14: construct.29:Φforces{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: inputs, [2]: ValueNode<Int64Imm> 1}
+#  15: construct.29:[CNode]117{[0]: ValueNode<DoSignaturePrimitive> S-Prim-negative, [1]: ValueNode<Int64Imm> 1}
+#  16: construct.29:118{[0]: ValueNode<UnpackGraphPrimitive> UnpackGraph, [1]: ValueNode<FuncGraph> construct.116, [2]: positions, [3]: atom_types, [4]: pbcbox, [5]: neighbors, [6]: neighbor_mask, [7]: bonds, [8]: bond_mask, [9]: far_neighbors, [10]: far_mask}
+#  17: construct.29:118{[0]: ValueNode<DoSignaturePrimitive> S-Prim-grad, [1]: 118}
+#  18: construct.29:118{[0]: 118, [1]: positions, [2]: atom_types, [3]: pbcbox, [4]: neighbors, [5]: neighbor_mask, [6]: bonds, [7]: bond_mask, [8]: far_neighbors, [9]: far_mask}
+#  19: construct.29:Φfout{[0]: ValueNode<DoSignaturePrimitive> S-Prim-mul, [1]: [CNode]117, [2]: 118}
+#  20: construct.29:[CNode]110{[0]: ValueNode<DoSignaturePrimitive> S-Prim-is_, [1]: atom_types, [2]: ValueNode<None> None}
+#  21: construct.29:[CNode]110{[0]: ValueNode<FuncGraph> bool_.111, [1]: [CNode]110}
+#  22: construct.29:[CNode]113{[0]: ValueNode<Primitive> Switch, [1]: [CNode]110, [2]: ValueNode<FuncGraph> ✓construct.30, [3]: ValueNode<FuncGraph> ✗construct.112}
+#  23: construct.29:[CNode]114{[0]: [CNode]113}
+#  24: construct.29:[CNode]115{[0]: ValueNode<Primitive> Return, [1]: [CNode]114}
+
+
+# [No.8] ✓construct.30
+# In file ../cybertroncode/train.py(348)/        if atom_types is None:/
+funcgraph fg_30[fg_29](
+) {
+
+#------------------------> 7
+    %1 = FuncGraph::fg_31(Tensor(34)[1, 9])    #(Tensor(I32)[1, 9])    # fg_31=↓construct.31 #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(348)/        if atom_types is None:/#[CNode]119
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(348)/        if atom_types is None:/#[CNode]120
+}
+# order:
+#   1: ✓construct.30:[CNode]119{[0]: ValueNode<FuncGraph> ↓construct.31, [1]: ValueNode<Tensor> Tensor(shape=[1, 9], dtype=Int32, value=
+[[6 6 8 ... 1 1 1]])}
+#   2: ✓construct.30:[CNode]120{[0]: ValueNode<Primitive> Return, [1]: [CNode]119}
+
+
+# [No.9] ↓construct.31
+# In file ../cybertroncode/train.py(348)/        if atom_types is None:/
+funcgraph fg_31[fg_29](
+        %para109 : Tensor(I32)[1, 9]    # Φatom_types
+    ) {
+    %1 : Bool = DoSignaturePrimitive::S-Prim-is_{prim_type=1}(%para109, None)    #(Tensor(I32)[1, 9], NoneType) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(354)/        if atom_types is None:/#[CNode]121
+    %2 : Bool = FuncGraph::fg_111(%1)    #(Bool)    # fg_111=bool_.111 #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(354)/        if atom_types is None:/#[CNode]121
+    %3 : Func = Primitive::Switch{prim_type=1}(%2, FuncGraph::fg_122, FuncGraph::fg_32)    #(Bool, Func, Func)    # fg_122=✓↓construct.122, fg_32=✗↓construct.32 #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(354)/        if atom_types is None:/#[CNode]123
+
+#------------------------> 8
+    %4 = %3() #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(354)/        if atom_types is None:/#[CNode]124
+    Primitive::Return{prim_type=1}(%4)    #(Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(354)/        if atom_types is None:/#[CNode]125
+}
+# order:
+#   1: ↓construct.31:[CNode]126{[0]: ValueNode<DoSignaturePrimitive> S-Prim-greater, [1]: Φatom_types, [2]: ValueNode<Int64Imm> 0}
+#   2: ↓construct.31:[CNode]127{[0]: ValueNode<Primitive> getattr, [1]: Φout, [2]: ValueNode<StringImm> dtype}
+#   3: ↓construct.31:atoms_number{[0]: ValueNode<DoSignaturePrimitive> S-Prim-Cast, [1]: [CNode]126, [2]: [CNode]127}
+#   4: ↓construct.31:[CNode]128{[0]: ValueNode<DoSignaturePrimitive> S-Prim-negative, [1]: ValueNode<Int64Imm> 1}
+#   5: ↓construct.31:atoms_number{[0]: ValueNode<DoSignaturePrimitive> S-Prim-ReduceSum, [1]: atoms_number, [2]: [CNode]128}
+#   6: ↓construct.31:[CNode]121{[0]: ValueNode<DoSignaturePrimitive> S-Prim-is_, [1]: Φatom_types, [2]: ValueNode<None> None}
+#   7: ↓construct.31:[CNode]121{[0]: ValueNode<FuncGraph> bool_.111, [1]: [CNode]121}
+#   8: ↓construct.31:[CNode]123{[0]: ValueNode<Primitive> Switch, [1]: [CNode]121, [2]: ValueNode<FuncGraph> ✓↓construct.122, [3]: ValueNode<FuncGraph> ✗↓construct.32}
+#   9: ↓construct.31:[CNode]124{[0]: [CNode]123}
+#  10: ↓construct.31:[CNode]125{[0]: ValueNode<Primitive> Return, [1]: [CNode]124}
+
+
+# [No.10] ✗↓construct.32
+# In file ../cybertroncode/train.py(354)/        if atom_types is None:/
+funcgraph fg_32[fg_31](
+) {
+    %1 : $(✗↓construct.32):Tuple[Tensor(F32)*3] = Primitive::MakeTuple{prim_type=1}(%para106, %para107, %para108)    #(Tensor(F32)[32, 9, 3], Tensor(F32)[32, 9, 3], Tensor(F32)[32, 1]) #scope: Default
+      # In file ../cybertroncode/train.py(309)/    def construct(self, *inputs):/#[CNode]108
+    %2 : $(✗↓construct.32):Tuple[NoneType] = DoSignaturePrimitive::S-Prim-MakeTuple{prim_type=1}(None)    #(NoneType) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(310)/        inputs = inputs + (None,)/#[CNode]109
+    %3 : $(✗↓construct.32):Tuple[Tensor(F32)*3,NoneType] = DoSignaturePrimitive::S-Prim-add{prim_type=1}(%1, %2)    #(Tuple[Tensor(F32)*3], Tuple[NoneType]) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(310)/        inputs = inputs + (None,)/#inputs
+    %4 : $(✗↓construct.32):Tensor(F32)[32, 9, 3] = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(0))    #(Tuple[Tensor(F32)*3,NoneType], I64) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(312)/        positions = inputs[self.R]/#positions
+    %5 : $(✗↓construct.32):NoneType = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(-1))    #(Tuple[Tensor(F32)*3,NoneType], I64) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(313)/        atom_types = inputs[self.Z]/#atom_types
+    %6 : $(✗↓construct.32):NoneType = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(-1))    #(Tuple[Tensor(F32)*3,NoneType], I64) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(314)/        pbcbox = inputs[self.C]/#pbcbox
+    %7 : $(✗↓construct.32):NoneType = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(-1))    #(Tuple[Tensor(F32)*3,NoneType], I64) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(315)/        neighbors = inputs[self.N]/#neighbors
+    %8 : $(✗↓construct.32):NoneType = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(-1))    #(Tuple[Tensor(F32)*3,NoneType], I64) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(316)/        neighbor_mask = inputs[self.n]/#neighbor_mask
+    %9 : $(✗↓construct.32):NoneType = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(-1))    #(Tuple[Tensor(F32)*3,NoneType], I64) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(317)/        bonds = inputs[self.B]/#bonds
+    %10 : $(✗↓construct.32):NoneType = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(-1))    #(Tuple[Tensor(F32)*3,NoneType], I64) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(318)/        bond_mask = inputs[self.b]/#bond_mask
+    %11 : $(✗↓construct.32):NoneType = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(-1))    #(Tuple[Tensor(F32)*3,NoneType], I64) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(319)/        far_neighbors = inputs[self.L]/#far_neighbors
+    %12 : $(✗↓construct.32):NoneType = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(-1))    #(Tuple[Tensor(F32)*3,NoneType], I64) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(320)/        far_mask = inputs[self.l]/#far_mask
+
+#------------------------> 9
+    %13 = $(✗↓construct.32):FuncGraph::fg_116(%4, %5, %6, %7, %8, %9, %10, %11, %12)    #(Tensor(F32)[32, 9, 3], NoneType, NoneType, NoneType, NoneType, NoneType, NoneType, NoneType, NoneType)    # fg_116=construct.116 #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(351)/        atoms_number = F.cast(atom_types>0,out.dtype)/#Φout
+    %14 = $(✗↓construct.32):DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(2))    #(Tuple[Tensor(F32)*3,NoneType], Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(355)/            return self._loss_fn(out,energy,fout,forces)/#Φenergy
+    %15 = $(✗↓construct.32):DoSignaturePrimitive::S-Prim-negative{prim_type=1}(I64(1))    #(Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(336)/        fout = -1 * self.grad_op(self._backbone)(/#[CNode]117
+    %16 = $(✗↓construct.32):UnpackGraphPrimitive::UnpackGraph{prim_type=1}(FuncGraph::fg_116, %4, %5, %6, %7, %8, %9, %10, %11, %12)    #(Undefined, Tensor(F32)[32, 9, 3], NoneType, NoneType, NoneType, NoneType, NoneType, NoneType, NoneType, NoneType)    # fg_116=construct.116 #scope: Default
+      # In file ../cybertroncode/train.py(336)/        fout = -1 * self.grad_op(self._backbone)(/#118
+    %17 = $(✗↓construct.32):DoSignaturePrimitive::S-Prim-grad{prim_type=1}(%16)    #(Undefined) #scope: Default
+      # In file ../cybertroncode/train.py(336)/        fout = -1 * self.grad_op(self._backbone)(/#118
+    %18 = $(✗↓construct.32):%17(%4, %5, %6, %7, %8, %9, %10, %11, %12)    #(Tensor(F32)[32, 9, 3], NoneType, NoneType, NoneType, NoneType, NoneType, NoneType, NoneType, NoneType) #scope: Default
+      # In file ../cybertroncode/train.py(336)/        fout = -1 * self.grad_op(self._backbone)(/#118
+    %19 = $(✗↓construct.32):DoSignaturePrimitive::S-Prim-mul{prim_type=1}(%15, %18)    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(355)/            return self._loss_fn(out,energy,fout,forces)/#Φfout
+    %20 = $(✗↓construct.32):DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(1))    #(Tuple[Tensor(F32)*3,NoneType], Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(355)/            return self._loss_fn(out,energy,fout,forces)/#Φforces
+    %21 = $(✗↓construct.32):DoSignaturePrimitive::S-Prim-greater{prim_type=1}(%para109, I64(0))    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(351)/        atoms_number = F.cast(atom_types>0,out.dtype)/#[CNode]126
+    %22 = $(✗↓construct.32):Primitive::getattr{prim_type=1}(%13, "dtype")    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(351)/        atoms_number = F.cast(atom_types>0,out.dtype)/#[CNode]127
+    %23 = $(✗↓construct.32):DoSignaturePrimitive::S-Prim-Cast{prim_type=1}[IsFeatureMapInputList=(U64(0)), is_backed_cast=Bool(0), output_names=["output"], output_is_dynamic_shape=Bool(0), IsFeatureMapOutput=Bool(1), DstT=I32, input_names=["x", "dst_type"], SrcT=Bool, dst_type=I32](%21, %22)    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(351)/        atoms_number = F.cast(atom_types>0,out.dtype)/#atoms_number
+    %24 = $(✗↓construct.32):DoSignaturePrimitive::S-Prim-negative{prim_type=1}(I64(1))    #(Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(352)/        atoms_number = self.keep_sum(atoms_number,-1)/#[CNode]128
+    %25 = $(✗↓construct.32):DoSignaturePrimitive::S-Prim-ReduceSum{prim_type=1}[keep_dims=Bool(1), input_names=["input_x", "axis"], output_names=["y"]](%23, %24)    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(352)/        atoms_number = self.keep_sum(atoms_number,-1)/#atoms_number
+    %26 = DoSignaturePrimitive::S-Prim-greater{prim_type=1}(%para109, I64(0))    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(357)/            atom_mask = atom_types > 0/#atom_mask
+    %27 = FuncGraph::fg_129(%13, %14, %19, %20, %25, %26)    #(Undefined, Undefined, Undefined, Undefined, Undefined, Undefined)    # fg_129=construct.129 #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(358)/            return self._loss_fn(out,energy,fout,forces,atoms_number,atom_mask)/#[CNode]130
+    Primitive::Return{prim_type=1}(%27)    #(Undefined) #scope: Default/network-WithForceLossCell
+      # In file ../cybertroncode/train.py(358)/            return self._loss_fn(out,energy,fout,forces,atoms_number,atom_mask)/#[CNode]131
+}
+# order:
+#   1: ✗↓construct.32:atom_mask{[0]: ValueNode<DoSignaturePrimitive> S-Prim-greater, [1]: Φatom_types, [2]: ValueNode<Int64Imm> 0}
+#   2: ✗↓construct.32:[CNode]130{[0]: ValueNode<FuncGraph> construct.129, [1]: Φout, [2]: Φenergy, [3]: Φfout, [4]: Φforces, [5]: atoms_number, [6]: atom_mask}
+#   3: ✗↓construct.32:[CNode]131{[0]: ValueNode<Primitive> Return, [1]: [CNode]130}
+
+
+# [No.11] construct.33
+# In file ../cybertroncode/cybertron.py(342)/    def construct(self,/
+funcgraph fg_33[fg_19](
+        %para110 : Tensor(F32)[32, 9, 3]    # Φpositions
+        , %para111 : NoneType    # atom_types
+        , %para112 : NoneType    # Φpbcbox
+        , %para113 : NoneType    # neighbors
+        , %para114 : NoneType    # neighbor_mask
+        , %para115 : NoneType    # Φbonds
+        , %para116 : NoneType    # Φbond_mask
+        , %para117 : NoneType    # far_neighbors
+        , %para118 : NoneType    # far_mask
+    ) {
+    %1 : Bool = DoSignaturePrimitive::S-Prim-is_{prim_type=1}(%para111, None)    #(NoneType, NoneType) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(380)/        if atom_types is None:/#[CNode]132
+    %2 : Bool = FuncGraph::fg_133(%1)    #(Bool)    # fg_133=bool_.133 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(380)/        if atom_types is None:/#[CNode]132
+    %3 : Func = Primitive::Switch{prim_type=1}(%2, FuncGraph::fg_34, FuncGraph::fg_134)    #(Bool, Func, Func)    # fg_34=✓construct.34, fg_134=✗construct.134 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(380)/        if atom_types is None:/#[CNode]135
+
+#------------------------> 10
+    %4 = %3() #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(380)/        if atom_types is None:/#[CNode]136
+    Primitive::Return{prim_type=1}(%4)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(380)/        if atom_types is None:/#[CNode]137
+}
+# order:
+#   1: construct.33:[CNode]132{[0]: ValueNode<DoSignaturePrimitive> S-Prim-is_, [1]: atom_types, [2]: ValueNode<None> None}
+#   2: construct.33:[CNode]132{[0]: ValueNode<FuncGraph> bool_.133, [1]: [CNode]132}
+#   3: construct.33:[CNode]135{[0]: ValueNode<Primitive> Switch, [1]: [CNode]132, [2]: ValueNode<FuncGraph> ✓construct.34, [3]: ValueNode<FuncGraph> ✗construct.134}
+#   4: construct.33:[CNode]136{[0]: [CNode]135}
+#   5: construct.33:[CNode]137{[0]: ValueNode<Primitive> Return, [1]: [CNode]136}
+
+
+# [No.12] ✓construct.34
+# In file ../cybertroncode/cybertron.py(380)/        if atom_types is None:/
+funcgraph fg_34[fg_33](
+) {
+    %1 : Bool = FuncGraph::fg_133(Bool(1))    #(Bool)    # fg_133=bool_.133 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(381)/            if self.fixed_atoms:/#138
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_35, FuncGraph::fg_139)    #(Bool, Func, Func)    # fg_35=✓✓construct.35, fg_139=✗✓construct.139 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(381)/            if self.fixed_atoms:/#[CNode]140
+
+#------------------------> 11
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(381)/            if self.fixed_atoms:/#[CNode]141
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(381)/            if self.fixed_atoms:/#[CNode]142
+}
+# order:
+#   1: ✓construct.34:138{[0]: ValueNode<FuncGraph> bool_.133, [1]: ValueNode<BoolImm> true}
+#   2: ✓construct.34:[CNode]140{[0]: ValueNode<Primitive> Switch, [1]: 138, [2]: ValueNode<FuncGraph> ✓✓construct.35, [3]: ValueNode<FuncGraph> ✗✓construct.139}
+#   3: ✓construct.34:[CNode]141{[0]: [CNode]140}
+#   4: ✓construct.34:[CNode]142{[0]: ValueNode<Primitive> Return, [1]: [CNode]141}
+
+
+# [No.13] ✓✓construct.35
+# In file ../cybertroncode/cybertron.py(381)/            if self.fixed_atoms:/
+funcgraph fg_35[fg_33](
+) {
+    %1 : Bool = FuncGraph::fg_133(Bool(1))    #(Bool)    # fg_133=bool_.133 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(385)/                if  self.full_connect:/#143
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_36, FuncGraph::fg_144)    #(Bool, Func, Func)    # fg_36=✓✓✓construct.36, fg_144=✗✓✓construct.144 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(385)/                if  self.full_connect:/#[CNode]145
+
+#------------------------> 12
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(385)/                if  self.full_connect:/#[CNode]146
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(385)/                if  self.full_connect:/#[CNode]147
+}
+# order:
+#   1: ✓✓construct.35:143{[0]: ValueNode<FuncGraph> bool_.133, [1]: ValueNode<BoolImm> true}
+#   2: ✓✓construct.35:[CNode]145{[0]: ValueNode<Primitive> Switch, [1]: 143, [2]: ValueNode<FuncGraph> ✓✓✓construct.36, [3]: ValueNode<FuncGraph> ✗✓✓construct.144}
+#   3: ✓✓construct.35:[CNode]146{[0]: [CNode]145}
+#   4: ✓✓construct.35:[CNode]147{[0]: ValueNode<Primitive> Return, [1]: [CNode]146}
+
+
+# [No.14] ✓✓✓construct.36
+# In file ../cybertroncode/cybertron.py(385)/                if  self.full_connect:/
+funcgraph fg_36[fg_33](
+) {
+
+#------------------------> 13
+    %1 = FuncGraph::fg_37(Tensor(34)[1, 9, 8], None)    #(Tensor(I32)[1, 9, 8], NoneType)    # fg_37=↓✓✓construct.37 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(385)/                if  self.full_connect:/#[CNode]148
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(385)/                if  self.full_connect:/#[CNode]149
+}
+# order:
+#   1: ✓✓✓construct.36:[CNode]148{[0]: ValueNode<FuncGraph> ↓✓✓construct.37, [1]: ValueNode<Tensor> Tensor(shape=[1, 9, 8], dtype=Int32, value= [...]), [2]: ValueNode<None> None}
+#   2: ✓✓✓construct.36:[CNode]149{[0]: ValueNode<Primitive> Return, [1]: [CNode]148}
+
+
+# [No.15] ↓✓✓construct.37
+# In file ../cybertroncode/cybertron.py(385)/                if  self.full_connect:/
+funcgraph fg_37[fg_33](
+        %para119 : Tensor(I32)[1, 9, 8]    # Φneighbors
+        , %para120 : NoneType    # Φneighbor_mask
+    ) {
+
+#------------------------> 14
+    %1 = FuncGraph::fg_38()    # fg_38=↓✓construct.38 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(381)/            if self.fixed_atoms:/#[CNode]150
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(381)/            if self.fixed_atoms:/#[CNode]151
+}
+# order:
+#   1: ↓✓✓construct.37:[CNode]150{[0]: ValueNode<FuncGraph> ↓✓construct.38}
+#   2: ↓✓✓construct.37:[CNode]151{[0]: ValueNode<Primitive> Return, [1]: [CNode]150}
+
+
+# [No.16] ↓✓construct.38
+# In file ../cybertroncode/cybertron.py(381)/            if self.fixed_atoms:/
+funcgraph fg_38[fg_37](
+) {
+
+#------------------------> 15
+    %1 = FuncGraph::fg_39(%para112, None, %para115, %para110, NameSpace::Module, None, None, %para116, %para119, Tensor(34)[1, 9], NameSpace::Module, ClassType, %para120, None, DoSignaturePrimitive::S-Prim-make_range{prim_type=1}, Tensor(43)[1, 1])    #(NoneType, NoneType, NoneType, Tensor(F32)[32, 9, 3], ExternalType, NoneType, NoneType, NoneType, Tensor(I32)[1, 9, 8], Tensor(I32)[1, 9], ExternalType, Func, NoneType, NoneType, Func, Tensor(F32)[1, 1])    # fg_39=↓construct.39 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(380)/        if atom_types is None:/#[CNode]152
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(380)/        if atom_types is None:/#[CNode]153
+}
+# order:
+#   1: ↓✓construct.38:[CNode]152{[0]: ValueNode<FuncGraph> ↓construct.39, [1]: Φpbcbox, [2]: ValueNode<None> None, [3]: Φbonds, [4]: Φpositions, [5]: ValueNode<NameSpace> Module, [6]: ValueNode<None> None, [7]: ValueNode<None> None, [8]: Φbond_mask, [9]: Φneighbors, [10]: ValueNode<Tensor> Tensor(shape=[1, 9], dtype=Int32, value=
+[[6 6 8 ... 1 1 1]]), [11]: ValueNode<NameSpace> Module, [12]: ValueNode<ClassType> class 'int', [13]: Φneighbor_mask, [14]: ValueNode<None> None, [15]: ValueNode<DoSignaturePrimitive> S-Prim-make_range, [16]: ValueNode<Tensor> Tensor(shape=[1, 1], dtype=Float32, value=
+<uninitialized>)}
+#   2: ↓✓construct.38:[CNode]153{[0]: ValueNode<Primitive> Return, [1]: [CNode]152}
+
+
+# [No.17] ↓construct.39
+# In file ../cybertroncode/cybertron.py(380)/        if atom_types is None:/
+funcgraph fg_39[fg_19](
+        %para121 : NoneType    # Φpbcbox
+        , %para122 : NoneType    # Φself.pbcbox
+        , %para123 : NoneType    # Φbonds
+        , %para124 : Tensor(F32)[32, 9, 3]    # Φpositions
+        , %para125 : ExternalType    # Φms
+        , %para126 : NoneType    # Φself.bonds
+        , %para127 : NoneType    # Φself.bond_mask
+        , %para128 : NoneType    # Φbond_mask
+        , %para129 : Tensor(I32)[1, 9, 8]    # Φneighbors
+        , %para130 : Tensor(I32)[1, 9]    # Φatom_types
+        , %para131 : ExternalType    # ΦF
+        , %para132 : Func    # Φint
+        , %para133 : NoneType    # Φneighbor_mask
+        , %para134 : NoneType    # Φatom_mask
+        , %para135 : Func    # Φrange
+        , %para136 : Tensor(F32)[1, 1]    # Φatoms_number
+    ) {
+    %1 : Bool = DoSignaturePrimitive::S-Prim-is_{prim_type=1}(%para121, None)    #(NoneType, NoneType) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/#[CNode]154
+    %2 : Bool = FuncGraph::fg_133(%1)    #(Bool)    # fg_133=bool_.133 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/#[CNode]154
+    %3 : Func = Primitive::Switch{prim_type=1}(%2, FuncGraph::fg_155, FuncGraph::fg_156)    #(Bool, Func, Func)    # fg_155=↰↓construct.155, fg_156=↱↓construct.156 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/#[CNode]157
+    %4 : Bool = %3() #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/#[CNode]158
+    %5 : Bool = FuncGraph::fg_133(%4)    #(Bool)    # fg_133=bool_.133 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/#[CNode]158
+    %6 : Func = Primitive::Switch{prim_type=1}(%5, FuncGraph::fg_159, FuncGraph::fg_40)    #(Bool, Func, Func)    # fg_159=✓↓construct.159, fg_40=✗↓construct.40 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/#[CNode]160
+
+#------------------------> 16
+    %7 = %6() #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/#[CNode]161
+    Primitive::Return{prim_type=1}(%7)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/#[CNode]162
+}
+# order:
+#   1: ↓construct.39:[CNode]154{[0]: ValueNode<DoSignaturePrimitive> S-Prim-is_, [1]: Φpbcbox, [2]: ValueNode<None> None}
+#   2: ↓construct.39:[CNode]154{[0]: ValueNode<FuncGraph> bool_.133, [1]: [CNode]154}
+#   3: ↓construct.39:[CNode]157{[0]: ValueNode<Primitive> Switch, [1]: [CNode]154, [2]: ValueNode<FuncGraph> ↰↓construct.155, [3]: ValueNode<FuncGraph> ↱↓construct.156}
+#   4: ↓construct.39:[CNode]158{[0]: [CNode]157}
+#   5: ↓construct.39:[CNode]158{[0]: ValueNode<FuncGraph> bool_.133, [1]: [CNode]158}
+#   6: ↓construct.39:[CNode]160{[0]: ValueNode<Primitive> Switch, [1]: [CNode]158, [2]: ValueNode<FuncGraph> ✓↓construct.159, [3]: ValueNode<FuncGraph> ✗↓construct.40}
+#   7: ↓construct.39:[CNode]161{[0]: [CNode]160}
+#   8: ↓construct.39:[CNode]162{[0]: ValueNode<Primitive> Return, [1]: [CNode]161}
+
+
+# [No.18] ✗↓construct.40
+# In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/
+funcgraph fg_40[fg_39](
+) {
+
+#------------------------> 17
+    %1 = FuncGraph::fg_41(%para121)    #(NoneType)    # fg_41=↓↓construct.41 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/#[CNode]163
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/#[CNode]164
+}
+# order:
+#   1: ✗↓construct.40:[CNode]163{[0]: ValueNode<FuncGraph> ↓↓construct.41, [1]: Φpbcbox}
+#   2: ✗↓construct.40:[CNode]164{[0]: ValueNode<Primitive> Return, [1]: [CNode]163}
+
+
+# [No.19] ↓↓construct.41
+# In file ../cybertroncode/cybertron.py(396)/        if pbcbox is None and self.use_fixed_box:/
+funcgraph fg_41[fg_39](
+        %para137 : NoneType    # Φpbcbox
+    ) {
+    %1 : Bool = FuncGraph::fg_133(Bool(0))    #(Bool)    # fg_133=bool_.133 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(399)/        if self.use_bonds:/#165
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_166, FuncGraph::fg_42)    #(Bool, Func, Func)    # fg_166=✓↓↓construct.166, fg_42=✗↓↓construct.42 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(399)/        if self.use_bonds:/#[CNode]167
+
+#------------------------> 18
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(399)/        if self.use_bonds:/#[CNode]168
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(399)/        if self.use_bonds:/#[CNode]169
+}
+# order:
+#   1: ↓↓construct.41:165{[0]: ValueNode<FuncGraph> bool_.133, [1]: ValueNode<BoolImm> false}
+#   2: ↓↓construct.41:[CNode]167{[0]: ValueNode<Primitive> Switch, [1]: 165, [2]: ValueNode<FuncGraph> ✓↓↓construct.166, [3]: ValueNode<FuncGraph> ✗↓↓construct.42}
+#   3: ↓↓construct.41:[CNode]168{[0]: [CNode]167}
+#   4: ↓↓construct.41:[CNode]169{[0]: ValueNode<Primitive> Return, [1]: [CNode]168}
+
+
+# [No.20] ✗↓↓construct.42
+# In file ../cybertroncode/cybertron.py(399)/        if self.use_bonds:/
+funcgraph fg_42[fg_41](
+) {
+
+#------------------------> 19
+    %1 = FuncGraph::fg_43(%para129, %para130, %para131, %para124, %para125, %para132, %para133, %para137, %para128, %para134, %para123, %para135, %para136)    #(Tensor(I32)[1, 9, 8], Tensor(I32)[1, 9], ExternalType, Tensor(F32)[32, 9, 3], ExternalType, Func, NoneType, NoneType, NoneType, NoneType, NoneType, Func, Tensor(F32)[1, 1])    # fg_43=↓↓↓construct.43 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(399)/        if self.use_bonds:/#[CNode]170
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(399)/        if self.use_bonds:/#[CNode]171
+}
+# order:
+#   1: ✗↓↓construct.42:[CNode]170{[0]: ValueNode<FuncGraph> ↓↓↓construct.43, [1]: Φneighbors, [2]: Φatom_types, [3]: ΦF, [4]: Φpositions, [5]: Φms, [6]: Φint, [7]: Φneighbor_mask, [8]: Φpbcbox, [9]: Φbond_mask, [10]: Φatom_mask, [11]: Φbonds, [12]: Φrange, [13]: Φatoms_number}
+#   2: ✗↓↓construct.42:[CNode]171{[0]: ValueNode<Primitive> Return, [1]: [CNode]170}
+
+
+# [No.21] ↓↓↓construct.43
+# In file ../cybertroncode/cybertron.py(399)/        if self.use_bonds:/
+funcgraph fg_43[fg_19](
+        %para138 : Tensor(I32)[1, 9, 8]    # Φneighbors
+        , %para139 : Tensor(I32)[1, 9]    # Φatom_types
+        , %para140 : ExternalType    # ΦF
+        , %para141 : Tensor(F32)[32, 9, 3]    # Φpositions
+        , %para142 : ExternalType    # Φms
+        , %para143 : Func    # Φint
+        , %para144 : NoneType    # Φneighbor_mask
+        , %para145 : NoneType    # Φpbcbox
+        , %para146 : NoneType    # Φbond_mask
+        , %para147 : NoneType    # Φatom_mask
+        , %para148 : NoneType    # Φbonds
+        , %para149 : Func    # Φrange
+        , %para150 : Tensor(F32)[1, 1]    # Φatoms_number
+    ) {
+    %1 : Bool = DoSignaturePrimitive::S-Prim-is_{prim_type=1}(%para138, None)    #(Tensor(I32)[1, 9, 8], NoneType) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(411)/        if neighbors is None:/#[CNode]172
+    %2 : Bool = FuncGraph::fg_133(%1)    #(Bool)    # fg_133=bool_.133 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(411)/        if neighbors is None:/#[CNode]172
+    %3 : Func = Primitive::Switch{prim_type=1}(%2, FuncGraph::fg_173, FuncGraph::fg_44)    #(Bool, Func, Func)    # fg_173=✓↓↓↓construct.173, fg_44=✗↓↓↓construct.44 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(411)/        if neighbors is None:/#[CNode]174
+
+#------------------------> 20
+    %4 = %3() #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(411)/        if neighbors is None:/#[CNode]175
+    Primitive::Return{prim_type=1}(%4)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(411)/        if neighbors is None:/#[CNode]176
+}
+# order:
+#   1: ↓↓↓construct.43:[CNode]172{[0]: ValueNode<DoSignaturePrimitive> S-Prim-is_, [1]: Φneighbors, [2]: ValueNode<None> None}
+#   2: ↓↓↓construct.43:[CNode]172{[0]: ValueNode<FuncGraph> bool_.133, [1]: [CNode]172}
+#   3: ↓↓↓construct.43:[CNode]174{[0]: ValueNode<Primitive> Switch, [1]: [CNode]172, [2]: ValueNode<FuncGraph> ✓↓↓↓construct.173, [3]: ValueNode<FuncGraph> ✗↓↓↓construct.44}
+#   4: ↓↓↓construct.43:[CNode]175{[0]: [CNode]174}
+#   5: ↓↓↓construct.43:[CNode]176{[0]: ValueNode<Primitive> Return, [1]: [CNode]175}
+
+
+# [No.22] ✗↓↓↓construct.44
+# In file ../cybertroncode/cybertron.py(411)/        if neighbors is None:/
+funcgraph fg_44[fg_43](
+) {
+
+#------------------------> 21
+    %1 = FuncGraph::fg_45(%para141, %para138, %para144, %para145, %para146, %para139, %para147, %para148, %para149, %para150)    #(Tensor(F32)[32, 9, 3], Tensor(I32)[1, 9, 8], NoneType, NoneType, NoneType, Tensor(I32)[1, 9], NoneType, NoneType, Func, Tensor(F32)[1, 1])    # fg_45=↓↓↓↓construct.45 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(411)/        if neighbors is None:/#[CNode]177
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(411)/        if neighbors is None:/#[CNode]178
+}
+# order:
+#   1: ✗↓↓↓construct.44:[CNode]177{[0]: ValueNode<FuncGraph> ↓↓↓↓construct.45, [1]: Φpositions, [2]: Φneighbors, [3]: Φneighbor_mask, [4]: Φpbcbox, [5]: Φbond_mask, [6]: Φatom_types, [7]: Φatom_mask, [8]: Φbonds, [9]: Φrange, [10]: Φatoms_number}
+#   2: ✗↓↓↓construct.44:[CNode]178{[0]: ValueNode<Primitive> Return, [1]: [CNode]177}
+
+
+# [No.23] ↓↓↓↓construct.45
+# In file ../cybertroncode/cybertron.py(411)/        if neighbors is None:/
+funcgraph fg_45[fg_19](
+        %para151 : Tensor(F32)[32, 9, 3]    # Φpositions
+        , %para152 : Tensor(I32)[1, 9, 8]    # Φneighbors
+        , %para153 : NoneType    # Φneighbor_mask
+        , %para154 : NoneType    # Φpbcbox
+        , %para155 : NoneType    # Φbond_mask
+        , %para156 : Tensor(I32)[1, 9]    # Φatom_types
+        , %para157 : NoneType    # Φatom_mask
+        , %para158 : NoneType    # Φbonds
+        , %para159 : Func    # Φrange
+        , %para160 : Tensor(F32)[1, 1]    # Φatoms_number
+    ) {
+    %1 : Bool = FuncGraph::fg_133(Bool(1))    #(Bool)    # fg_133=bool_.133 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(430)/        if self.use_distances:/#179
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_46, FuncGraph::fg_180)    #(Bool, Func, Func)    # fg_46=✓↓↓↓↓construct.46, fg_180=✗↓↓↓↓construct.180 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(430)/        if self.use_distances:/#[CNode]181
+
+#------------------------> 22
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(430)/        if self.use_distances:/#[CNode]182
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(430)/        if self.use_distances:/#[CNode]183
+}
+# order:
+#   1: ↓↓↓↓construct.45:179{[0]: ValueNode<FuncGraph> bool_.133, [1]: ValueNode<BoolImm> true}
+#   2: ↓↓↓↓construct.45:[CNode]181{[0]: ValueNode<Primitive> Switch, [1]: 179, [2]: ValueNode<FuncGraph> ✓↓↓↓↓construct.46, [3]: ValueNode<FuncGraph> ✗↓↓↓↓construct.180}
+#   3: ↓↓↓↓construct.45:[CNode]182{[0]: [CNode]181}
+#   4: ↓↓↓↓construct.45:[CNode]183{[0]: ValueNode<Primitive> Return, [1]: [CNode]182}
+
+
+# [No.24] ✓↓↓↓↓construct.46
+# In file ../cybertroncode/cybertron.py(430)/        if self.use_distances:/
+funcgraph fg_46[fg_45](
+) {
+    %1 : Tensor(F32)[32, 9, 8] = FuncGraph::fg_184(%para151, %para152, %para153, %para154)    #(Tensor(F32)[32, 9, 3], Tensor(I32)[1, 9, 8], NoneType, NoneType)    # fg_184=construct.184 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(431)/            r_ij = self.distances(positions,neighbors,neighbor_mask,pbcbox) * self.dis_scale/#[CNode]185
+    %2 : Tensor(F32)[32, 9, 8] = DoSignaturePrimitive::S-Prim-mul{prim_type=1}(%1, F32(1))    #(Tensor(F32)[32, 9, 8], F32) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(431)/            r_ij = self.distances(positions,neighbors,neighbor_mask,pbcbox) * self.dis_scale/#r_ij
+
+#------------------------> 23
+    %3 = FuncGraph::fg_47(%2, %para153)    #(Tensor(F32)[32, 9, 8], NoneType)    # fg_47=↓↓↓↓↓construct.47 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(430)/        if self.use_distances:/#[CNode]186
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(430)/        if self.use_distances:/#[CNode]187
+}
+# order:
+#   1: ✓↓↓↓↓construct.46:[CNode]185{[0]: ValueNode<FuncGraph> construct.184, [1]: Φpositions, [2]: Φneighbors, [3]: Φneighbor_mask, [4]: Φpbcbox}
+#   2: ✓↓↓↓↓construct.46:r_ij{[0]: ValueNode<DoSignaturePrimitive> S-Prim-mul, [1]: [CNode]185, [2]: ValueNode<FP32Imm> 1.000000}
+#   3: ✓↓↓↓↓construct.46:[CNode]186{[0]: ValueNode<FuncGraph> ↓↓↓↓↓construct.47, [1]: r_ij, [2]: Φneighbor_mask}
+#   4: ✓↓↓↓↓construct.46:[CNode]187{[0]: ValueNode<Primitive> Return, [1]: [CNode]186}
+
+
+# [No.25] ↓↓↓↓↓construct.47
+# In file ../cybertroncode/cybertron.py(430)/        if self.use_distances:/
+funcgraph fg_47[fg_45](
+        %para161 : Tensor(F32)[32, 9, 8]    # Φr_ij
+        , %para162 : NoneType    # Φneighbor_mask
+    ) {
+    %1 : Bool = DoSignaturePrimitive::S-Prim-is_{prim_type=1}(FuncGraph::fg_188, None)    #(Func, NoneType)    # fg_188=construct.188 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(438)/        if self.readout is None:/#[CNode]189
+    %2 : Bool = FuncGraph::fg_133(%1)    #(Bool)    # fg_133=bool_.133 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(438)/        if self.readout is None:/#[CNode]189
+    %3 : Func = Primitive::Switch{prim_type=1}(%2, FuncGraph::fg_190, FuncGraph::fg_48)    #(Bool, Func, Func)    # fg_190=✓↓↓↓↓↓construct.190, fg_48=✗↓↓↓↓↓construct.48 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(438)/        if self.readout is None:/#[CNode]191
+
+#------------------------> 24
+    %4 = %3() #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(438)/        if self.readout is None:/#[CNode]192
+    Primitive::Return{prim_type=1}(%4)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(438)/        if self.readout is None:/#[CNode]193
+}
+# order:
+#   1: ↓↓↓↓↓construct.47:[CNode]194{[0]: ValueNode<FuncGraph> construct.195, [1]: Φr_ij, [2]: Φatom_types, [3]: Φatom_mask, [4]: Φneighbors, [5]: Φneighbor_mask, [6]: Φbonds, [7]: Φbond_mask}
+#   2: ↓↓↓↓↓construct.47:Φx{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]194, [2]: ValueNode<Int64Imm> 0}
+#   3: ↓↓↓↓↓construct.47:Φxlist{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]194, [2]: ValueNode<Int64Imm> 1}
+#   4: ↓↓↓↓↓construct.47:[CNode]189{[0]: ValueNode<DoSignaturePrimitive> S-Prim-is_, [1]: ValueNode<FuncGraph> construct.188, [2]: ValueNode<None> None}
+#   5: ↓↓↓↓↓construct.47:[CNode]189{[0]: ValueNode<FuncGraph> bool_.133, [1]: [CNode]189}
+#   6: ↓↓↓↓↓construct.47:[CNode]191{[0]: ValueNode<Primitive> Switch, [1]: [CNode]189, [2]: ValueNode<FuncGraph> ✓↓↓↓↓↓construct.190, [3]: ValueNode<FuncGraph> ✗↓↓↓↓↓construct.48}
+#   7: ↓↓↓↓↓construct.47:[CNode]192{[0]: [CNode]191}
+#   8: ↓↓↓↓↓construct.47:[CNode]193{[0]: ValueNode<Primitive> Return, [1]: [CNode]192}
+
+
+# [No.26] ✗↓↓↓↓↓construct.48
+# In file ../cybertroncode/cybertron.py(438)/        if self.readout is None:/
+funcgraph fg_48[fg_47](
+) {
+
+#------------------------> 25
+    %1 = FuncGraph::fg_49()    # fg_49=↓↓↓↓↓↓construct.49 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(438)/        if self.readout is None:/#[CNode]196
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(438)/        if self.readout is None:/#[CNode]197
+}
+# order:
+#   1: ✗↓↓↓↓↓construct.48:[CNode]196{[0]: ValueNode<FuncGraph> ↓↓↓↓↓↓construct.49}
+#   2: ✗↓↓↓↓↓construct.48:[CNode]197{[0]: ValueNode<Primitive> Return, [1]: [CNode]196}
+
+
+# [No.27] ↓↓↓↓↓↓construct.49
+# In file ../cybertroncode/cybertron.py(438)/        if self.readout is None:/
+funcgraph fg_49[fg_47](
+) {
+    %1 : Bool = FuncGraph::fg_133(Bool(0))    #(Bool)    # fg_133=bool_.133 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(444)/        if self.calc_far:/#198
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_199, FuncGraph::fg_50)    #(Bool, Func, Func)    # fg_199=✓↓↓↓↓↓↓construct.199, fg_50=✗↓↓↓↓↓↓construct.50 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(444)/        if self.calc_far:/#[CNode]200
+
+#------------------------> 26
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(444)/        if self.calc_far:/#[CNode]201
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(444)/        if self.calc_far:/#[CNode]202
+}
+# order:
+#   1: ↓↓↓↓↓↓construct.49:198{[0]: ValueNode<FuncGraph> bool_.133, [1]: ValueNode<BoolImm> false}
+#   2: ↓↓↓↓↓↓construct.49:[CNode]200{[0]: ValueNode<Primitive> Switch, [1]: 198, [2]: ValueNode<FuncGraph> ✓↓↓↓↓↓↓construct.199, [3]: ValueNode<FuncGraph> ✗↓↓↓↓↓↓construct.50}
+#   3: ↓↓↓↓↓↓construct.49:[CNode]201{[0]: [CNode]200}
+#   4: ↓↓↓↓↓↓construct.49:[CNode]202{[0]: ValueNode<Primitive> Return, [1]: [CNode]201}
+
+
+# [No.28] ✗↓↓↓↓↓↓construct.50
+# In file ../cybertroncode/cybertron.py(444)/        if self.calc_far:/
+funcgraph fg_50[fg_47](
+) {
+
+#------------------------> 27
+    %1 = $(✗↓↓↓↓↓↓construct.50):FuncGraph::fg_195(%para161, %para156, %para157, %para152, %para162, %para158, %para155)    #(Tensor(F32)[32, 9, 8], Tensor(I32)[1, 9], NoneType, Tensor(I32)[1, 9, 8], NoneType, NoneType, NoneType)    # fg_195=construct.195 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(436)/        x, xlist = self.model(r_ij,atom_types,atom_mask,neighbors,neighbor_mask,bonds,bond_mask)/#[CNode]194
+    %2 = $(✗↓↓↓↓↓↓construct.50):DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%1, I64(0))    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(455)/            for i in range(self.num_readout):/#Φx
+    %3 = $(✗↓↓↓↓↓↓construct.50):DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%1, I64(1))    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(455)/            for i in range(self.num_readout):/#Φxlist
+    %4 = FuncGraph::fg_203(%para159, %2, %3, %para156, %para157, %para160, None, None, None)    #(Func, Undefined, Undefined, Tensor(I32)[1, 9], NoneType, Tensor(F32)[1, 1], Undefined, Undefined, Undefined)    # fg_203=↓↓↓↓↓↓↓construct.203 #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(444)/        if self.calc_far:/#[CNode]204
+    Primitive::Return{prim_type=1}(%4)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron
+      # In file ../cybertroncode/cybertron.py(444)/        if self.calc_far:/#[CNode]205
+}
+# order:
+#   1: ✗↓↓↓↓↓↓construct.50:[CNode]204{[0]: ValueNode<FuncGraph> ↓↓↓↓↓↓↓construct.203, [1]: Φrange, [2]: Φx, [3]: Φxlist, [4]: Φatom_types, [5]: Φatom_mask, [6]: Φatoms_number, [7]: ValueNode<None> None, [8]: ValueNode<None> None, [9]: ValueNode<None> None}
+#   2: ✗↓↓↓↓↓↓construct.50:[CNode]205{[0]: ValueNode<Primitive> Return, [1]: [CNode]204}
+
+
+# [No.29] construct.51
+# In file ../cybertroncode/models.py(211)/    def construct(self, r_ij=1, atom_types=None, atom_mask=None, neighbors=None, neighbor_mask=None, bonds=None, bond_mask=None):/
+funcgraph fg_51[fg_19](
+        %para163 : Tensor(F32)[32, 9, 8]    # Φr_ij
+        , %para164 : Tensor(I32)[1, 9]    # atom_types
+        , %para165 : NoneType    # atom_mask
+        , %para166 : Tensor(I32)[1, 9, 8]    # Φneighbors
+        , %para167 : NoneType    # Φneighbor_mask
+        , %para168 : NoneType    # Φbonds
+        , %para169 : NoneType    # Φbond_mask
+    ) {
+    %1 : Bool = FuncGraph::fg_13(Bool(1))    #(Bool)    # fg_13=bool_.13 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(226)/        if self.fixed_atoms:/#206
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_52, FuncGraph::fg_207)    #(Bool, Func, Func)    # fg_52=✓construct.52, fg_207=✗construct.207 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(226)/        if self.fixed_atoms:/#[CNode]208
+
+#------------------------> 28
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(226)/        if self.fixed_atoms:/#[CNode]209
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(226)/        if self.fixed_atoms:/#[CNode]210
+}
+# order:
+#   1: construct.51:206{[0]: ValueNode<FuncGraph> bool_.13, [1]: ValueNode<BoolImm> true}
+#   2: construct.51:[CNode]208{[0]: ValueNode<Primitive> Switch, [1]: 206, [2]: ValueNode<FuncGraph> ✓construct.52, [3]: ValueNode<FuncGraph> ✗construct.207}
+#   3: construct.51:[CNode]209{[0]: [CNode]208}
+#   4: construct.51:[CNode]210{[0]: ValueNode<Primitive> Return, [1]: [CNode]209}
+
+
+# [No.30] ✓construct.52
+# In file ../cybertroncode/models.py(226)/        if self.fixed_atoms:/
+funcgraph fg_52[fg_51](
+) {
+    %1 : Bool = DoSignaturePrimitive::S-Prim-is_not{prim_type=1}(%para165, None)    #(NoneType, NoneType) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(229)/            if atom_mask is not None:/#[CNode]211
+    %2 : Bool = FuncGraph::fg_13(%1)    #(Bool)    # fg_13=bool_.13 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(229)/            if atom_mask is not None:/#[CNode]211
+    %3 : Func = Primitive::Switch{prim_type=1}(%2, FuncGraph::fg_212, FuncGraph::fg_53)    #(Bool, Func, Func)    # fg_212=✓✓construct.212, fg_53=✗✓construct.53 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(229)/            if atom_mask is not None:/#[CNode]213
+
+#------------------------> 29
+    %4 = %3() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(229)/            if atom_mask is not None:/#[CNode]214
+    Primitive::Return{prim_type=1}(%4)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(229)/            if atom_mask is not None:/#[CNode]215
+}
+# order:
+#   1: ✓construct.52:[CNode]216{[0]: ValueNode<Primitive> getattr, [1]: Φr_ij, [2]: ValueNode<StringImm> shape}
+#   2: ✓construct.52:[CNode]217{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]216, [2]: ValueNode<Int64Imm> 0}
+#   3: ✓construct.52:[CNode]218{[0]: ValueNode<DoSignaturePrimitive> S-Prim-MakeTuple, [1]: [CNode]217, [2]: ValueNode<Int64Imm> 1, [3]: ValueNode<Int64Imm> 1}
+#   4: ✓construct.52:[CNode]219{[0]: ValueNode<Primitive> getattr, [1]: Φr_ij, [2]: ValueNode<StringImm> dtype}
+#   5: ✓construct.52:exones{[0]: ValueNode<DoSignaturePrimitive> S-Prim-Ones, [1]: [CNode]218, [2]: [CNode]219}
+#   6: ✓construct.52:[CNode]220{[0]: ValueNode<FuncGraph> construct.221, [1]: atom_types}
+#   7: ✓construct.52:Φe{[0]: ValueNode<DoSignaturePrimitive> S-Prim-mul, [1]: exones, [2]: [CNode]220}
+#   8: ✓construct.52:[CNode]211{[0]: ValueNode<DoSignaturePrimitive> S-Prim-is_not, [1]: atom_mask, [2]: ValueNode<None> None}
+#   9: ✓construct.52:[CNode]211{[0]: ValueNode<FuncGraph> bool_.13, [1]: [CNode]211}
+#  10: ✓construct.52:[CNode]213{[0]: ValueNode<Primitive> Switch, [1]: [CNode]211, [2]: ValueNode<FuncGraph> ✓✓construct.212, [3]: ValueNode<FuncGraph> ✗✓construct.53}
+#  11: ✓construct.52:[CNode]214{[0]: [CNode]213}
+#  12: ✓construct.52:[CNode]215{[0]: ValueNode<Primitive> Return, [1]: [CNode]214}
+
+
+# [No.31] ✗✓construct.53
+# In file ../cybertroncode/models.py(229)/            if atom_mask is not None:/
+funcgraph fg_53[fg_52](
+) {
+
+#------------------------> 30
+    %1 = FuncGraph::fg_54(%para165)    #(NoneType)    # fg_54=↓✓construct.54 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(229)/            if atom_mask is not None:/#[CNode]222
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(229)/            if atom_mask is not None:/#[CNode]223
+}
+# order:
+#   1: ✗✓construct.53:[CNode]222{[0]: ValueNode<FuncGraph> ↓✓construct.54, [1]: atom_mask}
+#   2: ✗✓construct.53:[CNode]223{[0]: ValueNode<Primitive> Return, [1]: [CNode]222}
+
+
+# [No.32] ↓✓construct.54
+# In file ../cybertroncode/models.py(229)/            if atom_mask is not None:/
+funcgraph fg_54[fg_52](
+        %para170 : NoneType    # Φatom_mask
+    ) {
+    %1 : $(↓✓construct.54):Tuple[I64*3] = Primitive::getattr{prim_type=1}(%para163, "shape")    #(Tensor(F32)[32, 9, 8], String) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(227)/            exones = self.ones((r_ij.shape[0],1,1),r_ij.dtype)/#[CNode]216
+    %2 : $(↓✓construct.54):I64 = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%1, I64(0))    #(Tuple[I64*3], I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(227)/            exones = self.ones((r_ij.shape[0],1,1),r_ij.dtype)/#[CNode]217
+    %3 : $(↓✓construct.54):Tuple[I64*3] = DoSignaturePrimitive::S-Prim-MakeTuple{prim_type=1}(%2, I64(1), I64(1))    #(I64, I64, I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(227)/            exones = self.ones((r_ij.shape[0],1,1),r_ij.dtype)/#[CNode]218
+    %4 : $(↓✓construct.54):TypeType = Primitive::getattr{prim_type=1}(%para163, "dtype")    #(Tensor(F32)[32, 9, 8], String) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(227)/            exones = self.ones((r_ij.shape[0],1,1),r_ij.dtype)/#[CNode]219
+    %5 : $(↓✓construct.54):Tensor(F32)[32, 1, 1] = DoSignaturePrimitive::S-Prim-Ones{prim_type=1}(%3, %4)    #(Tuple[I64*3], TypeType) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(227)/            exones = self.ones((r_ij.shape[0],1,1),r_ij.dtype)/#exones
+    %6 : $(↓✓construct.54):Tensor(F32)[1, 9, 128] = FuncGraph::fg_221(%para164)    #(Tensor(I32)[1, 9])    # fg_221=construct.221 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(228)/            e =  exones * self.atom_embedding(atom_types)/#[CNode]220
+    %7 : $(↓✓construct.54):Tensor(F32)[32, 9, 128] = DoSignaturePrimitive::S-Prim-mul{prim_type=1}(%5, %6)    #(Tensor(F32)[32, 1, 1], Tensor(F32)[1, 9, 128]) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(263)/        x = e/#Φe
+
+#------------------------> 31
+    %8 = FuncGraph::fg_55(FuncGraph::fg_224, %para163, FuncGraph::fg_225, %para168, NameSpace::Module, None, None, %para169, NameSpace::Module, FuncGraph::fg_226, %para167, %para170, %7, FuncGraph::fg_9, DoSignaturePrimitive::S-Prim-make_range{prim_type=1}, %para166, None)    #(Func, Tensor(F32)[32, 9, 8], Func, NoneType, ExternalType, NoneType, NoneType, NoneType, ExternalType, Func, NoneType, NoneType, Tensor(F32)[32, 9, 128], Func, Func, Tensor(I32)[1, 9, 8], NoneType)    # fg_55=↓construct.55, fg_224=_get_rbf.224, fg_225=_get_self_rbf.225, fg_226=_calc_cutoffs.226, fg_9=ms_len.9 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(226)/        if self.fixed_atoms:/#[CNode]227
+    Primitive::Return{prim_type=1}(%8)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(226)/        if self.fixed_atoms:/#[CNode]228
+}
+# order:
+#   1: ↓✓construct.54:[CNode]227{[0]: ValueNode<FuncGraph> ↓construct.55, [1]: ValueNode<FuncGraph> _get_rbf.224, [2]: Φr_ij, [3]: ValueNode<FuncGraph> _get_self_rbf.225, [4]: Φbonds, [5]: ValueNode<NameSpace> Module, [6]: ValueNode<None> None, [7]: ValueNode<None> None, [8]: Φbond_mask, [9]: ValueNode<NameSpace> Module, [10]: ValueNode<FuncGraph> _calc_cutoffs.226, [11]: Φneighbor_mask, [12]: Φatom_mask, [13]: Φe, [14]: ValueNode<FuncGraph> ms_len.9, [15]: ValueNode<DoSignaturePrimitive> S-Prim-make_range, [16]: Φneighbors, [17]: ValueNode<None> None}
+#   2: ↓✓construct.54:[CNode]228{[0]: ValueNode<Primitive> Return, [1]: [CNode]227}
+
+
+# [No.33] ↓construct.55
+# In file ../cybertroncode/models.py(226)/        if self.fixed_atoms:/
+funcgraph fg_55[fg_19](
+        %para171 : Func    # Φself._get_rbf
+        , %para172 : Tensor(F32)[32, 9, 8]    # Φr_ij
+        , %para173 : Func    # Φself._get_self_rbf
+        , %para174 : NoneType    # Φbonds
+        , %para175 : ExternalType    # Φms
+        , %para176 : NoneType    # Φself.bond_embedding
+        , %para177 : NoneType    # Φself.bond_filter
+        , %para178 : NoneType    # Φbond_mask
+        , %para179 : ExternalType    # ΦF
+        , %para180 : Func    # Φself._calc_cutoffs
+        , %para181 : NoneType    # Φneighbor_mask
+        , %para182 : NoneType    # Φatom_mask
+        , %para183 : Tensor(F32)[32, 9, 128]    # Φe
+        , %para184 : Func    # Φlen
+        , %para185 : Func    # Φrange
+        , %para186 : Tensor(I32)[1, 9, 8]    # Φneighbors
+        , %para187 : NoneType    # Φself.graph_norm
+    ) {
+    %1 : Bool = FuncGraph::fg_13(Bool(1))    #(Bool)    # fg_13=bool_.13 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(234)/        if self.use_distances:/#229
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_56, FuncGraph::fg_230)    #(Bool, Func, Func)    # fg_56=✓↓construct.56, fg_230=✗↓construct.230 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(234)/        if self.use_distances:/#[CNode]231
+
+#------------------------> 32
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(234)/        if self.use_distances:/#[CNode]232
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(234)/        if self.use_distances:/#[CNode]233
+}
+# order:
+#   1: ↓construct.55:229{[0]: ValueNode<FuncGraph> bool_.13, [1]: ValueNode<BoolImm> true}
+#   2: ↓construct.55:[CNode]231{[0]: ValueNode<Primitive> Switch, [1]: 229, [2]: ValueNode<FuncGraph> ✓↓construct.56, [3]: ValueNode<FuncGraph> ✗↓construct.230}
+#   3: ↓construct.55:[CNode]232{[0]: [CNode]231}
+#   4: ↓construct.55:[CNode]233{[0]: ValueNode<Primitive> Return, [1]: [CNode]232}
+
+
+# [No.34] ✓↓construct.56
+# In file ../cybertroncode/models.py(234)/        if self.use_distances:/
+funcgraph fg_56[fg_55](
+) {
+    %1 : Tuple[I64*3] = Primitive::getattr{prim_type=1}(%para172, "shape")    #(Tensor(F32)[32, 9, 8], String) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(237)/            nbatch = r_ij.shape[0]/#[CNode]234
+    %2 : I64 = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%1, I64(0))    #(Tuple[I64*3], I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(237)/            nbatch = r_ij.shape[0]/#nbatch
+    %3 : Tuple[I64*3] = Primitive::getattr{prim_type=1}(%para172, "shape")    #(Tensor(F32)[32, 9, 8], String) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(238)/            natoms = r_ij.shape[1]/#[CNode]235
+    %4 : I64 = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%3, I64(1))    #(Tuple[I64*3], I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(238)/            natoms = r_ij.shape[1]/#natoms
+    %5 : Tensor(F32)[1, 128] = %para173() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(236)/            f_ii = self._get_self_rbf()/#f_ii
+    %6 : Tensor(F32)[32, 9, 8, 128] = %para171(%para172)    #(Tensor(F32)[32, 9, 8]) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(235)/            f_ij = self._get_rbf(r_ij)/#f_ij
+
+#------------------------> 33
+    %7 = FuncGraph::fg_57(%2, %4, %5, %6)    #(I64, I64, Tensor(F32)[1, 128], Tensor(F32)[32, 9, 8, 128])    # fg_57=↓↓construct.57 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(234)/        if self.use_distances:/#[CNode]236
+    Primitive::Return{prim_type=1}(%7)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(234)/        if self.use_distances:/#[CNode]237
+}
+# order:
+#   1: ✓↓construct.56:f_ij{[0]: Φself._get_rbf, [1]: Φr_ij}
+#   2: ✓↓construct.56:f_ii{[0]: Φself._get_self_rbf}
+#   3: ✓↓construct.56:[CNode]234{[0]: ValueNode<Primitive> getattr, [1]: Φr_ij, [2]: ValueNode<StringImm> shape}
+#   4: ✓↓construct.56:nbatch{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]234, [2]: ValueNode<Int64Imm> 0}
+#   5: ✓↓construct.56:[CNode]235{[0]: ValueNode<Primitive> getattr, [1]: Φr_ij, [2]: ValueNode<StringImm> shape}
+#   6: ✓↓construct.56:natoms{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]235, [2]: ValueNode<Int64Imm> 1}
+#   7: ✓↓construct.56:[CNode]236{[0]: ValueNode<FuncGraph> ↓↓construct.57, [1]: nbatch, [2]: natoms, [3]: f_ii, [4]: f_ij}
+#   8: ✓↓construct.56:[CNode]237{[0]: ValueNode<Primitive> Return, [1]: [CNode]236}
+
+
+# [No.35] ↓↓construct.57
+# In file ../cybertroncode/models.py(234)/        if self.use_distances:/
+funcgraph fg_57[fg_55](
+        %para188 : I64    # Φnbatch
+        , %para189 : I64    # Φnatoms
+        , %para190 : Tensor(F32)[1, 128]    # Φf_ii
+        , %para191 : Tensor(F32)[32, 9, 8, 128]    # Φf_ij
+    ) {
+    %1 : Bool = FuncGraph::fg_13(Bool(0))    #(Bool)    # fg_13=bool_.13 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(245)/        if self.use_bonds:/#238
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_239, FuncGraph::fg_58)    #(Bool, Func, Func)    # fg_239=✓↓↓construct.239, fg_58=✗↓↓construct.58 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(245)/        if self.use_bonds:/#[CNode]240
+
+#------------------------> 34
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(245)/        if self.use_bonds:/#[CNode]241
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(245)/        if self.use_bonds:/#[CNode]242
+}
+# order:
+#   1: ↓↓construct.57:238{[0]: ValueNode<FuncGraph> bool_.13, [1]: ValueNode<BoolImm> false}
+#   2: ↓↓construct.57:[CNode]240{[0]: ValueNode<Primitive> Switch, [1]: 238, [2]: ValueNode<FuncGraph> ✓↓↓construct.239, [3]: ValueNode<FuncGraph> ✗↓↓construct.58}
+#   3: ↓↓construct.57:[CNode]241{[0]: [CNode]240}
+#   4: ↓↓construct.57:[CNode]242{[0]: ValueNode<Primitive> Return, [1]: [CNode]241}
+
+
+# [No.36] ✗↓↓construct.58
+# In file ../cybertroncode/models.py(245)/        if self.use_bonds:/
+funcgraph fg_58[fg_57](
+) {
+
+#------------------------> 35
+    %1 = FuncGraph::fg_59(%para180, %para172, %para181, %para174, %para178, %para182, %para183, %para184, %para185, %para190, %para191, I64(0), I64(0), %para186, %para187)    #(Func, Tensor(F32)[32, 9, 8], NoneType, NoneType, NoneType, NoneType, Tensor(F32)[32, 9, 128], Func, Func, Tensor(F32)[1, 128], Tensor(F32)[32, 9, 8, 128], I64, I64, Tensor(I32)[1, 9, 8], NoneType)    # fg_59=↓↓↓construct.59 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(245)/        if self.use_bonds:/#[CNode]243
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(245)/        if self.use_bonds:/#[CNode]244
+}
+# order:
+#   1: ✗↓↓construct.58:[CNode]243{[0]: ValueNode<FuncGraph> ↓↓↓construct.59, [1]: Φself._calc_cutoffs, [2]: Φr_ij, [3]: Φneighbor_mask, [4]: Φbonds, [5]: Φbond_mask, [6]: Φatom_mask, [7]: Φe, [8]: Φlen, [9]: Φrange, [10]: Φf_ii, [11]: Φf_ij, [12]: ValueNode<Int64Imm> 0, [13]: ValueNode<Int64Imm> 0, [14]: Φneighbors, [15]: Φself.graph_norm}
+#   2: ✗↓↓construct.58:[CNode]244{[0]: ValueNode<Primitive> Return, [1]: [CNode]243}
+
+
+# [No.37] ↓↓↓construct.59
+# In file ../cybertroncode/models.py(245)/        if self.use_bonds:/
+funcgraph fg_59[fg_19](
+        %para192 : Func    # Φself._calc_cutoffs
+        , %para193 : Tensor(F32)[32, 9, 8]    # Φr_ij
+        , %para194 : NoneType    # Φneighbor_mask
+        , %para195 : NoneType    # Φbonds
+        , %para196 : NoneType    # Φbond_mask
+        , %para197 : NoneType    # Φatom_mask
+        , %para198 : Tensor(F32)[32, 9, 128]    # Φe
+        , %para199 : Func    # Φlen
+        , %para200 : Func    # Φrange
+        , %para201 : Tensor(F32)[1, 128]    # Φf_ii
+        , %para202 : Tensor(F32)[32, 9, 8, 128]    # Φf_ij
+        , %para203 : I64    # Φb_ii
+        , %para204 : I64    # Φb_ij
+        , %para205 : Tensor(I32)[1, 9, 8]    # Φneighbors
+        , %para206 : NoneType    # Φself.graph_norm
+    ) {
+    %1 : Tuple[Func*3] = Primitive::MakeTuple{prim_type=1}(FuncGraph::fg_245, FuncGraph::fg_246, FuncGraph::fg_247)    #(Func, Func, Func)    # fg_245=construct.245, fg_246=construct.246, fg_247=construct.247 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(264)/        n_interactions = len(self.interactions)/#[CNode]248
+    %2 : I64 = %para199(%1)    #(Tuple[Func*3]) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(264)/        n_interactions = len(self.interactions)/#n_interactions
+    %3 : Tuple[I64*3] = %para200(%2)    #(I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]249
+    %4 : I64 = FuncGraph::fg_9(%3)    #(Tuple[I64*3])    # fg_9=ms_len.9 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]250
+    %5 : Bool = Primitive::scalar_lt{prim_type=1}(%4, I64(9223372036854775807))    #(I64, I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]251
+    %6 : Func = Primitive::Switch{prim_type=1}(%5, FuncGraph::fg_60, FuncGraph::fg_252)    #(Bool, Func, Func)    # fg_60=✓↓↓↓construct.60, fg_252=✗↓↓↓construct.252 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]253
+
+#------------------------> 36
+    %7 = %6() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]254
+    Primitive::Return{prim_type=1}(%7)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]255
+}
+# order:
+#   1: ↓↓↓construct.59:[CNode]256{[0]: Φself._calc_cutoffs, [1]: Φr_ij, [2]: Φneighbor_mask, [3]: Φbonds, [4]: Φbond_mask, [5]: Φatom_mask}
+#   2: ↓↓↓construct.59:c_ij{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]256, [2]: ValueNode<Int64Imm> 0}
+#   3: ↓↓↓construct.59:mask{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]256, [2]: ValueNode<Int64Imm> 1}
+#   4: ↓↓↓construct.59:n_interactions{[0]: Φlen, [1]: [CNode]248}
+#   5: ↓↓↓construct.59:[CNode]249{[0]: Φrange, [1]: n_interactions}
+#   6: ↓↓↓construct.59:[CNode]250{[0]: ValueNode<FuncGraph> ms_len.9, [1]: [CNode]249}
+#   7: ↓↓↓construct.59:[CNode]251{[0]: ValueNode<Primitive> scalar_lt, [1]: [CNode]250, [2]: ValueNode<Int64Imm> 9223372036854775807}
+#   8: ↓↓↓construct.59:[CNode]253{[0]: ValueNode<Primitive> Switch, [1]: [CNode]251, [2]: ValueNode<FuncGraph> ✓↓↓↓construct.60, [3]: ValueNode<FuncGraph> ✗↓↓↓construct.252}
+#   9: ↓↓↓construct.59:[CNode]254{[0]: [CNode]253}
+#  10: ↓↓↓construct.59:[CNode]255{[0]: ValueNode<Primitive> Return, [1]: [CNode]254}
+
+
+# [No.38] ✓↓↓↓construct.60
+# In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/
+funcgraph fg_60[fg_59](
+) {
+    %1 : $(✓↓↓↓construct.60):Tuple[Func*3] = Primitive::MakeTuple{prim_type=1}(FuncGraph::fg_245, FuncGraph::fg_246, FuncGraph::fg_247)    #(Func, Func, Func)    # fg_245=construct.245, fg_246=construct.246, fg_247=construct.247 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(264)/        n_interactions = len(self.interactions)/#[CNode]248
+    %2 : $(✓↓↓↓construct.60):I64 = %para199(%1)    #(Tuple[Func*3]) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(264)/        n_interactions = len(self.interactions)/#n_interactions
+    %3 : Tuple[I64*3] = %para200(%2)    #(I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]257
+    %4 : Tuple[I64*3] = FuncGraph::fg_14(%3)    #(Tuple[I64*3])    # fg_14=ms_iter.14 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#@i
+    %5 : $(✓↓↓↓construct.60):Tuple[Tensor(F32),Tensor(Bool)] = %para192(%para193, %para194, %para195, %para196, %para197)    #(Tensor(F32)[32, 9, 8], NoneType, NoneType, NoneType, NoneType) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(260)/        c_ij, mask = self._calc_cutoffs(r_ij,neighbor_mask,bonds,bond_mask,atom_mask)/#[CNode]256
+    %6 : $(✓↓↓↓construct.60):Tensor(F32)[32, 9, 9] = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%5, I64(0))    #(Tuple[Tensor(F32),Tensor(Bool)], I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(260)/        c_ij, mask = self._calc_cutoffs(r_ij,neighbor_mask,bonds,bond_mask,atom_mask)/#c_ij
+    %7 : $(✓↓↓↓construct.60):Tensor(Bool)[32, 9, 9] = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%5, I64(1))    #(Tuple[Tensor(F32),Tensor(Bool)], I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(260)/        c_ij, mask = self._calc_cutoffs(r_ij,neighbor_mask,bonds,bond_mask,atom_mask)/#mask
+
+#------------------------> 37
+    %8 = FuncGraph::fg_61(%4, %para198, %para198, %para201, %para202, %para203, %para204, %6, %para205, %7, %para206, [])    #(Tuple[I64*3], Tensor(F32)[32, 9, 128], Tensor(F32)[32, 9, 128], Tensor(F32)[1, 128], Tensor(F32)[32, 9, 8, 128], I64, I64, Tensor(F32)[32, 9, 9], Tensor(I32)[1, 9, 8], Tensor(Bool)[32, 9, 9], NoneType, List[])    # fg_61=⤾✓↓↓↓construct.61 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]258
+    Primitive::Return{prim_type=1}(%8)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]259
+}
+# order:
+#   1: ✓↓↓↓construct.60:[CNode]257{[0]: Φrange, [1]: n_interactions}
+#   2: ✓↓↓↓construct.60:@i{[0]: ValueNode<FuncGraph> ms_iter.14, [1]: [CNode]257}
+#   3: ✓↓↓↓construct.60:[CNode]258{[0]: ValueNode<FuncGraph> ⤾✓↓↓↓construct.61, [1]: @i, [2]: Φe, [3]: Φe, [4]: Φf_ii, [5]: Φf_ij, [6]: Φb_ii, [7]: Φb_ij, [8]: c_ij, [9]: Φneighbors, [10]: mask, [11]: Φself.graph_norm, [12]: ValueNode<ValueList> []}
+#   4: ✓↓↓↓construct.60:[CNode]259{[0]: ValueNode<Primitive> Return, [1]: [CNode]258}
+
+
+# [No.39] ⤾✓↓↓↓construct.61
+# In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/
+funcgraph fg_61[fg_19](
+        %para207 : Tuple[I64*3]    # @i
+        , %para208 : Tensor(F32)[32, 9, 128]    # Φx
+        , %para209 : Tensor(F32)[32, 9, 128]    # Φe
+        , %para210 : Tensor(F32)[1, 128]    # Φf_ii
+        , %para211 : Tensor(F32)[32, 9, 8, 128]    # Φf_ij
+        , %para212 : I64    # Φb_ii
+        , %para213 : I64    # Φb_ij
+        , %para214 : Tensor(F32)[32, 9, 9]    # Φc_ij
+        , %para215 : Tensor(I32)[1, 9, 8]    # Φneighbors
+        , %para216 : Tensor(Bool)[32, 9, 9]    # Φmask
+        , %para217 : NoneType    # Φself.graph_norm
+        , %para218 : List[]    # Φxlist
+    ) {
+    %1 : Bool = FuncGraph::fg_15(%para207)    #(Tuple[I64*3])    # fg_15=hasnext.15 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]260
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_62, FuncGraph::fg_261)    #(Bool, Func, Func)    # fg_62=⥁✓↓↓↓construct.62, fg_261=↓✓↓↓↓construct.261 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]262
+
+#------------------------> 38
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]263
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]264
+}
+# order:
+#   1: ⤾✓↓↓↓construct.61:[CNode]260{[0]: ValueNode<FuncGraph> hasnext.15, [1]: @i}
+#   2: ⤾✓↓↓↓construct.61:[CNode]262{[0]: ValueNode<Primitive> Switch, [1]: [CNode]260, [2]: ValueNode<FuncGraph> ⥁✓↓↓↓construct.62, [3]: ValueNode<FuncGraph> ↓✓↓↓↓construct.261}
+#   3: ⤾✓↓↓↓construct.61:[CNode]263{[0]: [CNode]262}
+#   4: ⤾✓↓↓↓construct.61:[CNode]264{[0]: ValueNode<Primitive> Return, [1]: [CNode]263}
+
+
+# [No.40] ⥁✓↓↓↓construct.62
+# In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/
+funcgraph fg_62[fg_61](
+) {
+    %1 : Bool = FuncGraph::fg_13(Bool(0))    #(Bool)    # fg_13=bool_.13 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(269)/            if self.use_graph_norm:/#265
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_266, FuncGraph::fg_63)    #(Bool, Func, Func)    # fg_266=✓⥁✓↓↓↓construct.266, fg_63=✗⥁✓↓↓↓construct.63 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(269)/            if self.use_graph_norm:/#[CNode]267
+
+#------------------------> 39
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(269)/            if self.use_graph_norm:/#[CNode]268
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(269)/            if self.use_graph_norm:/#[CNode]269
+}
+# order:
+#   1: ⥁✓↓↓↓construct.62:[CNode]270{[0]: ValueNode<FuncGraph> ms_next.16, [1]: @i}
+#   2: ⥁✓↓↓↓construct.62:i{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]270, [2]: ValueNode<Int64Imm> 0}
+#   3: ⥁✓↓↓↓construct.62:@i{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]270, [2]: ValueNode<Int64Imm> 1}
+#   4: ⥁✓↓↓↓construct.62:[CNode]271{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]272, [2]: i}
+#   5: ⥁✓↓↓↓construct.62:x{[0]: [CNode]271, [1]: Φx, [2]: Φe, [3]: Φf_ii, [4]: Φf_ij, [5]: Φb_ii, [6]: Φb_ij, [7]: Φc_ij, [8]: Φneighbors, [9]: Φmask}
+#   6: ⥁✓↓↓↓construct.62:265{[0]: ValueNode<FuncGraph> bool_.13, [1]: ValueNode<BoolImm> false}
+#   7: ⥁✓↓↓↓construct.62:[CNode]267{[0]: ValueNode<Primitive> Switch, [1]: 265, [2]: ValueNode<FuncGraph> ✓⥁✓↓↓↓construct.266, [3]: ValueNode<FuncGraph> ✗⥁✓↓↓↓construct.63}
+#   8: ⥁✓↓↓↓construct.62:[CNode]268{[0]: [CNode]267}
+#   9: ⥁✓↓↓↓construct.62:[CNode]269{[0]: ValueNode<Primitive> Return, [1]: [CNode]268}
+
+
+# [No.41] ✗⥁✓↓↓↓construct.63
+# In file ../cybertroncode/models.py(269)/            if self.use_graph_norm:/
+funcgraph fg_63[fg_62](
+) {
+    %1 : $(✗⥁✓↓↓↓construct.63):Tuple[Func*3] = Primitive::MakeTuple{prim_type=1}(FuncGraph::fg_245, FuncGraph::fg_246, FuncGraph::fg_247)    #(Func, Func, Func)    # fg_245=construct.245, fg_246=construct.246, fg_247=construct.247 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(267)/            x = self.interactions[i](x, e, f_ii, f_ij, b_ii, b_ij, c_ij, neighbors, mask)/#[CNode]272
+    %2 : $(✗⥁✓↓↓↓construct.63):Tuple[I64,Tuple[I64*2]] = FuncGraph::fg_16(%para207)    #(Tuple[I64*3])    # fg_16=ms_next.16 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#[CNode]270
+    %3 : $(✗⥁✓↓↓↓construct.63):I64 = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%2, I64(0))    #(Tuple[I64,Tuple[I64*2]], I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(266)/        for i in range(n_interactions):/#i
+    %4 : $(✗⥁✓↓↓↓construct.63):Func = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%1, %3)    #(Tuple[Func*3], I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(267)/            x = self.interactions[i](x, e, f_ii, f_ij, b_ii, b_ij, c_ij, neighbors, mask)/#[CNode]271
+
+#------------------------> 40
+    %5 = $(✗⥁✓↓↓↓construct.63):%4(%para208, %para209, %para210, %para211, %para212, %para213, %para214, %para215, %para216)    #(Tensor(F32)[32, 9, 128], Tensor(F32)[32, 9, 128], Tensor(F32)[1, 128], Tensor(F32)[32, 9, 8, 128], I64, I64, Tensor(F32)[32, 9, 9], Tensor(I32)[1, 9, 8], Tensor(Bool)[32, 9, 9]) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(267)/            x = self.interactions[i](x, e, f_ii, f_ij, b_ii, b_ij, c_ij, neighbors, mask)/#x
+    %6 = FuncGraph::fg_273(%5)    #(Undefined)    # fg_273=↓⥁✓↓↓↓construct.273 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(269)/            if self.use_graph_norm:/#[CNode]274
+    Primitive::Return{prim_type=1}(%6)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT
+      # In file ../cybertroncode/models.py(269)/            if self.use_graph_norm:/#[CNode]275
+}
+# order:
+#   1: ✗⥁✓↓↓↓construct.63:[CNode]274{[0]: ValueNode<FuncGraph> ↓⥁✓↓↓↓construct.273, [1]: x}
+#   2: ✗⥁✓↓↓↓construct.63:[CNode]275{[0]: ValueNode<Primitive> Return, [1]: [CNode]274}
+
+
+# [No.42] construct.64
+# In file ../cybertroncode/interactions.py(380)/    def construct(self, x, e, f_ii, f_ij, b_ii, b_ij, c_ij, neighbors, mask=None):/
+funcgraph fg_64[fg_19](
+        %para219 : Tensor(F32)[32, 9, 128]    # Φx
+        , %para220 : Tensor(F32)[32, 9, 128]    # Φe
+        , %para221 : Tensor(F32)[1, 128]    # g_ii
+        , %para222 : Tensor(F32)[32, 9, 8, 128]    # g_ij
+        , %para223 : I64    # Φb_ii
+        , %para224 : I64    # Φb_ij
+        , %para225 : Tensor(F32)[32, 9, 9]    # Φc_ij
+        , %para226 : Tensor(I32)[1, 9, 8]    # Φneighbors
+        , %para227 : Tensor(Bool)[32, 9, 9]    # Φmask
+    ) {
+    %1 : Bool = FuncGraph::fg_276(Bool(1))    #(Bool)    # fg_276=bool_.276 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(396)/        if self.use_distances and self.use_dis_filter:/#277
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_278, FuncGraph::fg_279)    #(Bool, Func, Func)    # fg_278=↰construct.278, fg_279=↱construct.279 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(396)/        if self.use_distances and self.use_dis_filter:/#[CNode]280
+    %3 : Bool = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(396)/        if self.use_distances and self.use_dis_filter:/#[CNode]281
+    %4 : Bool = FuncGraph::fg_276(%3)    #(Bool)    # fg_276=bool_.276 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(396)/        if self.use_distances and self.use_dis_filter:/#[CNode]281
+    %5 : Func = Primitive::Switch{prim_type=1}(%4, FuncGraph::fg_282, FuncGraph::fg_65)    #(Bool, Func, Func)    # fg_282=✓construct.282, fg_65=✗construct.65 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(396)/        if self.use_distances and self.use_dis_filter:/#[CNode]283
+
+#------------------------> 41
+    %6 = %5() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(396)/        if self.use_distances and self.use_dis_filter:/#[CNode]284
+    Primitive::Return{prim_type=1}(%6)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(396)/        if self.use_distances and self.use_dis_filter:/#[CNode]285
+}
+# order:
+#   1: construct.64:277{[0]: ValueNode<FuncGraph> bool_.276, [1]: ValueNode<BoolImm> true}
+#   2: construct.64:[CNode]280{[0]: ValueNode<Primitive> Switch, [1]: 277, [2]: ValueNode<FuncGraph> ↰construct.278, [3]: ValueNode<FuncGraph> ↱construct.279}
+#   3: construct.64:[CNode]281{[0]: [CNode]280}
+#   4: construct.64:[CNode]281{[0]: ValueNode<FuncGraph> bool_.276, [1]: [CNode]281}
+#   5: construct.64:[CNode]283{[0]: ValueNode<Primitive> Switch, [1]: [CNode]281, [2]: ValueNode<FuncGraph> ✓construct.282, [3]: ValueNode<FuncGraph> ✗construct.65}
+#   6: construct.64:[CNode]284{[0]: [CNode]283}
+#   7: construct.64:[CNode]285{[0]: ValueNode<Primitive> Return, [1]: [CNode]284}
+
+
+# [No.43] ✗construct.65
+# In file ../cybertroncode/interactions.py(396)/        if self.use_distances and self.use_dis_filter:/
+funcgraph fg_65[fg_64](
+) {
+
+#------------------------> 42
+    %1 = FuncGraph::fg_66(%para221, %para222)    #(Tensor(F32)[1, 128], Tensor(F32)[32, 9, 8, 128])    # fg_66=↓construct.66 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(396)/        if self.use_distances and self.use_dis_filter:/#[CNode]286
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(396)/        if self.use_distances and self.use_dis_filter:/#[CNode]287
+}
+# order:
+#   1: ✗construct.65:[CNode]286{[0]: ValueNode<FuncGraph> ↓construct.66, [1]: g_ii, [2]: g_ij}
+#   2: ✗construct.65:[CNode]287{[0]: ValueNode<Primitive> Return, [1]: [CNode]286}
+
+
+# [No.44] ↓construct.66
+# In file ../cybertroncode/interactions.py(396)/        if self.use_distances and self.use_dis_filter:/
+funcgraph fg_66[fg_64](
+        %para228 : Tensor(F32)[1, 128]    # Φg_ii
+        , %para229 : Tensor(F32)[32, 9, 8, 128]    # Φg_ij
+    ) {
+    %1 : Bool = FuncGraph::fg_276(Bool(0))    #(Bool)    # fg_276=bool_.276 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(403)/        if self.use_bond_filter:/#288
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_289, FuncGraph::fg_67)    #(Bool, Func, Func)    # fg_289=✓↓construct.289, fg_67=✗↓construct.67 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(403)/        if self.use_bond_filter:/#[CNode]290
+
+#------------------------> 43
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(403)/        if self.use_bond_filter:/#[CNode]291
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(403)/        if self.use_bond_filter:/#[CNode]292
+}
+# order:
+#   1: ↓construct.66:288{[0]: ValueNode<FuncGraph> bool_.276, [1]: ValueNode<BoolImm> false}
+#   2: ↓construct.66:[CNode]290{[0]: ValueNode<Primitive> Switch, [1]: 288, [2]: ValueNode<FuncGraph> ✓↓construct.289, [3]: ValueNode<FuncGraph> ✗↓construct.67}
+#   3: ↓construct.66:[CNode]291{[0]: [CNode]290}
+#   4: ↓construct.66:[CNode]292{[0]: ValueNode<Primitive> Return, [1]: [CNode]291}
+
+
+# [No.45] ✗↓construct.67
+# In file ../cybertroncode/interactions.py(403)/        if self.use_bond_filter:/
+funcgraph fg_67[fg_66](
+) {
+
+#------------------------> 44
+    %1 = FuncGraph::fg_68(%para223, %para224)    #(I64, I64)    # fg_68=↓↓construct.68 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(403)/        if self.use_bond_filter:/#[CNode]293
+    Primitive::Return{prim_type=1}(%1)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(403)/        if self.use_bond_filter:/#[CNode]294
+}
+# order:
+#   1: ✗↓construct.67:[CNode]293{[0]: ValueNode<FuncGraph> ↓↓construct.68, [1]: Φb_ii, [2]: Φb_ij}
+#   2: ✗↓construct.67:[CNode]294{[0]: ValueNode<Primitive> Return, [1]: [CNode]293}
+
+
+# [No.46] ↓↓construct.68
+# In file ../cybertroncode/interactions.py(403)/        if self.use_bond_filter:/
+funcgraph fg_68[fg_66](
+        %para230 : I64    # Φb_ii
+        , %para231 : I64    # Φb_ij
+    ) {
+    %1 : Bool = DoSignaturePrimitive::S-Prim-equal{prim_type=1}(I64(1), I64(1))    #(I64, I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(407)/        if self.max_cycles == 1:/#[CNode]295
+    %2 : Bool = FuncGraph::fg_276(%1)    #(Bool)    # fg_276=bool_.276 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(407)/        if self.max_cycles == 1:/#[CNode]295
+    %3 : Func = Primitive::Switch{prim_type=1}(%2, FuncGraph::fg_69, FuncGraph::fg_296)    #(Bool, Func, Func)    # fg_69=✓↓↓construct.69, fg_296=✗↓↓construct.296 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(407)/        if self.max_cycles == 1:/#[CNode]297
+
+#------------------------> 45
+    %4 = %3() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(407)/        if self.max_cycles == 1:/#[CNode]298
+    Primitive::Return{prim_type=1}(%4)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(407)/        if self.max_cycles == 1:/#[CNode]299
+}
+# order:
+#   1: ↓↓construct.68:[CNode]295{[0]: ValueNode<DoSignaturePrimitive> S-Prim-equal, [1]: ValueNode<Int64Imm> 1, [2]: ValueNode<Int64Imm> 1}
+#   2: ↓↓construct.68:[CNode]295{[0]: ValueNode<FuncGraph> bool_.276, [1]: [CNode]295}
+#   3: ↓↓construct.68:[CNode]297{[0]: ValueNode<Primitive> Switch, [1]: [CNode]295, [2]: ValueNode<FuncGraph> ✓↓↓construct.69, [3]: ValueNode<FuncGraph> ✗↓↓construct.296}
+#   4: ↓↓construct.68:[CNode]298{[0]: [CNode]297}
+#   5: ↓↓construct.68:[CNode]299{[0]: ValueNode<Primitive> Return, [1]: [CNode]298}
+
+
+# [No.47] ✓↓↓construct.69
+# In file ../cybertroncode/interactions.py(407)/        if self.max_cycles == 1:/
+funcgraph fg_69[fg_68](
+) {
+    %1 : Tensor(F32)[128] = DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(Tensor(43)[1, 128], I64(0))    #(Tensor(F32)[1, 128], I64) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(408)/            t = self.time_embedding[0]/#t
+
+#------------------------> 46
+    %2 = FuncGraph::fg_300(%para219, %para226, %para228, %para229, %para230, %para231, %para225, %1, %para227)    #(Tensor(F32)[32, 9, 128], Tensor(I32)[1, 9, 8], Tensor(F32)[1, 128], Tensor(F32)[32, 9, 8, 128], I64, I64, Tensor(F32)[32, 9, 9], Tensor(F32)[128], Tensor(Bool)[32, 9, 9])    # fg_300=_transformer_encoder.300 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(409)/            x0 = self._transformer_encoder(x,neighbors,g_ii,g_ij,b_ii,b_ij,c_ij,t,mask)/#x0
+    %3 = FuncGraph::fg_301(%2)    #(Undefined)    # fg_301=↓↓↓construct.301 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(407)/        if self.max_cycles == 1:/#[CNode]302
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(407)/        if self.max_cycles == 1:/#[CNode]303
+}
+# order:
+#   1: ✓↓↓construct.69:t{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: ValueNode<Tensor> Tensor(shape=[1, 128], dtype=Float32, value= [...]), [2]: ValueNode<Int64Imm> 0}
+#   2: ✓↓↓construct.69:x0{[0]: ValueNode<FuncGraph> _transformer_encoder.300, [1]: Φx, [2]: Φneighbors, [3]: Φg_ii, [4]: Φg_ij, [5]: Φb_ii, [6]: Φb_ij, [7]: Φc_ij, [8]: t, [9]: Φmask}
+#   3: ✓↓↓construct.69:[CNode]302{[0]: ValueNode<FuncGraph> ↓↓↓construct.301, [1]: x0}
+#   4: ✓↓↓construct.69:[CNode]303{[0]: ValueNode<Primitive> Return, [1]: [CNode]302}
+
+
+# [No.48] _transformer_encoder.70
+# In file ../cybertroncode/interactions.py(368)/    def _transformer_encoder(self,x,neighbors,g_ii=1,g_ij=1,b_ii=0,b_ij=0,c_ij=None,t=0,mask=None):/
+funcgraph fg_70[fg_19](
+        %para232 : Tensor(F32)[32, 9, 128]    # x
+        , %para233 : Tensor(I32)[1, 9, 8]    # neighbors
+        , %para234 : Tensor(F32)[1, 128]    # g_ii
+        , %para235 : Tensor(F32)[32, 9, 8, 128]    # g_ij
+        , %para236 : I64    # b_ii
+        , %para237 : I64    # b_ij
+        , %para238 : Tensor(F32)[32, 9, 9]    # c_ij
+        , %para239 : Tensor(F32)[128]    # t
+        , %para240 : Tensor(Bool)[32, 9, 9]    # mask
+    ) {
+    %1 : Bool = FuncGraph::fg_304(Bool(0))    #(Bool)    # fg_304=bool_.304 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(375)/        if self.use_feed_forward:/#305
+    %2 : Func = Primitive::Switch{prim_type=1}(%1, FuncGraph::fg_306, FuncGraph::fg_71)    #(Bool, Func, Func)    # fg_306=✓_transformer_encoder.306, fg_71=✗_transformer_encoder.71 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(375)/        if self.use_feed_forward:/#[CNode]307
+
+#------------------------> 47
+    %3 = %2() #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(375)/        if self.use_feed_forward:/#[CNode]308
+    Primitive::Return{prim_type=1}(%3)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(375)/        if self.use_feed_forward:/#[CNode]309
+}
+# order:
+#   1: _transformer_encoder.70:xij{[0]: ValueNode<FuncGraph> construct.310, [1]: x, [2]: neighbors}
+#   2: _transformer_encoder.70:[CNode]311{[0]: ValueNode<FuncGraph> construct.18, [1]: x, [2]: xij, [3]: g_ii, [4]: g_ij, [5]: b_ii, [6]: b_ij, [7]: c_ij, [8]: t}
+#   3: _transformer_encoder.70:Q{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]311, [2]: ValueNode<Int64Imm> 0}
+#   4: _transformer_encoder.70:K{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]311, [2]: ValueNode<Int64Imm> 1}
+#   5: _transformer_encoder.70:V{[0]: ValueNode<DoSignaturePrimitive> S-Prim-getitem, [1]: [CNode]311, [2]: ValueNode<Int64Imm> 2}
+#   6: _transformer_encoder.70:[CNode]312{[0]: ValueNode<DoSignaturePrimitive> S-Prim-MakeTuple, [1]: Q, [2]: K, [3]: V}
+#   7: _transformer_encoder.70:[CNode]313{[0]: ValueNode<DoSignaturePrimitive> S-Prim-MakeTuple, [1]: ValueNode<StringImm> mask, [2]: ValueNode<StringImm> cutoff}
+#   8: _transformer_encoder.70:[CNode]314{[0]: ValueNode<DoSignaturePrimitive> S-Prim-MakeTuple, [1]: mask, [2]: c_ij}
+#   9: _transformer_encoder.70:[CNode]315{[0]: ValueNode<DoSignaturePrimitive> S-Prim-make_dict, [1]: [CNode]313, [2]: [CNode]314}
+#  10: _transformer_encoder.70:v{[0]: ValueNode<UnpackCall> unpack_call, [1]: ValueNode<FuncGraph> construct.316, [2]: [CNode]312, [3]: [CNode]315}
+#  11: _transformer_encoder.70:v{[0]: ValueNode<DoSignaturePrimitive> S-Prim-Squeeze, [1]: v}
+#  12: _transformer_encoder.70:305{[0]: ValueNode<FuncGraph> bool_.304, [1]: ValueNode<BoolImm> false}
+#  13: _transformer_encoder.70:[CNode]307{[0]: ValueNode<Primitive> Switch, [1]: 305, [2]: ValueNode<FuncGraph> ✓_transformer_encoder.306, [3]: ValueNode<FuncGraph> ✗_transformer_encoder.71}
+#  14: _transformer_encoder.70:[CNode]308{[0]: [CNode]307}
+#  15: _transformer_encoder.70:[CNode]309{[0]: ValueNode<Primitive> Return, [1]: [CNode]308}
+
+
+# [No.49] ✗_transformer_encoder.71
+# In file ../cybertroncode/interactions.py(375)/        if self.use_feed_forward:/
+funcgraph fg_71[fg_70](
+) {
+    %1 : $(✗_transformer_encoder.71):Tensor(F32)[32, 9, 8, 128] = FuncGraph::fg_310(%para232, %para233)    #(Tensor(F32)[32, 9, 128], Tensor(I32)[1, 9, 8])    # fg_310=construct.310 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(370)/        xij = self.gather_neighbors(x,neighbors)/#xij
+
+#------------------------> 48
+    %2 = $(✗_transformer_encoder.71):FuncGraph::fg_18(%para232, %1, %para234, %para235, %para236, %para237, %para238, %para239)    #(Tensor(F32)[32, 9, 128], Tensor(F32)[32, 9, 8, 128], Tensor(F32)[1, 128], Tensor(F32)[32, 9, 8, 128], I64, I64, Tensor(F32)[32, 9, 9], Tensor(F32)[128])    # fg_18=construct.18 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(371)/        Q, K, V = self.positional_embedding(x,xij,g_ii,g_ij,b_ii,b_ij,c_ij,t)/#[CNode]311
+    %3 = $(✗_transformer_encoder.71):DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%2, I64(0))    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(371)/        Q, K, V = self.positional_embedding(x,xij,g_ii,g_ij,b_ii,b_ij,c_ij,t)/#Q
+    %4 = $(✗_transformer_encoder.71):DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%2, I64(1))    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(371)/        Q, K, V = self.positional_embedding(x,xij,g_ii,g_ij,b_ii,b_ij,c_ij,t)/#K
+    %5 = $(✗_transformer_encoder.71):DoSignaturePrimitive::S-Prim-getitem{prim_type=1}(%2, I64(2))    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(371)/        Q, K, V = self.positional_embedding(x,xij,g_ii,g_ij,b_ii,b_ij,c_ij,t)/#V
+    %6 = $(✗_transformer_encoder.71):DoSignaturePrimitive::S-Prim-MakeTuple{prim_type=1}(%3, %4, %5)    #(Undefined, Undefined, Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(372)/        v = self.multi_head_attention(Q,K,V,mask=mask,cutoff=c_ij)/#[CNode]312
+    %7 = $(✗_transformer_encoder.71):DoSignaturePrimitive::S-Prim-MakeTuple{prim_type=1}("mask", "cutoff")    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(372)/        v = self.multi_head_attention(Q,K,V,mask=mask,cutoff=c_ij)/#[CNode]313
+    %8 = $(✗_transformer_encoder.71):DoSignaturePrimitive::S-Prim-MakeTuple{prim_type=1}(%para240, %para238)    #(Tensor(Bool)[32, 9, 9], Tensor(F32)[32, 9, 9]) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(372)/        v = self.multi_head_attention(Q,K,V,mask=mask,cutoff=c_ij)/#[CNode]314
+    %9 = $(✗_transformer_encoder.71):DoSignaturePrimitive::S-Prim-make_dict{prim_type=1}(%7, %8)    #(Undefined, Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(372)/        v = self.multi_head_attention(Q,K,V,mask=mask,cutoff=c_ij)/#[CNode]315
+    %10 = $(✗_transformer_encoder.71):UnpackCall::unpack_call(FuncGraph::fg_316, %6, %9)    #(Undefined, Undefined, Undefined)    # fg_316=construct.316 #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(372)/        v = self.multi_head_attention(Q,K,V,mask=mask,cutoff=c_ij)/#v
+    %11 = $(✗_transformer_encoder.71):DoSignaturePrimitive::S-Prim-Squeeze{prim_type=1}[axis=(I64(-2)), input_names=["x"], output_names=["output"]](%10)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(373)/        v = self.squeeze(v)/#v
+    %12 = DoSignaturePrimitive::S-Prim-add{prim_type=1}(%para232, %11)    #(Tensor(F32)[32, 9, 128], Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(378)/            return x + v/#[CNode]317
+    Primitive::Return{prim_type=1}(%12)    #(Undefined) #scope: Default/network-WithForceLossCell/_backbone-Cybertron/model-MolCT/interactions-CellList/0-NeuralInteractionUnit
+      # In file ../cybertroncode/interactions.py(378)/            return x + v/#[CNode]318
+}
+# order:
+#   1: ✗_transformer_encoder.71:[CNode]317{[0]: ValueNode<DoSignaturePrimitive> S-Prim-add, [1]: x, [2]: v}
+#   2: ✗_transformer_encoder.71:[CNode]318{[0]: ValueNode<Primitive> Return, [1]: [CNode]317}
+
+
+#===============================================================================
+# num of function graphs in stack: 49

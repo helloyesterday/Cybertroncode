@@ -22,9 +22,9 @@
 # limitations under the License.
 # ============================================================================
 
-import numpy as np
 import mindspore as ms
 import mindspore.nn as nn
+import mindspore.numpy as msnp
 from mindspore import Tensor
 from mindspore.ops import functional as F
 from mindspore.ops import operations as P
@@ -822,14 +822,14 @@ class MolCT(DeepGraphMolecularModel):
         Adapted from:
         https://github.com/andreamad8/Universal-Transformer-Pytorch/blob/master/models/common_layer.py
         """
-        position = np.arange(length)
+        position = msnp.arange(length,dtype=ms.float32)
         num_timescales = channels // 2
-        log_timescale_increment = ( np.log(float(max_timescale) / float(min_timescale)) / (float(num_timescales) - 1))
-        inv_timescales = min_timescale * np.exp(np.arange(num_timescales).astype(np.float) * -log_timescale_increment)
-        scaled_time = np.expand_dims(position, 1) * np.expand_dims(inv_timescales, 0)
+        log_timescale_increment = msnp.log(max_timescale / min_timescale, dtype=ms.float32) / (num_timescales - 1)
+        inv_timescales = min_timescale * msnp.exp(msnp.arange(num_timescales,dtype=ms.float32) * -log_timescale_increment)
+        scaled_time = F.expand_dims(position, 1) * F.expand_dims(inv_timescales, 0)
 
-        signal = np.concatenate([np.sin(scaled_time), np.cos(scaled_time)], axis=1)
-        signal = np.pad(signal, [[0, 0], [0, channels % 2]], 
+        signal = msnp.concatenate([msnp.sin(scaled_time,dtype=ms.float32), msnp.cos(scaled_time,dtype=ms.float32)], axis=1)
+        signal = msnp.pad(signal, [[0, 0], [0, channels % 2]], 
                         'constant', constant_values=[0.0, 0.0])
 
-        return Tensor(signal,ms.float32)
+        return signal

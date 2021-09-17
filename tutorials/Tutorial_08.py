@@ -22,11 +22,11 @@ if __name__ == '__main__':
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    sys_name = 'ds_ethanol_kJ-mol_nm_normed'
+    sys_name = 'ds-ethanol-kJ_per_mol-nm-normed'
 
-    train_file = sys_name + '_train_1024.npz'
-    valid_file = sys_name + '_valid_128.npz'
-    test_file  = sys_name + '_test_1024.npz'
+    train_file = sys_name + '-train-1024.npz'
+    valid_file = sys_name + '-valid-128.npz'
+    test_file  = sys_name + '-test-1024.npz'
 
     train_data = np.load(train_file)
     valid_data = np.load(valid_file)
@@ -45,8 +45,9 @@ if __name__ == '__main__':
         n_interactions=3,
         dim_feature=128,
         n_heads=8,
-        max_cycles=1,
-        self_dis=0.1,
+        max_cycles=5,
+        self_dis=0.01,
+        fixed_cycles=True,
         unit_length='nm',
         )
 
@@ -78,7 +79,7 @@ if __name__ == '__main__':
     ds_test = ds_test.batch(1024)
     ds_test = ds_test.repeat(1)
     
-    scale_dis = train_data['mol_scale'] / train_data['avg_force']
+    scale_dis = 1.0 / train_data['avg_force']
     loss_fn = MSELoss(ratio_energy=1,ratio_forces=100,force_aggregate='sum',scale_dis=scale_dis,ratio_normlize=True)
     loss_network = WithForceLossCell('RFE',net,loss_fn)
     eval_network = WithForceEvalCell('RFE',net,loss_fn,train_data_normed=True,eval_data_normed=True,mol_scale=mol_scale,mol_shift=mol_shift)

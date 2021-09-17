@@ -24,7 +24,6 @@
 
 import mindspore as ms
 from mindspore import nn
-from mindspore.nn.layer.image import PSNR
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 

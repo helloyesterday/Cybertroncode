@@ -33,6 +33,7 @@ from mindspore.ops import functional as F
 from cybertroncode.units import units
 from cybertroncode.neighbors import GatherNeighbors
 from cybertroncode.base import SmoothReciprocal
+from cybertroncode.activations import get_activation
 from cybertroncode.cutoff import get_cutoff
 from cybertroncode.aggregators import get_aggregator,get_list_aggregator
 from cybertroncode.decoders import  get_decoder
@@ -114,6 +115,7 @@ class Readout(nn.Cell):
         interactions_aggregator='sum',
         n_aggregator_hiddens=0,
         interaction_decoders=None,
+        output_fn=None,
     ):
         super().__init__()
 
@@ -156,6 +158,8 @@ class Readout(nn.Cell):
 
         activation, num_activation = self._check_type_and_number(activation,'activation')
         self.activation = activation
+
+        self.output_fn = get_activation(output_fn)
 
         if not isinstance(scaled_by_atoms_number,bool): raise TypeError('Type of scaled_by_atoms_number must be bool')
         self.scaled_by_atoms_number = scaled_by_atoms_number
@@ -477,6 +481,7 @@ class AtomwiseReadout(Readout):
         interactions_aggregator='sum',
         n_aggregator_hiddens=0,
         interaction_decoders=None,
+        output_fn=None,
     ):
         super().__init__(
             n_in=n_in,
@@ -500,6 +505,7 @@ class AtomwiseReadout(Readout):
             interactions_aggregator=interactions_aggregator,
             n_aggregator_hiddens=n_aggregator_hiddens,
             interaction_decoders=interaction_decoders,
+            output_fn=output_fn,
         )
         self.name = 'Atomwise'
         
@@ -591,7 +597,10 @@ class AtomwiseReadout(Readout):
                 atoms_number = x.shape[self.axis]
             y = y / atoms_number
 
-        return y
+        if self.output_fn is None:
+            return y
+        else:
+            return self.output_fn(y)
 
 class GraphReadout(Readout):
     """
@@ -625,6 +634,7 @@ class GraphReadout(Readout):
         interactions_aggregator='sum',
         n_aggregator_hiddens=0,
         interaction_decoders=None,
+        output_fn=None,
     ):
         super().__init__(
             n_in=n_in,
@@ -648,6 +658,7 @@ class GraphReadout(Readout):
             interactions_aggregator=interactions_aggregator,
             n_aggregator_hiddens=n_aggregator_hiddens,
             interaction_decoders=interaction_decoders,
+            output_fn=output_fn,
         )
 
         self.name = 'Graph'
@@ -731,7 +742,10 @@ class GraphReadout(Readout):
                 atoms_number = x.shape[self.axis]
             y = y / atoms_number
         
-        return y
+        if self.output_fn is None:
+            return y
+        else:
+            return self.output_fn(y)
 
 class LongeRangeReadout(Readout):
     def __init__(self,

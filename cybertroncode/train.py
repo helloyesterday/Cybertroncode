@@ -236,6 +236,26 @@ class MSELoss(LossWithEnergyAndForces):
     def _calc_loss(self, diff):
         return self.square(diff)
 
+class CrossEntropyLoss(nn.loss.loss.LossBase):
+    def __init__(self, reduction='mean', use_sigmoid=False):
+        super().__init__(reduction)
+        
+        self.sigmoid = None
+        if use_sigmoid:
+            self.sigmoid = P.Sigmoid()
+
+        self.cross_entropy = P.BinaryCrossEntropy(reduction)
+
+    def construct(self, pos_pred, neg_pred):
+        if self.sigmoid is not None:
+            pos_pred = self.sigmoid(pos_pred)
+            neg_pred = self.sigmoid(neg_pred)
+
+        pos_loss = self.cross_entropy(pos_pred,F.ones_like(pos_pred))
+        neg_loss = self.cross_entropy(neg_pred,F.zeros_like(neg_pred))
+
+        return  pos_loss + neg_loss
+
 class WithCell(nn.Cell):
     def __init__(self,
         datatypes,
@@ -663,6 +683,24 @@ class WithLabelEvalCell(WithCell):
             outputs = self.scaleshift(outputs, atoms_number, atom_types)
 
         return loss, outputs, label, atoms_number
+
+class WithAdversarialLossCell(nn.Cell):
+    def __init__(self,
+        backbone,
+        loss_fn
+    ):
+        super().__init__(auto_prefix=False)
+        self._backbone = backbone
+        self._loss_fn = loss_fn
+
+    def construct(self, pos_samples, neg_samples):
+        pos_pred = self._backbone(pos_samples)
+        neg_pred = self._backbone(neg_samples)
+        return self._loss_fn(pos_pred, neg_pred)
+
+    @property
+    def backbone_network(self):
+        return self._backbone
 
 class TrainMonitor(Callback):
     def __init__(self, model, name, directory=None, per_epoch=1, per_step=0, avg_steps=0, eval_dataset=None, best_ckpt_metrics=None):

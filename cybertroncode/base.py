@@ -22,10 +22,9 @@
 # limitations under the License.
 # ============================================================================
 
-import numpy as np
 import mindspore as ms
+import mindspore.numpy as msnp
 from mindspore import nn
-from mindspore import Tensor
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.common.parameter import Parameter
@@ -119,7 +118,7 @@ class ResFilter(nn.Cell):
     def construct(self,x):
         lx = self.linear(x)
         return self.residual(lx)
-        
+
 class CFconv(nn.Cell):
     def __init__(
         self,
@@ -234,13 +233,11 @@ class PositionalEmbedding(nn.Cell):
 
         if use_public_layer_norm:
             self.norm = nn.LayerNorm((dim,),-1,-1)
-            self.norm_q = self.norm
-            self.norm_k = self.norm
-            self.norm_v = self.norm
+            self.x_norm = self.norm
+            self.g_norm = self.norm
         else:
-            self.norm_q = nn.LayerNorm((dim,),-1,-1)
-            self.norm_k = nn.LayerNorm((dim,),-1,-1)
-            self.norm_v = nn.LayerNorm((dim,),-1,-1)
+            self.x_norm = nn.LayerNorm((dim,),-1,-1)
+            self.g_norm = nn.LayerNorm((dim,),-1,-1)
 
         self.x2q = Dense(dim,dim,has_bias=False)
         self.x2k = Dense(dim,dim,has_bias=False)
@@ -249,7 +246,7 @@ class PositionalEmbedding(nn.Cell):
         self.mul = P.Mul()
         self.concat = P.Concat(-2)
     
-    def construct(self,xi,xij,g_ii=1,g_ij=1,b_ii=0,b_ij=0,c_ij=None,t=0):
+    def construct(self,xi,xij,g_ii=1,g_ij=1,b_ii=0,b_ij=0,t=0):
         r"""Get query, key and query from atom types and positions
 
         Args:
@@ -272,42 +269,51 @@ class PositionalEmbedding(nn.Cell):
             value  (Mindspore.Tensor [B, A, N', F]):
 
         """
+
+        # if self.use_bonds:
+        #     xi += b_ii
+        #     xij += b_ij
+
+        # e_ii = self.x_norm(xi + t)
+        # e_ij = self.x_norm(xij + t)
+
+        # # [B, A, 1, F]
+        # e_ii = F.expand_dims(e_ii,-2)
+        # # [B, A, N', F] + [B, A, N', F]
+        # e_ij = self.concat((e_ii,e_ij))
+
+        # g_ii = F.ones_like(e_ii) * g_ii
+        # g_ij = self.concat((g_ii,g_ij))
+
+        # # [B, A, 1, F]
+        # query = self.x2q(e_ii)
+        # # [B, A, N', F]
+        # key   = self.x2k(e_ij) * self.g_norm(g_ij)
+        # # [B, A, N', F]
+        # value = self.x2v(e_ij) * g_ij
+
+        # [B, A, V] * [B, A, V] = [B, A, V]
+        xgii = self.mul(xi,g_ii)
+        # [B, A, N, V] * [B, A, N, V] = [B, A, N, V]
+        xgij = self.mul(xij,g_ij)
+
+        # [B, A, 1, V]
+        xgii = F.expand_dims(xgii,-2)
+        # [B, A, N', V]
+        xgij = self.concat((xgii,xgij))
+        # if c_ij is not None:
+        #     # [B, A, N', V] * [B, A, N', 1]
+        #     xgij = xgij * F.expand_dims(c_ij,-1)
         
-        if self.use_distances:
-            # [B, A, F] * [B, A, F] + [B, A, F] = [B, A, F]
-            a_ii = xi * g_ii
-            # [B, A, N, F] * [B, A, N, F] + [B, A, N, F] = [B, A, N, F]
-            a_ij = xij * g_ij
-        else:
-            a_ii = xi
-            a_ij = xij
+        xgii = self.norm(xgii + t)
+        xgij = self.norm(xgij + t)
 
-        if self.use_bonds:
-            e_ii = a_ii + b_ii
-            e_ij = a_ij + b_ij
-        else:
-            e_ii = a_ii
-            e_ij = a_ij
-
-        # [B, A, 1, F]
-        e_ii = F.expand_dims(e_ii,-2)
-        # [B, A, N', F] + [B, A, N', F]
-        e_ij = self.concat((e_ii,e_ij))
-
-        xq = self.norm_q(e_ii + t)
-        xk = self.norm_k(e_ij + t)
-        xv = self.norm_v(e_ij + t)
-        # [B, A, 1, F]
-        query = self.x2q(xq)
-        # [B, A, N', F]
-        key   = self.x2k(xk)
-        # [B, A, N', F]
-        value = self.x2v(xv)
-
-        if c_ij is not None:
-            # [B, A, N', F] * [B, A, N', 1]
-            key = key * F.expand_dims(c_ij,-1)
-            value = value * F.expand_dims(c_ij,-1)
+        # [B, A, 1, V]
+        query = self.x2q(xgii)
+        # [B, A, N', V]
+        key   = self.x2k(xgij)
+        # [B, A, N', V]
+        value = self.x2v(xgij)
 
         return query, key, value
 
@@ -339,8 +345,7 @@ class MultiheadAttention(nn.Cell):
         # f = F / h
         self.size_per_head = dim_feature // n_heads
         # 1.0 / sqrt(f)
-        scores_mul = 1.0 / np.sqrt(float(self.size_per_head))
-        self.scores_mul = ms.Tensor(scores_mul,ms.float32)
+        self.scores_mul = 1.0 / msnp.sqrt(float(self.size_per_head))
 
         # shape = (h, f)
         self.reshape_tail = (self.n_heads, self.size_per_head)
@@ -502,15 +507,11 @@ class ACTWeight(nn.Cell):
 
         self.zeros_like = P.ZerosLike()
         self.ones_like = P.OnesLike()
-        # self.select = P.Select()
 
-    def construct(self,prob,halting_prob,n_updates):
-        # zeros = self.zeros_like(halting_prob)
-        # ones = self.ones_like(halting_prob)
+    def construct(self,prob,halting_prob):
 
         # Mask for inputs which have not halted last cy
         running = F.cast(halting_prob < 1.0, ms.float32)
-        # running = self.select(halting_prob < 1.0,ones,zeros)
 
         # Add the halting probability for this step to the halting
         # probabilities for those input which haven't halted yet
@@ -530,11 +531,9 @@ class ACTWeight(nn.Cell):
         remainders = new_halted * (1.0 - running_prob)
 
         # Add the remainders to those inputs which halted at this step
-        # halting_prob = new_prob + remainders
         dp = add_prob + remainders
 
         # Increment n_updates for all inputs which are still running
-        # n_updates = n_updates + running
         dn = running
 
         # Compute the weight to be applied to the new state and output

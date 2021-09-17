@@ -22,7 +22,6 @@
 # limitations under the License.
 # ============================================================================
 
-import numpy as np
 import mindspore as ms
 import mindspore.nn as nn
 from mindspore import Tensor
@@ -342,7 +341,6 @@ class NeuralInteractionUnit(Interaction):
         self.min = P.Minimum()
         self.concat = P.Concat(-1)
         self.reducesum = P.ReduceSum()
-        self.squeeze = P.Squeeze(-2)
         self.ones_like = P.OnesLike()
         self.zeros_like = P.ZerosLike()
         self.zeros = P.Zeros()
@@ -366,17 +364,17 @@ class NeuralInteractionUnit(Interaction):
             print('---------using adaptive computation time with threshold: '+str(self.act_threshold))
 
 
-    def _transformer_encoder(self,x,neighbors,g_ii=1,g_ij=1,b_ii=0,b_ij=0,c_ij=None,t=0,mask=None):
+    def _encoder(self,x,neighbors,g_ii=1,g_ij=1,b_ii=0,b_ij=0,c_ij=None,t=0,mask=None):
 
         xij = self.gather_neighbors(x,neighbors)
-        Q, K, V = self.positional_embedding(x,xij,g_ii,g_ij,b_ii,b_ij,c_ij,t)
+        Q, K, V = self.positional_embedding(x,xij,g_ii,g_ij,b_ii,b_ij,t)
         v = self.multi_head_attention(Q,K,V,mask=mask,cutoff=c_ij)
-        v = self.squeeze(v)
+        v = v.squeeze(-2)
 
-        if self.use_feed_forward:
-            return self.feed_forward(x + v)
-        else:
-            return x + v
+        # if self.use_feed_forward:
+        #     return self.feed_forward(x + v)
+        # else:
+        return x + v
 
     def construct(self, x, e, f_ii, f_ij, b_ii, b_ij, c_ij, neighbors, mask=None):
         """Compute convolution block.
@@ -407,7 +405,7 @@ class NeuralInteractionUnit(Interaction):
                 
         if self.max_cycles == 1:
             t = self.time_embedding[0]
-            x0 = self._transformer_encoder(x,neighbors,g_ii,g_ij,b_ii,b_ij,c_ij,t,mask)
+            x0 = self._encoder(x,neighbors,g_ii,g_ij,b_ii,b_ij,c_ij,t,mask)
 
         else:
             xx = x
@@ -419,19 +417,20 @@ class NeuralInteractionUnit(Interaction):
             broad_zeros = self.zeros_like(e)
 
             if self.flexable_cycels:
-                cycle = self.zeros((),ms.int32)
+                # cycle = self.zeros((),ms.int32)
+                cycle = self.zeros((1,),ms.int32)
                 while((halting_prob < self.act_threshold).any() and (cycle < self.max_cycles)):
                     t = self.time_embedding[cycle]
                     vt = broad_zeros + t
                     
                     xp = self.concat((xx,e,vt))
                     p = self.pondering(xp)
-                    w, dp, dn = self.act_weight(p,halting_prob,n_updates)
+                    w, dp, dn = self.act_weight(p,halting_prob)
                     halting_prob = halting_prob + dp
                     n_updates = n_updates + dn
 
-                    xx = self._transformer_encoder(xx,neighbors,g_ii,g_ij,b_ii,b_ij,c_ij,t,mask)
-
+                    xx = self._encoder(xx,neighbors,g_ii,g_ij,b_ii,b_ij,c_ij,t,mask)
+                    
                     cycle = cycle + 1
 
                     x0 = xx * w + x0 * (1.0 - w)
@@ -442,11 +441,11 @@ class NeuralInteractionUnit(Interaction):
                     
                     xp = self.concat((xx,e,vt))
                     p = self.pondering(xp)
-                    w, dp, dn = self.act_weight(p,halting_prob,n_updates)
+                    w, dp, dn = self.act_weight(p,halting_prob)
                     halting_prob = halting_prob + dp
                     n_updates = n_updates + dn
 
-                    xx = self._transformer_encoder(xx,neighbors,g_ii,g_ij,b_ii,b_ij,c_ij,t,mask)
+                    xx = self._encoder(xx,neighbors,g_ii,g_ij,b_ii,b_ij,c_ij,t,mask)
 
                     cycle = cycle + 1
 

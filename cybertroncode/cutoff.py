@@ -22,7 +22,7 @@
 # limitations under the License.
 # ============================================================================
 
-import numpy as np
+import math
 import mindspore as ms
 from mindspore import nn
 from mindspore import Tensor
@@ -106,7 +106,7 @@ class CosineCutoff(Cutoff):
         )
 
         self.name = 'cosine cutoff'
-        self.pi = Tensor(np.pi,ms.float32)
+        self.pi = Tensor(math.pi,ms.float32)
         self.cos = P.Cos()
         self.logical_and = P.LogicalAnd()
 
