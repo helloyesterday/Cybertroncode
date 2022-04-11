@@ -17,8 +17,11 @@ Cybertron：基于MindSpore的深度分子模型通用架构
 目前本程序内置三种GNN分子模型：SchNet[1]、PhysNet[2]以及MolCT[3]。
 
 参考文献：
+
 [1] https://arxiv.org/abs/1706.08566
+
 [2] https://arxiv.org/abs/1902.08408
+
 [3] https://arxiv.org/abs/2012.11816 
 
 #### 安装教程
@@ -30,17 +33,27 @@ Cybertron：基于MindSpore的深度分子模型通用架构
 根目录下的cybertron_tutorial_CN.pdf文件为程序说明，examples目录内为使用案例：
 
 Tutorial_00.py：数据预处理
+
 Tutorial_01.py：基础教程（一）
+
 Tutorial_02.py：基础教程（二）
+
 Tutorial_03.py：归一化数据集与验证数据集的使用
+
 Tutorial_04.py：模型参数与超参数的读取（一）
+
 Tutorial_05.py：多任务训练（一）
+
 Tutorial_06.py：多任务训练（二）
+
 Tutorial_07.py：带有力的数据集的拟合
+
 Tutorial_08.py：模型参数与超参数的读取（二） 
 
 注：Tutorial_00.py所需数据集可从以下网址下载：
+
     dataset_qm9.npz: http://gofile.me/6Utp7/tJ5hoDIAo
+
     ethanol_dft.npz: http://gofile.me/6Utp7/hbQBofAFM
 
 使用Tutorial_00.py处理之后生成的数据集已在examples文件夹中，并可用于Tutorial_01.py ~ Tutorial_08.py。
