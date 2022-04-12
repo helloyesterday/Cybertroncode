@@ -38,7 +38,6 @@ import sponge.functions as func
 from .block import Dense,MLP
 from .block import PreActDense
 from .block import SeqPreActResidual
-# from .neighbour import GatherNeighbours
 from .base import Aggregate
 from .base import PositionalEmbedding
 from .base import MultiheadAttention
@@ -87,18 +86,9 @@ class Interaction(Cell):
         return x
 
 class SchNetInteraction(Interaction):
-    r"""Continuous-filter convolution block used in SchNet module.
+    r"""interaction for SchNet.
 
     Args:
-        dim_feature (int): number of input atomic vector dimensions.
-        dim_filter (int): dimensions of filter network.
-        cfconv_module (nn.Cell): the algorthim to calcaulte continuous-filter 
-            convoluations.
-        cutoff_network (nn.Cell, optional): if None, no cut off function is used.
-        activation (callable, optional): if None, no activation function is used.
-        normalize_filter (bool, optional): If True, normalize filter to the number
-            of neighbours when aggregating.
-        axis (int, optional): axis over which convolution should be applied.
 
     """
 
@@ -136,20 +126,6 @@ class SchNetInteraction(Interaction):
         return self
 
     def construct(self, x, f_ij, b_ij, c_ij, neighbours, mask=None):
-        """Compute convolution block.
-
-        Args:
-            x (ms.Tensor[float]): input representation/embedding of atomic environments
-                with (N_b, N_a, n_in) shape.
-            rbf (ms.Tensor[float]): interatomic distances of (N_b, N_a, N_nbh) shape.
-            neighbours (ms.Tensor[int]): indices of neighbours of (N_b, N_a, N_nbh) shape.
-            mask (ms.Tensor[bool]): mask to filter out non-existing neighbours
-                introduced via padding.
-
-        Returns:
-            ms.Tensor: block output with (N_b, N_a, n_out) shape.
-
-        """
         
         ax = self.atomwise_bc(x)
         x_ij = self.gather_neighbours(ax,neighbours)
@@ -167,16 +143,6 @@ class SchNetInteraction(Interaction):
         return x_new
 
 class PhysNetModule(Interaction):
-    r"""Continuous-filter convolution block used in SchNet module.
-
-    Args:
-        dim_feature (int): number of input atomic vector dimensions.
-        activation (callable, optional): if None, no activation function is used.
-        normalize_filter (bool, optional): If True, normalize filter to the number
-            of neighbours when aggregating.
-        axis (int, optional): axis over which convolution should be applied.
-
-    """
 
     def __init__(
         self,
@@ -245,20 +211,6 @@ class PhysNetModule(Interaction):
         return ux + v1
 
     def construct(self, x, f_ij, b_ij, c_ij, neighbours, mask=None):
-        """Compute convolution block.
-
-        Args:
-            x (ms.Tensor[float]): input representation/embedding of atomic environments
-                with (N_b, N_a, n_in) shape.
-            rbf (ms.Tensor[float]): interatomic distances of (N_b, N_a, N_nbh) shape.
-            neighbours (ms.Tensor[int]): indices of neighbours of (N_b, N_a, N_nbh) shape.
-            mask (ms.Tensor[bool]): mask to filter out non-existing neighbours
-                introduced via padding.
-
-        Returns:
-            ms.Tensor: block output with (N_b, N_a, n_out) shape.
-
-        """
         
         x1  = self._interaction_block(x,f_ij,c_ij,neighbours,mask)
         xnew = self.outer_residual(x1)
@@ -266,16 +218,10 @@ class PhysNetModule(Interaction):
         return xnew
 
 class NeuralInteractionUnit(Interaction):
-    r"""Continuous-filter convolution block used in SchNet module.
+    r"""Neural interaction unit for MolCT.
 
     Args:
-        dim_feature (int): dimensions of feature space.
-        cfconv_module (nn.Cell): the algorthim to calcaulte continuous-filter 
-            convoluations.
-        cutoff_network (nn.Cell, optional): if None, no cut off function is used.
-        activation (callable, optional): if None, no activation function is used.
-        normalize_filter (bool, optional): If True, normalize filter to the number
-            of neighbours when aggregating.
+
     """
 
     def __init__(
@@ -338,9 +284,6 @@ class NeuralInteractionUnit(Interaction):
         self.zeros_like = P.ZerosLike()
         self.zeros = P.Zeros()
 
-        self.tensor_summary = P.TensorSummary()
-        self.scalar_summary = P.ScalarSummary()
-
     def print_info(self, num_retraction: int=6, num_gap: int=3, char: str='-'):
         ret = char * num_retraction
         gap = char * num_gap
@@ -390,20 +333,6 @@ class NeuralInteractionUnit(Interaction):
         return signal
 
     def construct(self, x, f_ij, b_ij, c_ij, neighbours, mask=None, e=None, f_ii=None, b_ii=None, c_ii=None, atom_mask=None):
-        """Compute convolution block.
-
-        Args:
-            x (ms.Tensor[float]): input representation/embedding of atomic environments
-                with (N_b, N_a, n_in) shape.
-            r_ij (ms.Tensor[float]): interatomic distances of (N_b, N_a, N_nbh) shape.
-            neighbours (ms.Tensor[int]): indices of neighbours of (N_b, N_a, N_nbh) shape.
-            mask (ms.Tensor[bool]): mask to filter out non-existing neighbours
-                introduced via padding.
-
-        Returns:
-            ms.Tensor: block output with (N_b, N_a, n_out) shape.
-
-        """
         
         if self.dis_filter is not None:
             g_ii = self.dis_filter(f_ii)
@@ -428,7 +357,6 @@ class NeuralInteractionUnit(Interaction):
 
             broad_zeros = self.zeros_like(e)
 
-            # weights = ()
             if self.fixed_cycles:
                 for cycle in range(self.max_cycles):
                     t = self.time_embedding[cycle]
@@ -445,7 +373,6 @@ class NeuralInteractionUnit(Interaction):
                     cycle = cycle + 1
 
                     x0 = xx * w + x0 * (1.0 - w)
-                    # weights += (w,)
             else:
                 cycle = self.zeros((),ms.int32)
                 while((halting_prob < self.act_threshold).any() and (cycle < self.max_cycles)):
@@ -460,11 +387,8 @@ class NeuralInteractionUnit(Interaction):
                     xx = self._encoder(xx,neighbours,g_ii,g_ij,b_ii,b_ij,t,cutoff,mask)
                     
                     cycle = cycle + 1
-                    # self.tensor_summary('cycle',cycle)
 
                     x0 = xx * w + x0 * (1.0 - w)
-                    # weights += (w,)
-            # self.tensor_summary('weights',self.concat(weights))
         else:
             t = self.time_embedding[0]
             x0 = self._encoder(x,neighbours,g_ii,g_ij,b_ii,b_ij,t,cutoff,mask)

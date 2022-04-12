@@ -47,6 +47,30 @@ __all__ = [
     ]
 
 class Readout(nn.Cell):
+    """
+    Readout function
+
+    Args:
+        dim_represent (int): input dimension of representation (F)
+        dim_output (int): output dimension (Y)
+        activation (Cell): activation function
+        decoder (str): decoder network for atom representation (default: 'halve')
+        aggregator (str): aggregator network for atom representation (default: 'sum')
+        scale (float): scale value for output (default: 1)
+        shift (float): shift value for output (default: 0)
+        element_ref (ms.Tensor or None): reference value for output according to
+            atom types for each atom (default: None)
+        atomwise_scaleshift (bool): use atomwise scaleshift (True) or graph scaleshift (False)
+        axis (int): axis to readout
+        n_decoder_layers (list of int or None): number of neurons in each hidden layer
+            of the decoder network.
+        energy_unit (str): energy unit of output
+        hyper_param (dict): hyperparameter
+
+    Returns:
+        ms.Tensor with shape (B,Y)
+
+    """
     def __init__(self,
         model: MolecularModel=None,
         dim_output: int=1,
@@ -196,35 +220,6 @@ class Readout(nn.Cell):
         raise NotImplementedError
 
 class AtomwiseReadout(Readout):
-    """
-    Predicts atom-wise contributions and accumulates global prediction, e.g. for the
-    energy.
-
-    Args:
-        dim_represent (int): input dimension of representation
-        dim_output (int): output dimension of target property (default: 1)
-        activation (function): activation function for hidden nn (default: None)
-        decoder (str): decoder network for atom representation (default: 'halve')
-        aggregator (str): aggregator network for atom representation (default: 'sum')
-        n_decoder_layers (list of int or None): number of neurons in each hidden layer
-            of the decoder network.
-        scale (torch.Tensor or None): scale value for output (default: 1)
-        shift (torch.Tensor or None): shift value for output (default: 0)
-        element_ref (torch.Tensor or None): reference value for output according to
-            atom types for each atom (default: None)
-        output_fn (callable): Network used for atomistic outputs. Takes schnetpack input
-            dictionary as input. Output is not normalized. If set to None,
-            a pyramidal network is generated automatically. (default: None)
-
-    Returns:
-        tuple: prediction for property
-
-        If contributions is not None additionally returns atom-wise contributions.
-
-        If derivative is not None additionally returns derivative w.r.t. atom positions.
-
-    """
-
     def __init__(
         self,
         model: MolecularModel=None,
@@ -395,47 +390,3 @@ def get_readout(
             raise ValueError("The Readout corresponding to '{}' was not found.".format(readout))
     else:
         raise TypeError("Unsupported Readout type '{}'.".format(type(readout)))
-
-# class InteractionsAggregator(Cell):
-#     def __init__(self,
-#         dim_represent: int,
-#         dim_output: int,
-#         n_interactions: int,
-#         activation: Cell=None,
-#         list_aggregator: ListAggregator='sum',
-#         n_aggregator_hiddens: int=0,
-#         decoders: Decoder=None,
-#     ):
-#         super().__init__()
-
-#         self.n_interactions = n_interactions
-#         self.decoders = None
-
-#         if decoders is not None:
-#             if isinstance(decoders,(tuple,list)):
-#                 self.decoders = nn.CellList([
-#                     get_decoder(decoders[i],dim_represent,dim_output,activation)
-#                     for i in range(n_interactions)
-#                 ])
-#             elif isinstance(decoders,str):
-#                 self.decoders = nn.CellList([
-#                     get_decoder(decoders,dim_represent,dim_output,activation)
-#                     for i in range(n_interactions)
-#                 ])
-#             else:
-#                 raise TypeError("Unsupported Decoder type '{}'.".format(type(decoders)))
-
-#         self.list_aggregator = get_list_aggregator(list_aggregator,dim_output,n_interactions,n_aggregator_hiddens,activation)
-#         if self.list_aggregator is None:
-#             raise TypeError("ListAggregator cannot be None at InteractionsAggregator")
-
-#     def construct(self,xlist,atom_mask=None):
-#         if self.decoders is not None:
-#             ylist = []
-#             n_interactions = len(xlist)
-#             for i in range(n_interactions):
-#                 y = self.decoders[i](xlist[i])
-#                 ylist.append(y)
-#             xlist = ylist
-        
-#         return self.list_aggregator(xlist,atom_mask)

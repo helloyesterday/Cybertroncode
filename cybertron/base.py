@@ -86,13 +86,6 @@ class GraphNorm(nn.Cell):
         return y
 
 class Aggregate(nn.Cell):
-    """Pooling layer based on sum or average with optional masking.
-
-    Args:
-        axis (int): axis along which pooling is done.
-        mean (bool, optional): if True, use average instead for sum pooling.
-
-    """
 
     def __init__(self, axis, mean=False):
         super().__init__()
@@ -101,17 +94,7 @@ class Aggregate(nn.Cell):
         self.reduce_sum=P.ReduceSum()
         self.maximum=P.Maximum()
 
-    def construct(self, inputs, mask=None):
-        r"""Compute layer output.
-
-        Args:
-            input (torch.Tensor): input data.
-            mask (torch.Tensor, optional): mask to be applied; e.g. neighbours mask.
-
-        Returns:
-            torch.Tensor: layer output.
-
-        """
+    def construct(self, inputs:Tensor, mask:Tensor=None):
         # mask input
         if mask is not None:
             inputs = inputs * F.expand_dims(mask,-1)

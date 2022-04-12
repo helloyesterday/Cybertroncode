@@ -267,14 +267,9 @@ class MolecularModel(Cell):
             return F.cast(mask>0,ms.float32),mask
 
     def _get_self_cutoff(self,atom_mask):
-        # if self.cutoff_fn is not None:
-        #     r_ii = msnp.full_like(atom_mask,self.r_self)
-        #     c_ii,_ = self.cutoff_fn(r_ii,atom_mask)
-        #     return c_ii
         return F.cast(atom_mask,ms.float32)
 
     def _get_rbf(self,dis):
-        # expand interatomic distances (for example, Gaussian smearing)
         if self.rbf is None:
             rbf = F.expand_dims(dis,-1)
         else:
@@ -295,14 +290,14 @@ class MolecularModel(Cell):
         """Compute interaction output.
 
         Args:
-            r_ij (ms.Tensor[float], [B, A, N]): interatomic distances of (N_b, N_a, N_nbh) shape.
-            neighbours (ms.Tensor[int]): indices of neighbours of (N_b, N_a, N_nbh) shape.
-            neighbour_mask (ms.Tensor[bool], optional): mask to filter out non-existing neighbours
-                introduced via padding.
-            atom_types (ms.Tensor[int], optional): atomic index 
+            r_ij (ms.Tensor[float], [B, A, N]): distances between atoms.
+            atom_types (ms.Tensor[int], optional): atomic number
+            atom_types (ms.Tensor[int], optional): mask of atomic number
+            neighbours (ms.Tensor[int], [B, A, N], optional): neighbour indices.
+            neighbour_mask (ms.Tensor[bool], optional): mask of neighbour indices.
 
         Returns:
-            torch.Tensor: block output with (N_b, N_a, N_basis) shape.
+            representation: (ms.Tensor[float], [B, A, F]) representation of atoms.
 
         """
 
@@ -364,22 +359,6 @@ class SchNet(MolecularModel):
         The Journal of Chemical Physics 148 (24), 241722. 2018.
 
     Args:
-        
-        num_elements (int): maximum number of atomic types
-        num_basis (int): number of the serial of radical basis functions (RBF)
-        dim_feature (int): dimension of the vectors for atomic embedding
-        dim_filter (int): dimension of the vectors for filters used in continuous-filter convolution.
-        n_interaction (int, optional): number of interaction blocks.
-        max_distance (float): the maximum distance to calculate RBF.
-        atom_types (ms.Tensor[int], optional): atomic index 
-        rbf(nn.Cell, optional): the alghorithm to calculate RBF
-        cutoff_fn (nn.Cell, optional): the algorithm to calculate cutoff.
-        normalize_filter (bool, optional): if True, divide aggregated filter by number
-            of neighbours over which convolution is applied.
-        coupled_interaction (bool, optional): if True, share the weights across
-            interaction blocks and filter-generating networks.
-        trainable_gaussians (bool, optional): If True, widths and offset of Gaussian
-            functions are adjusted during training process.
 
     """
     def __init__(
@@ -480,22 +459,6 @@ class PhysNet(MolecularModel):
         The Journal of Chemical Theory and Computation 2019, 15(6), 3678-3693.
 
     Args:
-        
-        num_elements (int): maximum number of atomic types
-        num_basis (int): number of the serial of radical basis functions (RBF)
-        dim_feature (int): dimension of the vectors for atomic embedding
-        dim_filter (int): dimension of the vectors for filters used in continuous-filter convolution.
-        n_interaction (int, optional): number of interaction blocks.
-        max_distance (float): the maximum distance to calculate RBF.
-        atom_types (ms.Tensor[int], optional): atomic index 
-        rbf(nn.Cell, optional): the alghorithm to calculate RBF
-        cutoff_fn (nn.Cell, optional): the algorithm to calculate cutoff.
-        normalize_filter (bool, optional): if True, divide aggregated filter by number
-            of neighbours over which convolution is applied.
-        coupled_interaction (bool, optional): if True, share the weights across
-            interaction blocks and filter-generating networks.
-        trainable_gaussians (bool, optional): If True, widths and offset of Gaussian
-            functions are adjusted during training process.
 
     """
     def __init__(
@@ -600,7 +563,6 @@ class MolCT(MolecularModel):
 
     Args:
         
-
 
     """
     def __init__(

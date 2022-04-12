@@ -54,23 +54,6 @@ class Dense(nn.Dense):
         )
 
 class MLP(nn.Cell):
-    """Multiple layer fully connected perceptron neural network.
-
-    Args:
-        n_in (int): number of input dimensions.
-        n_out (int): number of output dimensions.
-        layer_dims (list of int or int): number hidden layer dimensions.
-            If an integer, same number of node is used for all hidden layers resulting
-            in a rectangular network.
-            If None, the number of neurons is divided by two after each layer starting
-            n_in resulting in a pyramidal network.
-        n_layers (int, optional): number of layers.
-        activation (callable, optional): activation function. All hidden layers would
-            the same activation function except the output layer that does not apply
-            any activation function.
-
-    """
-
     def __init__(
         self,
         n_in,
@@ -133,15 +116,6 @@ class MLP(nn.Cell):
             self.mlp = nn.SequentialCell(nets)
 
     def construct(self, x):
-        """Compute neural network output.
-
-        Args:
-            inputs (torch.Tensor): network input.
-
-        Returns:
-            torch.Tensor: network output.
-
-        """
         
         y = self.mlp(x)
 

@@ -203,13 +203,6 @@ class GaussianBasis(RadicalBasisFunctions):
     r"""Smear layer using a set of Gaussian functions.
 
     Args:
-        start (float, optional): center of first Gaussian function, :math:`\mu_0`.
-        stop (float, optional): center of last Gaussian function, :math:`\mu_{N_g}`
-        n_gaussians (int, optional): total number of Gaussian functions, :math:`N_g`.
-        centered (bool, optional): If True, Gaussians are centered at the origin and
-            the offsets are used to as their widths (used e.g. for angular functions).
-        trainable (bool, optional): If True, widths and offset of Gaussian functions
-            are adjusted during training process.
 
     """
 
@@ -303,14 +296,13 @@ class GaussianBasis(RadicalBasisFunctions):
         return self
 
     def construct(self, distance: Tensor):
-        """Compute smeared-gaussian distance values.
+        """Compute gaussian type RBF.
 
         Args:
-            distance (torch.Tensor): interatomic distance values of
-                (N_b x N_at x N_nbh) shape.
+            distance (ms.Tensor[float], [B,A,N]): distances between atoms
 
         Returns:
-            torch.Tensor: layer output of (N_b x N_at x N_nbh x N_g) shape.
+            RBF (ms.Tensor[float], [B,A,N,F]): radical basis functions
 
         """
         if self.clip_distance:
@@ -453,7 +445,15 @@ class LogGaussianBasis(RadicalBasisFunctions):
         return self
 
     def construct(self, distance: Tensor):
+        """Compute log gaussian type RBF.
 
+        Args:
+            distance (ms.Tensor[float], [B,A,N]): distances between atoms
+
+        Returns:
+            RBF (ms.Tensor[float], [B,A,N,F]): radical basis functions
+
+        """
         if self.clip_distance:
             distance = C.clip_by_value(distance,self.r_min,self.r_max)
 
