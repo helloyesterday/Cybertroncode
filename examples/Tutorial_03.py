@@ -49,7 +49,7 @@ if __name__ == '__main__':
     train_data = np.load(train_file)
     valid_data = np.load(valid_file)
     
-    idx = [7] # diple
+    idx = [7] # U0
 
     num_atom = int(train_data['num_atoms'])
     scale = train_data['scale'][idx]
@@ -108,7 +108,7 @@ if __name__ == '__main__':
 
     record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=16, directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
 
-    config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
+    config_ck = CheckpointConfig(save_checkpoint_steps=32,keep_checkpoint_max=64,append_info=net.hyper_param)
     ckpoint_cb = ModelCheckpoint(prefix=outname, directory=outdir, config=config_ck)
 
     print("Start training ...")

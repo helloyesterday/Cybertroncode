@@ -34,7 +34,6 @@ from cybertron.cybertron import Cybertron
 from cybertron.train import WithForceEvalCell
 from cybertron.train import MAE,RMSE
 
-
 if __name__ == '__main__':
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")

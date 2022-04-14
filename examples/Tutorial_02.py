@@ -47,7 +47,7 @@ if __name__ == '__main__':
 
     train_data = np.load(train_file)
     
-    idx = [7] # diple
+    idx = [7] # U0
 
     num_atom = int(train_data['num_atoms'])
     scale = train_data['scale'][idx]

@@ -29,9 +29,11 @@ from mindspore import Tensor
 from mindspore import dataset as ds
 from mindspore.train import Model
 from mindspore import context
-from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
 sys.path.append('..')
+
+from sponge.checkpoint import ModelCheckpoint, CheckpointConfig
+
 from cybertron.model import MolCT
 from cybertron.cybertron import Cybertron
 from cybertron.train import WithLabelLossCell,WithLabelEvalCell
@@ -108,7 +110,7 @@ if __name__ == '__main__':
 
     record_cb = TrainMonitor(model, outname, per_step=32, avg_steps=32, directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
 
-    config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
+    config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64,append_info=net.hyper_param)
     ckpoint_cb = ModelCheckpoint(prefix=outname, directory=outdir, config=config_ck)
 
     np.set_printoptions(linewidth=200)

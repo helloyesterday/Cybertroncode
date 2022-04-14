@@ -46,7 +46,7 @@ if __name__ == '__main__':
     net = Cybertron(hyper_param=hyper_param)
     load_checkpoint(ckpt_file,net)
     
-    idx = [7] # diple
+    idx = [7] # U0
 
     test_file = sys.path[0] + '/dataset_qm9_origin_testset_1024.npz'
     test_data = np.load(test_file)
