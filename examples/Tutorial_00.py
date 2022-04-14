@@ -29,36 +29,36 @@ sys.path.append('..')
 from cybertron.dataset import DatasetProcessor
 
 if __name__ == '__main__':
-    # qm9_file = 'dataset_qm9.npz'
-    # qm9_data = np.load(qm9_file)
+    qm9_file = 'dataset_qm9.npz'
+    qm9_data = np.load(qm9_file)
 
-    # for k,v in qm9_data.items():
-    #     print(k,v.shape)
+    for k,v in qm9_data.items():
+        print(k,v.shape)
 
-    # atom_ref = qm9_data['atom_ref']
-    # ref = np.zeros((atom_ref.shape[0],6))
-    # atom_ref = np.concatenate((ref,atom_ref),axis=-1)
+    atom_ref = qm9_data['atom_ref']
+    ref = np.zeros((atom_ref.shape[0],6))
+    atom_ref = np.concatenate((ref,atom_ref),axis=-1)
 
-    # ds_qm9 = DatasetProcessor(
-    #     name = 'qm9',
-    #     atom_types= qm9_data['Z'],
-    #     position= qm9_data['R'],
-    #     label = qm9_data['properties'][:,3:],
-    #     length_unit='A',
-    #     energy_unit='Ha',
-    #     element_ref=atom_ref,
-    # )
+    ds_qm9 = DatasetProcessor(
+        name = 'qm9',
+        atom_types= qm9_data['Z'],
+        position= qm9_data['R'],
+        label = qm9_data['properties'][:,3:],
+        length_unit='A',
+        energy_unit='Ha',
+        element_ref=atom_ref,
+    )
 
-    # exc_idx = np.concatenate((qm9_data['excluded'],qm9_data['uncharacterized']),-1) - 1
-    # ds_qm9.exclude_data(exc_idx)
+    exc_idx = np.concatenate((qm9_data['excluded'],qm9_data['uncharacterized']),-1) - 1
+    ds_qm9.exclude_data(exc_idx)
 
-    # ds_qm9.convert_units('nm','kj/mol',[2,3,4,6,7,8,9,10])
+    ds_qm9.convert_units('nm','kj/mol',[2,3,4,6,7,8,9,10])
 
-    # ds_qm9.shuffle_dataset()
+    ds_qm9.shuffle_dataset()
 
-    # mode = ['graph','graph','graph','graph','graph','graph','graph','atomwise','atomwise','atomwise','atomwise','graph']
-    # ds_qm9.save_dataset('dataset_qm9',1024,128,1024,norm_train=True,norm_valid=True,norm_test=True,mode=mode)
-    # ds_qm9.save_dataset('dataset_qm9',1024,128,1024,norm_train=False,norm_valid=False,norm_test=False,mode=mode)
+    mode = ['graph','graph','graph','graph','graph','graph','graph','atomwise','atomwise','atomwise','atomwise','graph']
+    ds_qm9.save_dataset('dataset_qm9',1024,128,1024,norm_train=True,norm_valid=True,norm_test=True,mode=mode)
+    ds_qm9.save_dataset('dataset_qm9',1024,128,1024,norm_train=False,norm_valid=False,norm_test=False,mode=mode)
 
     md17_data = np.load('ethanol_dft.npz')
 
