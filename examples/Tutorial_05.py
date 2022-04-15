@@ -60,7 +60,7 @@ if __name__ == '__main__':
     num_atom = int(train_data['num_atoms'])
     scale = Tensor(train_data['scale'][idx],ms.float32)
     shift = Tensor(train_data['shift'][idx],ms.float32)
-    ref = Tensor(train_data['element_ref'][:,idx],ms.float32)
+    ref = Tensor(train_data['type_ref'][:,idx],ms.float32)
 
     mod = MolCT(
         cutoff=1,
@@ -92,16 +92,16 @@ if __name__ == '__main__':
     repeat_time = 1
     batch_size = 32
 
-    ds_train = ds.NumpySlicesDataset({'R':train_data['R'],'Z':train_data['Z'],'E':train_data['L'][:,idx]},shuffle=True)
+    ds_train = ds.NumpySlicesDataset({'R':train_data['R'],'Z':train_data['Z'],'E':train_data['E'][:,idx]},shuffle=True)
     ds_train = ds_train.batch(batch_size,drop_remainder=True)
     ds_train = ds_train.repeat(repeat_time)
 
-    ds_valid = ds.NumpySlicesDataset({'R':valid_data['R'],'Z':valid_data['Z'],'E':valid_data['L'][:,idx]},shuffle=False)
+    ds_valid = ds.NumpySlicesDataset({'R':valid_data['R'],'Z':valid_data['Z'],'E':valid_data['E'][:,idx]},shuffle=False)
     ds_valid = ds_valid.batch(128)
     ds_valid = ds_valid.repeat(1)
 
     loss_network = WithLabelLossCell('RZE',net,nn.MAELoss())
-    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),scale=scale,shift=shift,element_ref=ref)
+    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),scale=scale,shift=shift,type_ref=ref)
 
     from cybertron.train import TransformerLR
     lr = TransformerLR(learning_rate=1.,warmup_steps=4000,dimension=128)

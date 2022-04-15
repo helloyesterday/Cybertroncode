@@ -54,7 +54,7 @@ if __name__ == '__main__':
     num_atom = int(train_data['num_atoms'])
     scale = train_data['scale'][idx]
     shift = train_data['shift'][idx]
-    ref = train_data['element_ref'][:,idx]
+    ref = train_data['type_ref'][:,idx]
 
     mod = MolCT(
         cutoff=1,
@@ -66,7 +66,7 @@ if __name__ == '__main__':
         length_unit='nm',
     )
 
-    # readout = AtomwiseReadout(mod,dim_output=1,scale=scale,shift=shift,element_ref=ref,energy_unit='kj/mol')
+    # readout = AtomwiseReadout(mod,dim_output=1,scale=scale,shift=shift,type_ref=ref,energy_unit='kj/mol')
     readout = AtomwiseReadout(mod,dim_output=1)
     net = Cybertron(model=mod,readout=readout,dim_output=1,num_atoms=num_atom,length_unit='nm')
 
@@ -89,17 +89,17 @@ if __name__ == '__main__':
     repeat_time = 1
     batch_size = 32
 
-    ds_train = ds.NumpySlicesDataset({'R':train_data['R'],'Z':train_data['Z'],'E':train_data['L'][:,idx]},shuffle=True)
+    ds_train = ds.NumpySlicesDataset({'R':train_data['R'],'Z':train_data['Z'],'E':train_data['E'][:,idx]},shuffle=True)
     ds_train = ds_train.batch(batch_size,drop_remainder=True)
     ds_train = ds_train.repeat(repeat_time)
 
-    ds_valid = ds.NumpySlicesDataset({'R':valid_data['R'],'Z':valid_data['Z'],'E':valid_data['L'][:,idx]},shuffle=False)
+    ds_valid = ds.NumpySlicesDataset({'R':valid_data['R'],'Z':valid_data['Z'],'E':valid_data['E'][:,idx]},shuffle=False)
     ds_valid = ds_valid.batch(128)
     ds_valid = ds_valid.repeat(1)
 
     loss_network = WithLabelLossCell('RZE',net,nn.MAELoss())
     # eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss())
-    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),scale=scale,shift=shift,element_ref=ref)
+    eval_network = WithLabelEvalCell('RZE',net,nn.MAELoss(),scale=scale,shift=shift,type_ref=ref)
 
     eval_mae  = 'EvalMAE'
     atom_mae  = 'AtomMAE'

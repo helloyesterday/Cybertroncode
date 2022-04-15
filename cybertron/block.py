@@ -32,7 +32,7 @@ __all__ = [
     "Residual",
     "PreActDense",
     "PreActResidual",
-    "SerialPreActResidual",
+    "SeqPreActResidual",
     ]
 
 class Dense(nn.Dense):

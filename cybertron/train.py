@@ -69,7 +69,7 @@ class OutputScaleShift(Cell):
         self,
         scale=1,
         shift=0,
-        element_ref=None,
+        type_ref=None,
         atomwise_scaleshift=None,
         axis=-2,
     ):
@@ -78,9 +78,9 @@ class OutputScaleShift(Cell):
         self.scale = Tensor(scale,ms.float32)
         self.shift = Tensor(shift,ms.float32)
 
-        self.element_ref = None
-        if element_ref is not None:
-            self.element_ref = Tensor(element_ref,ms.float32)
+        self.type_ref = None
+        if type_ref is not None:
+            self.type_ref = Tensor(type_ref,ms.float32)
 
         self.atomwise_scaleshift = Tensor(atomwise_scaleshift,ms.bool_)
         self.all_atomwsie = False
@@ -101,8 +101,8 @@ class OutputScaleShift(Cell):
 
     def construct(self, outputs:Tensor, num_atoms:Tensor, atom_types:Tensor=None):
         ref = 0
-        if self.element_ref is not None:
-            ref = F.gather(self.element_ref,atom_types,0)
+        if self.type_ref is not None:
+            ref = F.gather(self.type_ref,atom_types,0)
             ref = self.reduce_sum(ref,self.axis)
         
         outputs = outputs * self.scale + ref
@@ -121,7 +121,7 @@ class DatasetNormalization(Cell):
         self,
         scale=1,
         shift=0,
-        element_ref=None,
+        type_ref=None,
         atomwise_scaleshift=None,
         axis=-2,
     ):
@@ -130,9 +130,9 @@ class DatasetNormalization(Cell):
         self.scale = Tensor(scale,ms.float32)
         self.shift = Tensor(shift,ms.float32)
 
-        self.element_ref = None
-        if element_ref is not None:
-            self.element_ref = Tensor(element_ref,ms.float32)
+        self.type_ref = None
+        if type_ref is not None:
+            self.type_ref = Tensor(type_ref,ms.float32)
 
         self.atomwise_scaleshift = Tensor(atomwise_scaleshift,ms.bool_)
         self.all_atomwsie = False
@@ -153,8 +153,8 @@ class DatasetNormalization(Cell):
 
     def construct(self, label, num_atoms, atom_types=None):
         ref = 0
-        if self.element_ref is not None:
-            ref = F.gather(self.element_ref,atom_types,0)
+        if self.type_ref is not None:
+            ref = F.gather(self.type_ref,atom_types,0)
             ref = self.reduce_sum(ref,self.axis)
 
         label -= ref
@@ -461,7 +461,7 @@ class WithEvalCell(WithCell):
         loss_fn: Cell=None,
         scale: float=None,
         shift: float=None,
-        element_ref: Tensor=None,
+        type_ref: Tensor=None,
         atomwise_scaleshift: Tensor=None,
         eval_data_is_normed=True,
         add_cast_fp32=False,
@@ -487,20 +487,20 @@ class WithEvalCell(WithCell):
         self.normalization = None
         self.scaleshift_eval = eval_data_is_normed
         self.normalize_eval = False
-        self.element_ref = None
+        self.type_ref = None
         if scale is not None or shift is not None:
             if scale is None:
                 scale = 1
             if shift is None:
                 shift = 0
 
-            if element_ref is not None:
-                self.element_ref = Tensor(element_ref,ms.float32)
+            if type_ref is not None:
+                self.type_ref = Tensor(type_ref,ms.float32)
 
             self.scaleshift = OutputScaleShift(
                 scale=scale,
                 shift=shift,
-                element_ref=self.element_ref,
+                type_ref=self.type_ref,
                 atomwise_scaleshift=atomwise_scaleshift
             )
 
@@ -508,7 +508,7 @@ class WithEvalCell(WithCell):
                 self.normalization = DatasetNormalization(
                     scale=scale,
                     shift=shift,
-                    element_ref=self.element_ref,
+                    type_ref=self.type_ref,
                     atomwise_scaleshift=atomwise_scaleshift
                 )
                 if not eval_data_is_normed:
@@ -533,13 +533,13 @@ class WithEvalCell(WithCell):
                     _shift = scale if shift.size == 1 else shift[i]
                     mode = 'Atomwise' if m else 'graph'
                     print('   {:<6s}{:>16.6e}{:>16.6e}{:>12s}'.format(str(i)+': ',_scale,_shift,mode))
-            if element_ref is not None:
-                print('   with reference value for elements:')
-                info = '   Element '
-                for i in range(self.element_ref.shape[-1]):
+            if type_ref is not None:
+                print('   with reference value for atom types:')
+                info = '   Type '
+                for i in range(self.type_ref.shape[-1]):
                     info += '{:>10s}'.format('Label'+str(i))
                 print(info)
-                for i,ref in enumerate(self.element_ref):
+                for i,ref in enumerate(self.type_ref):
                     info = '   {:<7s} '.format(str(i)+':')
                     for r in ref:
                         info += '{:>10.2e}'.format(r.asnumpy())
@@ -555,7 +555,7 @@ class WithLabelEvalCell(WithEvalCell):
         loss_fn: Cell=None,
         scale: float=None,
         shift: float=None,
-        element_ref: Tensor=None,
+        type_ref: Tensor=None,
         atomwise_scaleshift: Tensor=None,
         eval_data_is_normed=True,
         add_cast_fp32=False,
@@ -566,7 +566,7 @@ class WithLabelEvalCell(WithEvalCell):
             loss_fn=loss_fn,
             scale=scale,
             shift=shift,
-            element_ref=element_ref,
+            type_ref=type_ref,
             atomwise_scaleshift=atomwise_scaleshift,
             eval_data_is_normed=eval_data_is_normed,
             add_cast_fp32=add_cast_fp32,
@@ -628,7 +628,7 @@ class WithForceEvalCell(WithEvalCell):
         loss_fn: Cell=None,
         scale: float=None,
         shift: float=None,
-        element_ref: Tensor=None,
+        type_ref: Tensor=None,
         atomwise_scaleshift: Tensor=None,
         eval_data_is_normed: bool=True,
         add_cast_fp32: bool=False,
@@ -639,7 +639,7 @@ class WithForceEvalCell(WithEvalCell):
             loss_fn=loss_fn,
             scale=scale,
             shift=shift,
-            element_ref=element_ref,
+            type_ref=type_ref,
             atomwise_scaleshift=atomwise_scaleshift,
             eval_data_is_normed=eval_data_is_normed,
             add_cast_fp32=add_cast_fp32,
@@ -1030,7 +1030,7 @@ class Error(Metric):
             raise RuntimeError('Total samples num must not be 0.')
         return self._error_sum / self._samples_num
 
-# mean absoulte error
+# mean absolute error
 class MAE(Error):
     def __init__(self,
         indexes=[1,2],

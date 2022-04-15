@@ -12,7 +12,7 @@ class DatasetProcessor:
         position: np.ndarray,       # (N,A,D)
         label: np.ndarray,          # (N,X)
         force: np.ndarray=None,     # (N,A,D)
-        element_ref: np.ndarray=None,
+        type_ref: np.ndarray=None,
         length_unit: str='nm',
         energy_unit: str=None,
     ):  
@@ -71,7 +71,7 @@ class DatasetProcessor:
         # np.random.seed(seed)
         self.data_index = np.random.shuffle(np.arange(self.n_data))
 
-        # (N,L)
+        # (N,E)
         self.label = None
         self.n_label = 0
         if isinstance(label,(tuple,list)):
@@ -79,21 +79,21 @@ class DatasetProcessor:
         else:
             self.label = self._get_scalar(label,'label')
         self.n_label = self.label.shape[-1]
-        print('Shape of label (L): '+str(self.label.shape))
+        print('Shape of label (E): '+str(self.label.shape))
 
-        # (N_element,L)
-        self.element_ref = None
-        if element_ref is not None:
-            if isinstance(element_ref,(tuple,list)):
-                element_ref = np.concatenate(tuple(self._get_ref(l,self.n_label,'label') for l in element_ref),axis=-1)
+        # (N_type,E)
+        self.type_ref = None
+        if type_ref is not None:
+            if isinstance(type_ref,(tuple,list)):
+                type_ref = np.concatenate(tuple(self._get_ref(l,self.n_label,'label') for l in type_ref),axis=-1)
             else:
-                self.element_ref = self._get_ref(element_ref,self.n_label,'label')
-            print('Reference value for element:')
-            info = '   Element '
+                self.type_ref = self._get_ref(type_ref,self.n_label,'label')
+            print('Reference value for atom types:')
+            info = '   Type '
             for i in range(self.n_label):
                 info += '{:>10s}'.format('Label'+str(i))
             print(info)
-            for i,ref in enumerate(self.element_ref):
+            for i,ref in enumerate(self.type_ref):
                 info = '   {:<7s} '.format(str(i)+':')
                 for j in range(self.n_label):
                     info += '{:>10.2e}'.format(ref[j])
@@ -272,8 +272,8 @@ class DatasetProcessor:
         dataset['normed_dataset'] = False
         dataset['length_unit'] = self.length_unit
         dataset['energy_unit'] = self.energy_unit
-        if self.element_ref is not None:
-            dataset['element_ref'] = self.element_ref.astype(dtype)
+        if self.type_ref is not None:
+            dataset['type_ref'] = self.type_ref.astype(dtype)
 
         atom_types = self.atom_types if self.single_molecule else self.atom_types[index]
         dataset['Z'] = atom_types
@@ -283,10 +283,7 @@ class DatasetProcessor:
         num_atoms = np.sum(atom_mask.astype(int),-1,keepdims=True)
         label = self.label[index] - self.get_label_ref(atom_types,atom_mask)
         label = self.label_normalization(mode,label,scale,shift,num_atoms)
-        if self.force is not None and self.n_label == 1:
-            dataset['E'] = label.astype(dtype)
-        else:
-            dataset['L'] = label.astype(dtype)
+        dataset['E'] = label.astype(dtype)
 
         if self.force is not None:
             fscale = scale
@@ -314,15 +311,12 @@ class DatasetProcessor:
         dataset['normed_dataset'] = False
         dataset['length_unit'] = self.length_unit
         dataset['energy_unit'] = self.energy_unit
-        if self.element_ref is not None:
-            dataset['element_ref'] = self.element_ref.astype(dtype)
+        if self.type_ref is not None:
+            dataset['type_ref'] = self.type_ref.astype(dtype)
 
         dataset['Z'] = self.atom_types if self.single_molecule else self.atom_types[index]
         dataset['R'] = self.position[index].astype(dtype)
-        if self.force is not None and self.n_label == 1:
-            dataset['E'] = self.label[index].astype(dtype)
-        else:
-            dataset['L'] = self.label[index].astype(dtype)
+        dataset['E'] = self.label[index].astype(dtype)
 
         if self.force is not None:
             dataset['F'] = self.force[index].astype(dtype)
@@ -381,8 +375,8 @@ class DatasetProcessor:
         mode = itemgetter(*atomwise_scaleshift)(self.mode_scaleshift)
         ss_data['scaleshift_mode'] = mode
         ss_data['use_atomwise_scaleshift'] = atomwise_scaleshift
-        if self.element_ref is not None:
-            ss_data['element_ref'] = self.element_ref
+        if self.type_ref is not None:
+            ss_data['type_ref'] = self.type_ref
         if self.force is not None:
             fscale = scale
             if self.n_label > 1:
@@ -464,11 +458,11 @@ class DatasetProcessor:
         test_file = prefix + ('_normed' if norm_test else '_origin') + '_testset_' + str(num_test) + '.npz'
 
         print('Dataset file:')
-        print('   Training datset   {:>13s}:   {:s}'
+        print('   Training dataset   {:>13s}:   {:s}'
             .format(('(normalized)' if norm_train else '(origin)'),train_file))
-        print('   Validation datset {:>13s}:   {:s}'
+        print('   Validation dataset {:>13s}:   {:s}'
             .format(('(normalized)' if norm_valid else '(origin)'),valid_file))
-        print('   Test datset       {:>13s}:   {:s}'
+        print('   Test dataset       {:>13s}:   {:s}'
             .format(('(normalized)' if norm_test else '(origin)'),test_file))
         print('='*105)
 
@@ -496,8 +490,8 @@ class DatasetProcessor:
         else:
             scale = self.units.convert_energy_to(energy_unit)
             self.label[:,energy_index] *= scale
-            if self.element_ref is not None:
-                self.element_ref[:,energy_index] *= scale
+            if self.type_ref is not None:
+                self.type_ref[:,energy_index] *= scale
 
             if self.force is not None:
                 self.force *= scale
@@ -578,14 +572,14 @@ class DatasetProcessor:
         return self
 
     def get_label_ref(self,atom_types,atom_mask=None) -> np.ndarray:
-        if self.element_ref is None:
+        if self.type_ref is None:
             return 0
         else:
             if atom_mask is None:
                 atom_mask = atom_types>0
-            # (N,A,L) = (N,A,L) * (N,A,1)
-            ref = self.element_ref[atom_types] * np.expand_dims(atom_mask,-1)
-            # (N,L)
+            # (N,A,E) = (N,A,E) * (N,A,1)
+            ref = self.type_ref[atom_types] * np.expand_dims(atom_mask,-1)
+            # (N,E)
             return np.sum(ref,axis=-2)
 
     def label_normalization(self,mode,label,scale,shift,num_atoms) -> np.ndarray:
@@ -614,7 +608,7 @@ class DatasetProcessor:
         if ref.ndim == 1:
             ref = np.expand_dims(ref,-1)
         if ref.ndim != 2:
-            raise ValueError('The shape of '+name+'_ref should be (N_element,N_'+name+')')
+            raise ValueError('The shape of '+name+'_ref should be (N_type,N_'+name+')')
         if ref.shape[0] <= self.max_atomic_id:
             raise ValueError('The size of "'+name+'_ref" '+str(ref.shape[0])+
                 ' is over the range of maximum atomic index ('+str(self.max_atomic_id)+')')

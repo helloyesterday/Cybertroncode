@@ -58,8 +58,7 @@ class Readout(nn.Cell):
         aggregator (str): aggregator network for atom representation (default: 'sum')
         scale (float): scale value for output (default: 1)
         shift (float): shift value for output (default: 0)
-        element_ref (ms.Tensor or None): reference value for output according to
-            atom types for each atom (default: None)
+        type_ref (ms.Tensor or None): reference value for atom types (default: None)
         atomwise_scaleshift (bool): use atomwise scaleshift (True) or graph scaleshift (False)
         axis (int): axis to readout
         n_decoder_layers (list of int or None): number of neurons in each hidden layer
@@ -79,7 +78,7 @@ class Readout(nn.Cell):
         aggregator: Aggregator=None,
         scale: float=1,
         shift: float=0,
-        element_ref: Tensor=None,
+        type_ref: Tensor=None,
         atomwise_scaleshift: bool=False,
         axis: int=-2,
         n_decoder_layers: int=1,
@@ -97,7 +96,7 @@ class Readout(nn.Cell):
             aggregator = get_class_parameters(hyper_param,'aggregator')
             scale = get_hyper_parameter(hyper_param,'scale')
             shift = get_hyper_parameter(hyper_param,'shift')
-            element_ref = get_hyper_parameter(hyper_param,'element_ref')
+            type_ref = get_hyper_parameter(hyper_param,'type_ref')
             atomwise_scaleshift = get_hyper_parameter(hyper_param,'atomwise_scaleshift')
             axis = get_hyper_parameter(hyper_param,'axis')
             n_decoder_layers = get_hyper_parameter(hyper_param,'n_decoder_layers')
@@ -127,7 +126,7 @@ class Readout(nn.Cell):
         self.axis = get_integer(axis)
 
         self.atomwise_scaleshift = Tensor(atomwise_scaleshift,ms.bool_)
-        self.element_ref = None if element_ref is None else Tensor(element_ref,ms.float32)
+        self.type_ref = None if type_ref is None else Tensor(type_ref,ms.float32)
 
         if self.decoder is None and self.dim_represent != self.dim_output:
             raise ValueError("When decoder is None, dim_output ("+str(dim_output)+") must be equal to dim_represent ("+str(self.dim_represent)+")")
@@ -142,7 +141,7 @@ class Readout(nn.Cell):
             'aggregator'          : 'Cell',
             'scale'               : 'float',
             'shift'               : 'float',
-            'element_ref'         : 'Tensor',
+            'type_ref'            : 'Tensor',
             'atomwise_scaleshift' : 'bool',
             'axis'                : 'int',
             'n_decoder_layers'    : 'int',
@@ -154,7 +153,7 @@ class Readout(nn.Cell):
         set_class_into_hyper_param(self.hyper_param,self.hyper_types,self)
         return self
 
-    def set_scaleshift(self,scale:float=1,shift:float=0,element_ref:Tensor=None,atomwise_scaleshift:bool=None,unit:str=None):
+    def set_scaleshift(self,scale:float=1,shift:float=0,type_ref:Tensor=None,atomwise_scaleshift:bool=None,unit:str=None):
         if unit is not None:
             self.units.set_energy_unit(unit)
             set_hyper_parameter(self.hyper_param,'energy_unit',self.units.energy_unit_name())
@@ -166,14 +165,14 @@ class Readout(nn.Cell):
         if self.shift.shape[-1] != self.dim_output and self.shift.shape[-1] != 1:
             raise ValueError('The dimension of "shift" ('+str(self.shift.shape[-1]) + \
                 ') does not match the output dimension ('+str(self.dim_output)+').')
-        if element_ref is not None:
-            self.element_ref = Tensor(element_ref,ms.float32)
-            if self.element_ref.shape[-1] != self.dim_output and self.element_ref.shape[-1] != 1:
-                raise ValueError('The dimension of "element_ref" ('+str(self.element_ref.shape[-1]) + \
+        if type_ref is not None:
+            self.type_ref = Tensor(type_ref,ms.float32)
+            if self.type_ref.shape[-1] != self.dim_output and self.type_ref.shape[-1] != 1:
+                raise ValueError('The dimension of "type_ref" ('+str(self.type_ref.shape[-1]) + \
                     ') does not match the output dimension ('+str(self.dim_output)+').')
         set_hyper_parameter(self.hyper_param,'scale',self.scale)
         set_hyper_parameter(self.hyper_param,'shift',self.shift)
-        set_hyper_parameter(self.hyper_param,'element_ref',self.element_ref)
+        set_hyper_parameter(self.hyper_param,'type_ref',self.type_ref)
         if atomwise_scaleshift is not None:
             self.atomwise_scaleshift = Tensor(atomwise_scaleshift,ms.bool_)
             if self.atomwise_scaleshift.size != 1:
@@ -185,11 +184,11 @@ class Readout(nn.Cell):
         scale = self.units.convert_energy_to(units)
         self.scale *= scale
         self.shift *= scale
-        if self.element_ref is not None:
-            self.element_ref *= scale
+        if self.type_ref is not None:
+            self.type_ref *= scale
         set_hyper_parameter(self.hyper_param,'scale',self.scale)
         set_hyper_parameter(self.hyper_param,'shift',self.shift)
-        set_hyper_parameter(self.hyper_param,'element_ref',self.element_ref)
+        set_hyper_parameter(self.hyper_param,'type_ref',self.type_ref)
         set_hyper_parameter(self.hyper_param,'energy_unit',self.units.energy_unit_name())
         return self
 
@@ -206,11 +205,11 @@ class Readout(nn.Cell):
         print(ret+gap+" Scale: "+str(self.scale.asnumpy()))
         print(ret+gap+" Shift: "+str(self.shift.asnumpy()))
         print(ret+gap+" Scaleshift mode: "+("Atomwise" if self.atomwise_scaleshift else "Graph"))
-        if self.element_ref is None:
-            print(ret+gap+" Reference value for element: None")
+        if self.type_ref is None:
+            print(ret+gap+" Reference value for atom types: None")
         else:
-            print(ret+gap+" Reference value for element:")
-            for i,ref in enumerate(self.element_ref):
+            print(ret+gap+" Reference value for atom types:")
+            for i,ref in enumerate(self.type_ref):
                 print(ret+gap+gap+' No.{: <5}'.format(str(i)+': ')+str(ref))
         print(ret+gap+" Output unit: "+str(self.units.energy_unit()))
         print(ret+gap+" Reduce axis: "+str(self.axis))
@@ -229,7 +228,7 @@ class AtomwiseReadout(Readout):
         aggregator: Aggregator='sum',
         scale: float=1,
         shift: float=0,
-        element_ref: Tensor=None,
+        type_ref: Tensor=None,
         atomwise_scaleshift: bool=True,
         axis: int=-2,
         n_decoder_layers: int=1,
@@ -244,7 +243,7 @@ class AtomwiseReadout(Readout):
             aggregator=aggregator,
             scale=scale,
             shift=shift,
-            element_ref=element_ref,
+            type_ref=type_ref,
             atomwise_scaleshift=atomwise_scaleshift,
             axis=axis,
             n_decoder_layers=n_decoder_layers,
@@ -266,14 +265,14 @@ class AtomwiseReadout(Readout):
         if self.aggregator is not None:
             if self.atomwise_scaleshift:
                 y = y * self.scale + self.shift
-                if self.element_ref is not None:
-                    y += F.gather(self.element_ref,atoms_types,0)
+                if self.type_ref is not None:
+                    y += F.gather(self.type_ref,atoms_types,0)
                 y = self.aggregator(y,atom_mask,num_atoms)
             else:
                 y = self.aggregator(y,atom_mask,num_atoms) / num_atoms
                 y = y * self.scale + self.shift
-                if self.element_ref is not None:
-                    ref = F.gather(self.element_ref,atoms_types,0)
+                if self.type_ref is not None:
+                    ref = F.gather(self.type_ref,atoms_types,0)
                     y += self.reduce_sum(ref,self.axis)
 
         return y
@@ -297,7 +296,7 @@ class GraphReadout(Readout):
         scale: float=1,
         shift: float=0,
         axis: int=-2,
-        element_ref: Tensor=None,
+        type_ref: Tensor=None,
         atomwise_scaleshift: bool=False,
         n_decoder_layers: int=1,
         energy_unit: str=None,
@@ -311,7 +310,7 @@ class GraphReadout(Readout):
             aggregator=aggregator,
             scale=scale,
             shift=shift,
-            element_ref=element_ref,
+            type_ref=type_ref,
             atomwise_scaleshift=atomwise_scaleshift,
             axis=axis,
             n_decoder_layers=n_decoder_layers,
@@ -338,8 +337,8 @@ class GraphReadout(Readout):
         if self.atomwise_scaleshift:
             y *= num_atoms
 
-        if self.element_ref is not None:
-            ref = F.gather(self.element_ref,atoms_types,0)
+        if self.type_ref is not None:
+            ref = F.gather(self.type_ref,atoms_types,0)
             y += self.reduce_sum(ref,self.axis)
 
         return y

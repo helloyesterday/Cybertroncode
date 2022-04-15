@@ -46,7 +46,7 @@ if __name__ == '__main__':
         label = qm9_data['properties'][:,3:],
         length_unit='A',
         energy_unit='Ha',
-        element_ref=atom_ref,
+        type_ref=atom_ref,
     )
 
     exc_idx = np.concatenate((qm9_data['excluded'],qm9_data['uncharacterized']),-1) - 1

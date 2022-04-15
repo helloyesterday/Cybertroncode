@@ -66,7 +66,7 @@ if __name__ == '__main__':
     repeat_time = 1
     batch_size = 32
 
-    ds_train = ds.NumpySlicesDataset({'R':train_data['R'],'Z':train_data['Z'],'E':train_data['L'][:,idx]},shuffle=True)
+    ds_train = ds.NumpySlicesDataset({'R':train_data['R'],'Z':train_data['Z'],'E':train_data['E'][:,idx]},shuffle=True)
     ds_train = ds_train.batch(batch_size,drop_remainder=True)
     ds_train = ds_train.repeat(repeat_time)
     loss_network = WithLabelLossCell('RZE',net,nn.MAELoss())

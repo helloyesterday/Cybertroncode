@@ -134,7 +134,7 @@ class SchNetInteraction(Interaction):
         W_ij = self.dis_filter(f_ij) * F.expand_dims(c_ij,-1)
         y = x_ij * W_ij
 
-        # element-wise multiplication, aggregating and Dense layer
+        # atom-wise multiplication, aggregating and Dense layer
         y = self.agg(y, mask)
         v = self.atomwise_ac(y)
         

@@ -53,12 +53,12 @@ if __name__ == '__main__':
 
     scale = test_data['scale'][idx]
     shift = test_data['shift'][idx]
-    ref = test_data['element_ref'][:,idx]
+    ref = test_data['type_ref'][:,idx]
 
-    net.set_scaleshift(scale=scale,shift=shift,element_ref=ref,unit='kj/mol')
+    net.set_scaleshift(scale=scale,shift=shift,type_ref=ref,unit='kj/mol')
     net.print_info()
 
-    ds_test = ds.NumpySlicesDataset({'R':test_data['R'],'Z':test_data['Z'],'E':test_data['L'][:,idx]},shuffle=False)
+    ds_test = ds.NumpySlicesDataset({'R':test_data['R'],'Z':test_data['Z'],'E':test_data['E'][:,idx]},shuffle=False)
     ds_test = ds_test.batch(1024)
     ds_test = ds_test.repeat(1)
 

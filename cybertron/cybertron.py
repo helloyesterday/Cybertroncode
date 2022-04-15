@@ -324,7 +324,7 @@ class Cybertron(nn.Cell):
     def get_multi_scaleshift(self,
         scale: float=1,
         shift: float=0,
-        element_ref: Tensor=None,
+        type_ref: Tensor=None,
         atomwise_scaleshift: bool=None,
         readout_id: int=None
     ):
@@ -378,26 +378,26 @@ class Cybertron(nn.Cell):
 
         scale = _get_multi_argument(scale,'scale',ms.float32,(-1,))
         shift = _get_multi_argument(shift,'shift',ms.float32,(-1,))
-        element_ref = _get_multi_argument(element_ref,'element_ref',ms.float32)
+        type_ref = _get_multi_argument(type_ref,'type_ref',ms.float32)
         atomwise_scaleshift = _get_multi_argument(atomwise_scaleshift,'atomwise_scaleshift',ms.bool_,(-1,))
 
-        return scale,shift,element_ref,atomwise_scaleshift,readout_id
+        return scale,shift,type_ref,atomwise_scaleshift,readout_id
 
     def set_scaleshift(self,
         scale: float=1,
         shift: float=0,
-        element_ref: Tensor=None,
+        type_ref: Tensor=None,
         atomwise_scaleshift: bool=None,
         unit: str=None,
         readout_id: int=None
     ):
         if self.num_readout == 1:
             self.readout.set_scaleshift(
-                scale=scale,shift=shift,element_ref=element_ref,atomwise_scaleshift=atomwise_scaleshift,unit=unit)
+                scale=scale,shift=shift,type_ref=type_ref,atomwise_scaleshift=atomwise_scaleshift,unit=unit)
             self.atomwise_scaleshift = self.readout.atomwise_scaleshift
         else:
-            scale,shift,element_ref,atomwise_scaleshift,readout_id = \
-                self.get_multi_scaleshift(scale,shift,element_ref,atomwise_scaleshift,readout_id)
+            scale,shift,type_ref,atomwise_scaleshift,readout_id = \
+                self.get_multi_scaleshift(scale,shift,type_ref,atomwise_scaleshift,readout_id)
             for i in range(len(readout_id)):
                 r = readout_id[i]
                 if r >= self.num_readout:
@@ -406,7 +406,7 @@ class Cybertron(nn.Cell):
                 self.readout[r].set_scaleshift(
                     scale=scale[i],
                     shift=shift[i],
-                    element_ref=element_ref[i],
+                    type_ref=type_ref[i],
                     atomwise_scaleshift=atomwise_scaleshift[i],
                     unit=unit
                 )

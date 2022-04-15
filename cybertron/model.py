@@ -59,19 +59,17 @@ class MolecularModel(Cell):
     r"""Basic class for graph neural network (GNN) based deep molecular model
 
     Args:
-        num_elements (int): maximum number of atomic types
+        num_atom_types (int): maximum number of atomic types
         num_basis (int): number of the serial of radical basis functions (RBF)
         dim_feature (int): dimension of the vectors for atomic embedding
         atom_types (ms.Tensor[int], optional): atomic index 
-        rbf(nn.Cell, optional): the alghorithm to calculate RBF
+        rbf(nn.Cell, optional): the algorithm to calculate RBF
         cutoff_fn (nn.Cell, optional): the algorithm to calculate cutoff.
 
     """
 
     def __init__(
         self,
-        num_elements: int=64,
-        num_bond_types: int=16,
         dim_feature: int=128,
         n_interaction: int=3,
         activation: Cell=None,
@@ -85,6 +83,8 @@ class MolecularModel(Cell):
         use_graph_norm: bool=False,
         public_dis_filter: bool=False,
         public_bond_filter: bool=False,
+        num_atom_types: int=64,
+        num_bond_types: int=16,
         length_unit: bool='nm',
         hyper_param: dict=None,
     ):
@@ -93,7 +93,7 @@ class MolecularModel(Cell):
         self.network_name='MolecularModel'
 
         if hyper_param is not None:
-            num_elements = get_hyper_parameter(hyper_param,'num_elements')
+            num_atom_types = get_hyper_parameter(hyper_param,'num_atom_types')
             num_bond_types = get_hyper_parameter(hyper_param,'num_bond_types')
             dim_feature = get_hyper_parameter(hyper_param,'dim_feature')
             n_interaction = get_hyper_parameter(hyper_param,'n_interaction')
@@ -116,7 +116,7 @@ class MolecularModel(Cell):
             self.units = Units(length_unit)
         self.length_unit = self.units.length_unit()
 
-        self.num_elements = get_integer(num_elements)
+        self.num_atom_types = get_integer(num_atom_types)
         self.num_bond_types = get_integer(num_bond_types)
         self.dim_feature = get_integer(dim_feature)
         self.n_interaction = get_integer(n_interaction)
@@ -143,7 +143,7 @@ class MolecularModel(Cell):
             self.r_self = self.get_length(self.r_self)
             self.r_self_ex = F.expand_dims(self.r_self,0)
 
-        self.atom_embedding = nn.Embedding(self.num_elements, self.dim_feature, use_one_hot=True, embedding_table=Normal(1.0))
+        self.atom_embedding = nn.Embedding(self.num_atom_types, self.dim_feature, use_one_hot=True, embedding_table=Normal(1.0))
         self.bond_embedding = None
 
         self.num_basis = self.rbf.num_basis
@@ -174,7 +174,7 @@ class MolecularModel(Cell):
 
         self.hyper_param = dict()
         self.hyper_types = {
-            'num_elements'        : 'int',
+            'num_atom_types'      : 'int',
             'num_bond_types'      : 'int',
             'dim_feature'         : 'int',
             'n_interaction'       : 'int',
@@ -226,7 +226,7 @@ class MolecularModel(Cell):
         print(ret+' Deep molecular model: ',self.network_name)
         print('-'*80)
         print(ret+gap+' Length unit: ' + self.units.length_unit_name())
-        print(ret+gap+' Atom embedding size: ' + str(self.num_elements))
+        print(ret+gap+' Atom embedding size: ' + str(self.num_atom_types))
         print(ret+gap+' Cutoff distance: ' + str(self.cutoff) + ' ' + self.length_unit)
         print(ret+gap+' Radical basis function (RBF): ' + str(self.rbf.cls_name))
         self.rbf.print_info(num_retraction=num_retraction+num_gap,num_gap=num_gap,char=char)
@@ -292,7 +292,7 @@ class MolecularModel(Cell):
         Args:
             r_ij (ms.Tensor[float], [B, A, N]): distances between atoms.
             atom_types (ms.Tensor[int], optional): atomic number
-            atom_types (ms.Tensor[int], optional): mask of atomic number
+            atom_mask (ms.Tensor[int], optional): mask of atomic number
             neighbours (ms.Tensor[int], [B, A, N], optional): neighbour indices.
             neighbour_mask (ms.Tensor[bool], optional): mask of neighbour indices.
 
@@ -363,7 +363,6 @@ class SchNet(MolecularModel):
     """
     def __init__(
         self,
-        num_elements: int=64,
         dim_feature: int=64,
         dim_filter: int=64,
         n_interaction: int=3,
@@ -375,11 +374,11 @@ class SchNet(MolecularModel):
         coupled_interaction: bool=False,
         use_graph_norm: bool=False,
         public_dis_filter: bool=False,
+        num_atom_types: int=64,
         length_unit: str='nm',
         hyper_param: dict=None,
     ):
         super().__init__(
-            num_elements=num_elements,
             dim_feature=dim_feature,
             n_interaction=n_interaction,
             activation=activation,
@@ -392,6 +391,7 @@ class SchNet(MolecularModel):
             use_bond=False,
             use_graph_norm=use_graph_norm,
             public_dis_filter=public_dis_filter,
+            num_atom_types=num_atom_types,
             length_unit=length_unit,
             hyper_param=hyper_param,
             )
@@ -463,7 +463,6 @@ class PhysNet(MolecularModel):
     """
     def __init__(
         self,
-        num_elements: int=64,
         dim_feature: int=128,
         n_interaction: int=5,
         activation: Cell='ssp',
@@ -473,13 +472,13 @@ class PhysNet(MolecularModel):
         public_dis_filter: bool=False,
         use_graph_norm: bool=False,
         coupled_interaction: bool=False,
+        num_atom_types: int=64,
         n_inter_residual: int=3,
         n_outer_residual: int=2,
         length_unit: str='nm',
         hyper_param: dict=None,
     ):
         super().__init__(
-            num_elements=num_elements,
             dim_feature=dim_feature,
             n_interaction=n_interaction,
             activation=activation,
@@ -492,6 +491,7 @@ class PhysNet(MolecularModel):
             use_bond=False,
             use_graph_norm=use_graph_norm,
             public_dis_filter=public_dis_filter,
+            num_atom_types=num_atom_types,
             length_unit=length_unit,
             hyper_param=hyper_param,
             )
@@ -567,7 +567,6 @@ class MolCT(MolecularModel):
     """
     def __init__(
         self,
-        num_elements: int=64,
         dim_feature: int=128,
         n_interaction: int=3,
         n_heads: int=8,
@@ -579,9 +578,10 @@ class MolCT(MolecularModel):
         r_self: Length=Length(0.05,'nm'),
         use_distance: bool=True,
         use_bond: bool=False,
-        num_bond_types: int=16,
         public_dis_filter: bool=True,
         public_bond_filter: bool=True,
+        num_atom_types: int=64,
+        num_bond_types: int=16,
         use_feed_forward: bool=False,
         fixed_cycles: bool=False,
         coupled_interaction: bool=False,
@@ -590,8 +590,6 @@ class MolCT(MolecularModel):
         hyper_param: dict=None,
     ):
         super().__init__(
-            num_elements=num_elements,
-            num_bond_types=num_bond_types,
             dim_feature=dim_feature,
             n_interaction=n_interaction,
             activation=activation,
@@ -605,6 +603,8 @@ class MolCT(MolecularModel):
             public_dis_filter=public_dis_filter,
             public_bond_filter=public_bond_filter,
             use_graph_norm=False,
+            num_atom_types=num_atom_types,
+            num_bond_types=num_bond_types,
             length_unit=length_unit,
             hyper_param=hyper_param,
             )
