@@ -86,9 +86,10 @@ def _list_aggregator_register(*aliases):
     return alias_reg
 
 class Aggregator(nn.Cell):
-    def __init__(self,
+    def __init__(
+        self,
         dim: int,
-        axis: int=-2,
+        axis: int = -2,
     ):
         super().__init__()
 

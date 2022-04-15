@@ -1,13 +1,12 @@
-import mindspore as ms
-import mindspore.numpy as msnp
 from mindspore.nn import Cell
 
 from sponge.functions import get_integer
 
-from .block import MLP,Dense,Residual
+from .block import MLP, Dense, Residual
 
 class DenseFilter(Cell):
-    def __init__(self,
+    def __init__(
+        self,
         num_basis,
         dim_filter,
         activation,
@@ -28,7 +27,8 @@ class DenseFilter(Cell):
         return self.dense_layers(x)
 
 class ResFilter(Cell):
-    def __init__(self,
+    def __init__(
+        self,
         num_basis,
         dim_filter,
         activation,
