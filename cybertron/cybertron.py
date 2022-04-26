@@ -40,7 +40,7 @@ from sponge.colvar import IndexDistances
 from sponge.units import Units,global_units
 import sponge.checkpoint as checkpoint
 
-from .base import Types2FullConnectneighbours
+from .base import FullConnectNeighbours
 from .readout import Readout,get_readout
 from .model import MolecularModel,get_molecular_model
 from .readout import Readout
@@ -179,8 +179,7 @@ class Cybertron(nn.Cell):
             self.fixed_atoms = True
             # (1,A)
             self.atom_types = Tensor(atom_types,ms.int32).reshape(1,-1)
-            # (1,A,1)
-            self.atom_mask = F.expand_dims(atom_types,-1) > 0
+            self.atom_mask = atom_types > 0
             natoms = self.atom_types.shape[-1]
             if self.atom_mask.all():
                 self.num_atoms = natoms
@@ -194,11 +193,11 @@ class Cybertron(nn.Cell):
             self.bond_types = Tensor(bond_types,ms.int32).reshape(1,natoms,-1)
             self.bond_mask = bond_types > 0
 
-        self.fc_neighbours = Types2FullConnectneighbours(natoms)
+        self.fc_neighbours = FullConnectNeighbours(natoms)
         self.neighbours = None
         self.neighbour_mask = None
         if self.atom_types is not None:
-            self.neighbours,self.neighbour_mask = self.fc_neighbours(self.atom_types)
+            self.neighbours,self.neighbour_mask = self.fc_neighbours(self.atom_types>0)
 
         self.pbc_box = None
         self.use_pbc = use_pbc
@@ -462,13 +461,11 @@ class Cybertron(nn.Cell):
             # (1,A)
             atom_types = self.atom_types
             num_atoms = self.num_atoms
-            # (1,A,1)
             atom_mask = self.atom_mask
         else:
-            # (1,A,1)
-            atom_mask = F.expand_dims(atom_types,-1) > 0
             # (1,A)
-            num_atoms = F.cast(atom_types>0,ms.int32)
+            atom_mask = atom_types > 0
+            num_atoms = F.cast(atom_mask,ms.int32)
             num_atoms = msnp.sum(num_atoms,-1,keepdims=True)
         
         if self.calc_distance:
@@ -477,7 +474,7 @@ class Cybertron(nn.Cell):
                     neighbours = self.neighbours
                     neighbour_mask = self.neighbour_mask
                 else:
-                    neighbours,neighbour_mask = self.fc_neighbours(atom_types)
+                    neighbours,neighbour_mask = self.fc_neighbours(atom_mask)
 
             if self.pbc_box is not None:
                 pbc_box = self.pbc_box

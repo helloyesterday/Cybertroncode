@@ -138,7 +138,7 @@ class TensorSummation(Aggregator):
 
     def construct(self,nodes,atom_mask=None,num_atoms=None):
         if atom_mask is not None:
-            nodes = nodes * atom_mask
+            nodes = nodes * F.expand_dims(atom_mask,-1)
         agg = self.reduce_sum(nodes,self.axis)
         return agg
 
@@ -163,7 +163,7 @@ class TensorMean(Aggregator):
 
     def construct(self,nodes,atom_mask=None,num_atoms=None):
         if atom_mask is not None:
-            nodes = nodes * atom_mask
+            nodes = nodes * F.expand_dims(atom_mask,-1)
             agg = self.reduce_sum(nodes,self.axis)
             return agg / num_atoms
         else:
@@ -206,6 +206,7 @@ class SoftmaxGeneralizedAggregator(Aggregator):
         if atom_mask is None:
             agg_nodes = self.softmax(px) * nodes
         else:
+            atom_mask = F.expand_dims(atom_mask,-1)
             mask = (self.expand_ones * atom_mask) > 0
             agg_nodes = self.softmax_with_mask(px,mask) * nodes * atom_mask
         
@@ -242,7 +243,7 @@ class PowermeanGeneralizedAggregator(Aggregator):
         scale = num_atoms / (1 + self.beta * (num_atoms - 1))
         xp = self.power(nodes,self.rho)
         if atom_mask is not None:
-            xp = xp * atom_mask
+            xp = xp * F.expand_dims(atom_mask,-1)
         agg_nodes = self.reduce_sum(xp,self.axis)
 
         return self.power(scale*agg_nodes,1.0/self.rho)
@@ -294,13 +295,8 @@ class TransformerAggregator(Aggregator):
         K = self.a2k(x)
         V = self.a2v(x)
 
-        if atom_mask is not None:
-            mask = self.squeeze(atom_mask)
-        else:
-            mask = atom_mask
-
         # [B, A, F]
-        x = self.multi_head_attention(Q,K,V,mask)
+        x = self.multi_head_attention(Q,K,V,atom_mask)
 
         # [B, 1, F]
         return self.mean(x,atom_mask,num_atoms)
@@ -328,7 +324,7 @@ class ListSummation(ListAggregator):
         xt = self.stack(xlist)
         y = self.reduce_sum(xt,-1)
         if atom_mask is not None:
-            y = y * atom_mask
+            y = y * F.expand_dims(atom_mask,-1)
         return y
 
 @_list_aggregator_register('mean')
@@ -355,7 +351,7 @@ class ListMean(ListAggregator):
         xt = self.stack(xlist)
         y = self.reduce_mean(xt,-1)
         if atom_mask is not None:
-            y = y * atom_mask
+            y = y * F.expand_dims(atom_mask,-1)
         return y
 
 @_list_aggregator_register('linear')
@@ -385,7 +381,7 @@ class LinearTransformation(ListAggregator):
         ysum = self.reduce_sum(yt,-1)
         y = self.scale * ysum + self.shift
         if atom_mask is not None:
-            y = y * atom_mask
+            y = y * F.expand_dims(atom_mask,-1)
         return y
 
 # Multiple-Channel Representation Readout
@@ -434,7 +430,7 @@ class MultipleChannelRepresentation(ListAggregator):
             Xt = Xt + (self.mcr[i](xlist[i]),)
         y = self.concat(Xt)
         if atom_mask is not None:
-            y = y * atom_mask
+            y = y * F.expand_dims(atom_mask,-1)
         return y
 
 _AGGREGATOR_BY_NAME = {agg.__name__:agg for agg in _AGGREGATOR_BY_KEY.values()}

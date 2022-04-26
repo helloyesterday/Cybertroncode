@@ -47,9 +47,7 @@ __all__ = [
     "FeedForward",
     "Pondering",
     "ACTWeight",
-    "Num2Mask",
-    "Number2FullConnectneighbours",
-    "Types2FullConnectneighbours",
+    "FullConnectNeighbours",
     ]
 
 class GraphNorm(nn.Cell):
@@ -483,145 +481,75 @@ class ACTWeight(nn.Cell):
 
         return w, dp, dn
 
-class Num2Mask(nn.Cell):
-    def __init__(self,dim):
-        super().__init__()
-        self.range = nn.Range(dim)
-        ones = P.Ones()
-        self.ones = ones((dim),ms.int32)
-    def construct(self,num):
-        nmax = num * self.ones
-        idx = F.ones_like(num) * self.range()
-        return idx < nmax
-
-class Number2FullConnectneighbours(nn.Cell):
-    def __init__(self,tot_atoms):
+class FullConnectNeighbours(nn.Cell):
+    def __init__(self,num_atoms):
         super().__init__()
         # tot_atoms: A
         # tot_neigh: N =  A - 1
-        tot_neigh = tot_atoms -1
-        arange = nn.Range(tot_atoms)
-        nrange = nn.Range(tot_neigh)
-        
-        self.ones = P.Ones()
-        self.aones = self.ones((tot_atoms),ms.int32)
-        self.nones = self.ones((tot_neigh),ms.int32)
+        self.num_atoms = num_atoms
+        self.num_neigh = num_atoms -1
         
         # neighbours for no connection (A*N)
-        # [[0,0,...,0],
-        #  [1,1,...,1],
-        #  ...........,
-        #  [N,N,...,N]]
-        self.nnc = F.expand_dims(arange(),-1) * self.nones
-        # copy of the index range (A*N)
-        # [[0,1,...,N-1],
-        #  [0,1,...,N-1],
-        #  ...........,
-        #  [0,1,...,N-1]]
-        crange = self.ones((tot_atoms,1),ms.int32) * nrange()
+        # self.nnc = msnp.broadcast_to(msnp.arange(tot_atoms).shape(-1,1),(tot_atoms,tot_neigh))
+        # (A,1)
+        no_idx = msnp.arange(self.num_atoms).reshape(-1,1)
+
+        # (N)
+        nrange = msnp.arange(self.num_neigh)
+
         # neighbours for full connection (A*N)
         # [[1,2,3,...,N],
         #  [0,2,3,...,N],
         #  [0,1,3,....N],
         #  .............,
         #  [0,1,2,...,N-1]]
-        self.nfc = crange + F.cast(self.nnc <= crange,ms.int32)
-        
-        crange1 = crange + 1
-        # the matrix for index range (A*N)
-        # [[1,2,3,...,N],
-        #  [1,2,3,...,N],
-        #  [2,2,3,....N],
-        #  [3,3,3,....N],
-        #  .............,
-        #  [N,N,N,...,N]]
-        self.mat_idx = F.select(crange1>self.nnc,crange1,self.nnc)
+        fc_idx = nrange + F.cast(no_idx <= nrange,ms.int32)
+        no_idx = msnp.broadcast_to(no_idx,(self.num_atoms,self.num_neigh))
+        idx_mask = fc_idx > no_idx
+
+        # (1,A,N)
+        self.fc_idx = F.expand_dims(fc_idx,0)
+        self.no_idx = F.expand_dims(no_idx,0)
+        self.idx_mask = F.expand_dims(idx_mask,0)
+
+        self.shape = (self.num_atoms,self.num_neigh)
+        self.fc_mask = msnp.broadcast_to(Tensor(True),(1,)+self.shape)
 
     def get_full_neighbours(self):
-        return F.expand_dims(self.nfc,0)
+        return self.fc_idx
         
-    def construct(self,num_atoms: Tensor):
-        # broadcast atom numbers to [B*A*N]
-        # a_i: number of atoms in each molecule
-        # [[a_0]*A*N,[a_1]*A*N,...,[a_N]*A*N]]
-        exnum = num_atoms * self.aones
-        exnum = F.expand_dims(exnum,-1) * self.nones
+    def construct(self, atom_mask: Tensor=None):
+        r"""Calculate the full connected neighbour list.
 
-        # [B,1,1]
-        exones = self.ones((num_atoms.shape[0],1,1),ms.int32)
-        # broadcast to [B*A*N]: [B,1,1] * [1,A,N]
-        exnfc = exones * F.expand_dims(self.nfc,0)
-        exnnc = exones * F.expand_dims(self.nnc,0)
-        exmat = exones * F.expand_dims(self.mat_idx,0)
+        Args:
+            atom_mask (Tensor[bool] with shape (B,A), optional): Mask for atoms
 
-        mask = exmat < exnum
+        Returns:
+            neighbours (Tensor[int] with shape (B,A,N)
+            mask (Tensor[bool] with shape (B,A,N)
 
-        neighbours = F.select(mask,exnfc,exnnc)
+        """
+        if atom_mask is None:
+            return self.fc_idx,self.fc_mask
+        else:
+            # (B,A,N)
+            nshape = (atom_mask.shape[0],) + self.shape
+            
+            # (B,1,N)
+            mask0 = F.expand_dims(atom_mask[:,:-1],-2)
+            mask1 = F.expand_dims(atom_mask[:,1:],-2)
+
+            # (B,A,N)
+            mask0 = msnp.broadcast_to(mask0,nshape)
+            mask1 = msnp.broadcast_to(mask1,nshape)
+
+            idx_mask = msnp.broadcast_to(self.idx_mask,nshape)
+            mask = F.select(idx_mask,mask1,mask0)
+            mask  = F.logical_and(F.expand_dims(atom_mask,-1),mask)
+
+            fc_idx = msnp.broadcast_to(self.fc_idx,nshape)
+            no_idx = msnp.broadcast_to(self.no_idx,nshape)
+
+            neighbours = F.select(mask, fc_idx, no_idx)
 
         return neighbours,mask
-
-class Types2FullConnectneighbours(nn.Cell):
-    def __init__(self,tot_atoms):
-        super().__init__()
-        # tot_atoms: A
-        # tot_neigh: N =  A - 1
-        tot_neigh = tot_atoms -1
-        arange = nn.Range(tot_atoms)
-        nrange = nn.Range(tot_neigh)
-        
-        self.ones = P.Ones()
-        self.aones = self.ones((tot_atoms),ms.int32)
-        self.nones = self.ones((tot_neigh),ms.int32)
-        self.eaones = F.expand_dims(self.aones,-1)
-        
-        # neighbours for no connection (A*N)
-        # [[0,0,...,0],
-        #  [1,1,...,1],
-        #  ...........,
-        #  [N,N,...,N]]
-        self.nnc = F.expand_dims(arange(),-1) * self.nones
-
-        # copy of the index range (A*N)
-        # [[0,1,...,N-1],
-        #  [0,1,...,N-1],
-        #  ...........,
-        #  [0,1,...,N-1]]
-        exrange = self.ones((tot_atoms,1),ms.int32) * nrange()
-
-        # neighbours for full connection (A*N)
-        # [[1,2,3,...,N],
-        #  [0,2,3,...,N],
-        #  [0,1,3,....N],
-        #  .............,
-        #  [0,1,2,...,N-1]]
-        self.nfc = exrange + F.cast(self.nnc <= exrange,ms.int32)
-        
-        self.ar0 = nn.Range(0,tot_neigh)()
-        self.ar1 = nn.Range(1,tot_atoms)()
-
-    def get_full_neighbours(self):
-        return F.expand_dims(self.nfc,0)
-        
-    def construct(self, atom_types: Tensor):
-        # [B,1,1]
-        exones = self.ones((atom_types.shape[0],1,1),ms.int32)
-        # broadcast to [B*A*N]: [B,1,1] * [1,A,N]
-        exnfc = exones * F.expand_dims(self.nfc,0)
-        exnnc = exones * F.expand_dims(self.nnc,0)
-        
-        tmask = F.select(atom_types>0, F.ones_like(atom_types), F.ones_like(atom_types) * -1)
-        tmask = F.cast(tmask,ms.float32)
-        extmask = F.expand_dims(tmask,-1) * self.nones
-        
-        mask0 = F.gather(tmask,self.ar0,-1)
-        mask0 = F.expand_dims(mask0,-2) * self.eaones
-        mask1 = F.gather(tmask,self.ar1,-1)
-        mask1 = F.expand_dims(mask1,-2) * self.eaones
-        
-        mtmp = F.select(exnfc > exnnc, mask1, mask0)
-        mask  = F.select(extmask > 0, mtmp, F.ones_like(mtmp) * -1)
-        mask  = mask > 0
-        
-        idx = F.select(mask, exnfc, exnnc)
-
-        return idx,mask

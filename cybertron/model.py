@@ -303,6 +303,9 @@ class MolecularModel(Cell):
 
         bsize = r_ij.shape[0] if self.calc_distance else bonds.shape[0]
 
+        # (B,A) -> (B,A,1)
+        atom_mask = F.expand_dims(atom_mask,-1)
+        
         e =  self.atom_embedding(atom_types)
         if atom_types.shape[0] != bsize:
             e = msnp.broadcast_to(e,(bsize,)+e.shape[1:])
