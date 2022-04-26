@@ -22,7 +22,7 @@
 # limitations under the License.
 # ============================================================================
 
-from multiprocessing.sharedctypes import Value
+import mindspore.numpy as msnp
 from mindspore import nn
 from mindspore.nn import Cell
 # from mindspore.nn.layer import .activation import _activation
@@ -55,14 +55,14 @@ class ShiftedSoftplus(Cell):
         # self.softplus = P.Softplus()
         self.log1p = P.Log1p()
         self.exp = P.Exp()
-        self.ln2 = 0.6931471805599453
+        self.log2 = msnp.log(2.0)
 
     def __str__(self):
         return 'ShiftedSoftplus<>'
 
     def construct(self,x):
-        # return self.softplus(x) - self.ln2
-        return self.log1p(self.exp(x)) - self.ln2
+        # return self.softplus(x) - self.log2
+        return self.log1p(self.exp(x)) - self.log2
 
 class Swish(Cell):
     r"""Compute swish\SILU\SiL function.
