@@ -33,14 +33,13 @@ from mindspore.train._utils import _make_directory
 
 from sponge.functions import get_integer
 from sponge.hyperparam import get_class_parameters
-from sponge.hyperparam import set_class_parameters,set_class_parameters
-from sponge.hyperparam import get_hyper_parameter,get_hyper_string,set_hyper_parameter
-from sponge.hyperparam import load_hyper_param_into_class,set_class_into_hyper_param
+from sponge.hyperparam import get_hyper_parameter,get_hyper_string
+from sponge.hyperparam import set_class_into_hyper_param
 from sponge.colvar import IndexDistances
 from sponge.units import Units,global_units
+from sponge.neighbours import FullConnectNeighbours
 import sponge.checkpoint as checkpoint
 
-from .base import FullConnectNeighbours
 from .readout import Readout,get_readout
 from .model import MolecularModel,get_molecular_model
 from .readout import Readout
