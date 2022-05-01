@@ -277,12 +277,9 @@ class SmoothCutoff(Cutoff):
         
         if neighbour_mask is not None:
             mask_lower = self.logical_and(mask_lower,neighbour_mask)
-
-        zeros = F.zeros_like(distance)
-        ones = F.ones_like(distance)
         
-        cutoffs = F.select(mask_upper, cutoffs, ones)
-        cutoffs = F.select(mask_lower, cutoffs, zeros)
+        cutoffs = msnp.where(mask_upper, cutoffs, 1)
+        cutoffs = msnp.where(mask_lower, cutoffs, 0)
         
         return cutoffs, mask_lower
 

@@ -129,7 +129,7 @@ class SmoothReciprocal(nn.Cell):
         phi2rij,_ = self.cutoff_network(rij*2,mask)
 
         r_near = phi2rij * msnp.reciprocal(self.sqrt(rij * rij + 1.0) )
-        r_far = F.select( rij > 0, (1.0 - phi2rij) * msnp.reciprocal(rij), F.zeros_like(rij) )
+        r_far = msnp.where( rij > 0, (1.0 - phi2rij) * msnp.reciprocal(rij), 0)
         
         reciprocal = r_near + r_far
         if mask is not None:
@@ -145,9 +145,7 @@ class SoftmaxWithMask(nn.Cell):
         self.large_neg = -5e4
 
     def construct(self, x, mask):
-        large_neg = F.ones_like(x) * self.large_neg
-        xm = F.select(mask,x,large_neg)
-
+        xm = msnp.where(mask,x,self.large_neg)
         return self.softmax(xm)
 
 class PositionalEmbedding(nn.Cell):

@@ -249,8 +249,7 @@ class MolecularModel(Cell):
     def _get_self_interaction(self,atom_mask):
         # (B,A,1)
         r_ii = msnp.full_like(atom_mask,self.r_self)
-        r_large = msnp.full_like(r_ii,5e4)
-        r_ii = F.select(atom_mask,r_ii,r_large)
+        r_ii = msnp.where(atom_mask,r_ii,5e4)
         c_ii = F.ones_like(r_ii) * atom_mask
         return r_ii,c_ii
 

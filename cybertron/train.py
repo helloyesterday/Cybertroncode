@@ -113,8 +113,7 @@ class OutputScaleShift(Cell):
         else:
             atomwise_output = outputs + self.shift * num_atoms
             graph_output = outputs + self.shift
-            atomwise_scaleshift = msnp.broadcast_to(self.atomwise_scaleshift,outputs.shape)
-            return F.select(atomwise_scaleshift,atomwise_output,graph_output)
+            return msnp.where(self.atomwise_scaleshift,atomwise_output,graph_output)
 
 class DatasetNormalization(Cell):
     def __init__(
@@ -165,8 +164,7 @@ class DatasetNormalization(Cell):
         else:
             atomwise_norm = (label - self.shift * num_atoms) / self.scale
             graph_norm = (label - self.shift) / self.scale
-            atomwise_scaleshift = msnp.broadcast_to(self.atomwise_scaleshift,label.shape)
-            return F.select(atomwise_scaleshift,atomwise_norm,graph_norm)
+            return msnp.where(self.atomwise_scaleshift,atomwise_norm,graph_norm)
 
 class LossWithEnergyAndForces(nn.loss.loss.LossBase):
     def __init__(self,
