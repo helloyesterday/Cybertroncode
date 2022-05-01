@@ -41,6 +41,7 @@ from mindspore.nn.metrics import Metric
 from mindspore.train._utils import _make_directory
 from mindspore.nn.learning_rate_schedule import LearningRateSchedule
 from mindspore._checkparam import Validator as validator
+from mindspore import context
 
 from sponge import hyperparam
 
@@ -290,7 +291,7 @@ class WithCell(Cell):
         datatypes: str,
         network: Cybertron,
         loss_fn: Cell,
-        fulltypes: str='RZCNnBbE',
+        fulltypes: str='RZCDNnBbE',
         cell_name: str='',
     ):
         super().__init__(auto_prefix=False)
@@ -313,6 +314,7 @@ class WithCell(Cell):
         self.R = self.datatypes.find('R') # positions
         self.Z = self.datatypes.find('Z') # atom_types
         self.C = self.datatypes.find('C') # pbcbox
+        self.D = self.datatypes.find('D') # distances
         self.N = self.datatypes.find('N') # neighbours
         self.n = self.datatypes.find('n') # neighbour_mask
         self.B = self.datatypes.find('B') # bonds
@@ -329,7 +331,11 @@ class WithCell(Cell):
         if 'hyper_param' in self._network.__dict__.keys():
             self.hyper_param = self._network.hyper_param
 
-        if 'atom_types' in self._network.__dict__.keys():
+        self.atom_types = None
+        if (context.get_context("mode") == context.PYNATIVE_MODE and 
+            'atom_types' in self._network.__dict__['_tensor_list'].keys()) or \
+            (context.get_context("mode") == context.GRAPH_MODE and
+            'atom_types' in self._network.__dict__.keys()):
             self.atom_types = self._network.atom_types
 
         print(self.cls_name + ' with input type: ' + self.datatypes)
@@ -346,7 +352,7 @@ class WithForceLossCell(WithCell):
             datatypes=datatypes,
             network=network,
             loss_fn=loss_fn,
-            fulltypes='RZCNnBbFE'
+            fulltypes='RZCDNnBbFE'
         )
 
         self.F = self.datatypes.find('F') # force
@@ -360,7 +366,8 @@ class WithForceLossCell(WithCell):
 
         positions = inputs[self.R]
         atom_types = inputs[self.Z]
-        pbcbox = inputs[self.C]
+        pbc_box = inputs[self.C]
+        distances = inputs[self.D]
         neighbours = inputs[self.N]
         neighbour_mask = inputs[self.n]
         bonds = inputs[self.B]
@@ -368,20 +375,22 @@ class WithForceLossCell(WithCell):
 
         energy = inputs[self.E]
         out = self._network(
-            positions,
-            atom_types,
-            pbcbox,
-            neighbours,
-            neighbour_mask,
-            bonds,
-            bond_mask,
+            positions=positions,
+            atom_types=atom_types,
+            pbc_box=pbc_box,
+            distances=distances,
+            neighbours=neighbours,
+            neighbour_mask=neighbour_mask,
+            bonds=bonds,
+            bond_mask=bond_mask,
         )
 
         forces = inputs[self.F]
         fout = -1 * self.grad_op(self._network)(
             positions,
             atom_types,
-            pbcbox,
+            pbc_box,
+            distances,
             neighbours,
             neighbour_mask,
             bonds,
@@ -415,7 +424,7 @@ class WithLabelLossCell(WithCell):
             datatypes=datatypes,
             network=network,
             loss_fn=loss_fn,
-            fulltypes='RZCNnBbE'
+            fulltypes='RZCDNnBbE'
         )
         # self.with_penalty = with_penalty
 
@@ -425,20 +434,22 @@ class WithLabelLossCell(WithCell):
 
         positions = inputs[self.R]
         atom_types = inputs[self.Z]
-        pbcbox = inputs[self.C]
+        pbc_box = inputs[self.C]
+        distances = inputs[self.D]
         neighbours = inputs[self.N]
         neighbour_mask = inputs[self.n]
         bonds = inputs[self.B]
         bond_mask = inputs[self.b]
 
         out = self._network(
-            positions,
-            atom_types,
-            pbcbox,
-            neighbours,
-            neighbour_mask,
-            bonds,
-            bond_mask,
+            positions=positions,
+            atom_types=atom_types,
+            pbc_box=pbc_box,
+            distances=distances,
+            neighbours=neighbours,
+            neighbour_mask=neighbour_mask,
+            bonds=bonds,
+            bond_mask=bond_mask,
         )
 
         label = inputs[self.E]
@@ -463,7 +474,7 @@ class WithEvalCell(WithCell):
         atomwise_scaleshift: Tensor=None,
         eval_data_is_normed=True,
         add_cast_fp32=False,
-        fulltypes='RZCNnBbE'
+        fulltypes='RZCDNnBbE'
     ):
         super().__init__(
             datatypes=datatypes,
@@ -568,7 +579,7 @@ class WithLabelEvalCell(WithEvalCell):
             atomwise_scaleshift=atomwise_scaleshift,
             eval_data_is_normed=eval_data_is_normed,
             add_cast_fp32=add_cast_fp32,
-            fulltypes='RZCNnBbE',
+            fulltypes='RZCDNnBbE',
         )
 
     def construct(self, *inputs):
@@ -576,20 +587,22 @@ class WithLabelEvalCell(WithEvalCell):
 
         positions = inputs[self.R]
         atom_types = inputs[self.Z]
-        pbcbox = inputs[self.C]
+        pbc_box = inputs[self.C]
+        distances = inputs[self.D]
         neighbours = inputs[self.N]
         neighbour_mask = inputs[self.n]
         bonds = inputs[self.B]
         bond_mask = inputs[self.b]
 
         output = self._network(
-            positions,
-            atom_types,
-            pbcbox,
-            neighbours,
-            neighbour_mask,
-            bonds,
-            bond_mask,
+            positions=positions,
+            atom_types=atom_types,
+            pbc_box=pbc_box,
+            distances=distances,
+            neighbours=neighbours,
+            neighbour_mask=neighbour_mask,
+            bonds=bonds,
+            bond_mask=bond_mask,
         )
 
         label = inputs[self.E]
@@ -641,7 +654,7 @@ class WithForceEvalCell(WithEvalCell):
             atomwise_scaleshift=atomwise_scaleshift,
             eval_data_is_normed=eval_data_is_normed,
             add_cast_fp32=add_cast_fp32,
-            fulltypes='RZCNnBbFE',
+            fulltypes='RZCDNnBbFE',
         )
 
         self.F = self.datatypes.find('F') # force
@@ -656,26 +669,29 @@ class WithForceEvalCell(WithEvalCell):
 
         positions = inputs[self.R]
         atom_types = inputs[self.Z]
-        pbcbox = inputs[self.C]
+        pbc_box = inputs[self.C]
+        distances = inputs[self.D]
         neighbours = inputs[self.N]
         neighbour_mask = inputs[self.n]
         bonds = inputs[self.B]
         bond_mask = inputs[self.b]
 
         output_energy = self._network(
-            positions,
-            atom_types,
-            pbcbox,
-            neighbours,
-            neighbour_mask,
-            bonds,
-            bond_mask,
+            positions=positions,
+            atom_types=atom_types,
+            pbc_box=pbc_box,
+            distances=distances,
+            neighbours=neighbours,
+            neighbour_mask=neighbour_mask,
+            bonds=bonds,
+            bond_mask=bond_mask,
         )
 
         output_forces = -1 * self.grad_op(self._network)(
             positions,
             atom_types,
-            pbcbox,
+            pbc_box,
+            distances,
             neighbours,
             neighbour_mask,
             bonds,

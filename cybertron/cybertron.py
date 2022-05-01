@@ -425,31 +425,36 @@ class Cybertron(nn.Cell):
         checkpoint.save_checkpoint(self,ckpt_file,append_dict=self.hyper_param)
         return self
 
-    def construct(self,
-            positions: Tensor=None,
-            atom_types: Tensor=None,
-            pbc_box: Tensor=None,
-            neighbours: Tensor=None,
-            neighbour_mask: Tensor=None,
-            bonds: Tensor=None,
-            bond_mask: Tensor=None,
+    def construct(
+            self,
+            positions: Tensor = None,
+            atom_types: Tensor = None,
+            pbc_box: Tensor = None,
+            distances: Tensor = None,
+            neighbours: Tensor = None,
+            neighbour_mask: Tensor = None,
+            bonds: Tensor = None,
+            bond_mask: Tensor = None,
         ):
         """Compute the properties of the molecules.
 
         Args:
-            positions     (mindspore.Tensor[float], [B, A, 3]): Cartesian coordinates for each atom.
-            atom_types    (mindspore.Tensor[int],   [B, A]):    Types (nuclear charge) of input atoms.
-                                                                If the attribute "self.atom_types" have been set and
-                                                                atom_types is not given here, atom_types = self.atom_types
-            neighbours     (mindspore.Tensor[int],   [B, A, N]): Indices of other near neighbour atoms around a atom
-            neighbour_mask (mindspore.Tensor[bool],  [B, A, N]): Mask for neighbours
-            bond_types    (mindspore.Tensor[int],   [B, A, N]): Types (ID) of bond connected with two atoms
-            bond_mask     (mindspore.Tensor[bool],  [B, A, N]): Mask for bonds
+            positions      (Tensor[float], [B, A, D]): Cartesian coordinates for each atom.
+            atom_types     (Tensor[int],   [B, A]):    Types (nuclear charge) of input atoms.
+                                                                 If the attribute "self.atom_types" have been set and
+                                                                 atom_types is not given here, atom_types = self.atom_types
+            pbc_box        (Tensor[float], [B, D]):    box size of periodic boundary condition
+            distances      (Tensor[float], [B, A, N]): distances between atoms
+            neighbours     (Tensor[int],   [B, A, N]): Indices of other near neighbour atoms around a atom
+            neighbour_mask (Tensor[bool],  [B, A, N]): Mask for neighbours
+            bond_types     (Tensor[int],   [B, A, N]): Types (ID) of bond connected with two atoms
+            bond_mask      (Tensor[bool],  [B, A, N]): Mask for bonds
             
             B:  Batch size, usually the number of input molecules or frames
             A:  Number of input atoms, usually the number of atoms in one molecule or frame
             N:  Number of other nearest neighbour atoms around a atom
             O:  Output dimension of the predicted properties
+            D:  Dimension of coordinate space of atom positions, usually 3.
 
         Returns:
             properties mindspore.Tensor[float], [B,A,O]: prediction for the properties of the molecules
@@ -468,21 +473,21 @@ class Cybertron(nn.Cell):
             num_atoms = msnp.sum(num_atoms,-1,keepdims=True)
         
         if self.calc_distance:
-            if neighbours is None:
-                if self.fixed_atoms:
-                    neighbours = self.neighbours
-                    neighbour_mask = self.neighbour_mask
-                else:
-                    neighbours,neighbour_mask = self.fc_neighbours(atom_mask)
-
-            if self.pbc_box is not None:
-                pbc_box = self.pbc_box
-            r_ij = self.distances(positions,neighbours,neighbour_mask,pbc_box) * self.input_unit_scale
+            if distances is None:
+                if neighbours is None:
+                    if self.fixed_atoms:
+                        neighbours = self.neighbours
+                        neighbour_mask = self.neighbour_mask
+                    else:
+                        neighbours,neighbour_mask = self.fc_neighbours(atom_mask)
+                if self.pbc_box is not None:
+                    pbc_box = self.pbc_box
+                distances = self.distances(positions,neighbours,neighbour_mask,pbc_box) * self.input_unit_scale
         else:
-            r_ij = 1
+            distances = 1
             neighbour_mask = bond_mask
 
-        x, xlist = self.model(r_ij,atom_types,atom_mask,neighbours,neighbour_mask,bonds,bond_mask)
+        x, xlist = self.model(distances,atom_types,atom_mask,neighbours,neighbour_mask,bonds,bond_mask)
 
         if self.readout is None:
             return x
