@@ -21,8 +21,8 @@ class DatasetProcessor:
         self.single_molecule = False
 
         self.units = Units(length_unit,energy_unit)
-        self.length_unit = self.units.length_unit()
-        self.energy_unit = self.units.energy_unit()
+        self.length_unit = self.units.length_unit
+        self.energy_unit = self.units.energy_unit
 
         if self.length_unit == 'none':
             raise ValueError('The length unit cannot be None!')
@@ -113,8 +113,8 @@ class DatasetProcessor:
                 raise ValueError('The number of atoms in force does not match the number in atom_type!')
             print('Shape of force (F): '+str(self.force.shape))
         
-        print('Length unit: '+self.units.length_unit_name())
-        print('Energy unit: '+self.units.energy_unit_name())
+        print('Length unit: '+self.units.length_unit_name)
+        print('Energy unit: '+self.units.energy_unit_name)
         print('-'*105)
 
         self.mol_avg = None
@@ -478,11 +478,11 @@ class DatasetProcessor:
             self.position *= scale
             if self.force is not None:
                 self.force /= scale
-            old_unit = self.units.length_unit_name()
+            old_unit = self.units.length_unit_name
             self.units.set_length_unit(length_unit)
-            self.length_unit = self.units.length_unit()
+            self.length_unit = self.units.length_unit
             print('Change the length unit from "'+old_unit+'" to "'+
-                self.units.length_unit_name()+'"')
+                self.units.length_unit_name+'"')
         
         if energy_unit is None:
             if length_unit is not None:
@@ -496,11 +496,11 @@ class DatasetProcessor:
             if self.force is not None:
                 self.force *= scale
 
-            old_unit = self.units.energy_unit_name()
+            old_unit = self.units.energy_unit_name
             self.units.set_energy_unit(energy_unit)
-            self.energy_unit = self.units.energy_unit()
+            self.energy_unit = self.units.energy_unit
             print('Change the energy unit from "'+old_unit+'" to "'+
-                self.units.energy_unit_name()+'"')
+                self.units.energy_unit_name+'"')
             print('-'*105)
             self._do_data_analysis()
 

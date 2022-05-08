@@ -114,7 +114,7 @@ class MolecularModel(Cell):
             self.units = global_units
         else:
             self.units = Units(length_unit)
-        self.length_unit = self.units.length_unit()
+        self.length_unit = self.units.length_unit
 
         self.num_atom_types = get_integer(num_atom_types)
         self.num_bond_types = get_integer(num_bond_types)
@@ -225,7 +225,7 @@ class MolecularModel(Cell):
         gap = char * num_gap
         print(ret+' Deep molecular model: ',self.network_name)
         print('-'*80)
-        print(ret+gap+' Length unit: ' + self.units.length_unit_name())
+        print(ret+gap+' Length unit: ' + self.units.length_unit_name)
         print(ret+gap+' Atom embedding size: ' + str(self.num_atom_types))
         print(ret+gap+' Cutoff distance: ' + str(self.cutoff) + ' ' + self.length_unit)
         print(ret+gap+' Radical basis function (RBF): ' + str(self.rbf.cls_name))

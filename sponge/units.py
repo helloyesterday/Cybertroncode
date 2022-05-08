@@ -113,77 +113,94 @@ class Length:
         unit='nm',
     ):
         if isinstance(value,Length):
-            self._value = value._value
-            self._unit = value._unit
-            self._ref = value._ref
-            self._abs_size = value._abs_size
-            self._unit_name = value._unit_name
+            self.__value = value.value
+            self.__unit = value.unit
+            self.__ref = value.ref
+            self.__abs_size = value.abs_size
+            self.__unit_name = value.unit_name
         elif isinstance(value,(float,int)):
-            self._value = float(value)
+            self.__value = float(value)
             if isinstance(unit,(str,Units)):
-                self._unit = get_length_unit(unit)
-                self._ref = get_length_ref(unit)
+                self.__unit = get_length_unit(unit)
+                self.__ref = get_length_ref(unit)
             elif isinstance(unit,(float,int)):
-                self._unit = 'user'
-                self._ref = float(unit)
+                self.__unit = 'user'
+                self.__ref = float(unit)
             else:
-                raise TypeError('Unsupported lenth unit type: ' + str(type(unit)))
-            self._abs_size = self._value * self._ref
-            self._unit_name = get_length_unit_name(self._unit)
+                raise TypeError('Unsupported length unit type: ' + str(type(unit)))
+            self.__abs_size = self.__value * self.__ref
+            self.__unit_name = get_length_unit_name(self.__unit)
         else:
-            raise TypeError('Unsupported lenth value type: ' + str(type(value)))
+            raise TypeError('Unsupported length value type: ' + str(type(value)))
 
     def change_unit(self,unit):
         if isinstance(unit,(str,Units)):
-            self._unit = get_length_unit(unit)
-            self._ref = get_length_ref(unit)
+            self.__unit = get_length_unit(unit)
+            self.__ref = get_length_ref(unit)
         elif isinstance(unit,(float,int)):
-            self._unit = 'user'
-            self._ref = unit
+            self.__unit = 'user'
+            self.__ref = unit
         else:
-            raise TypeError('Unsupported lenth unit type: ' + str(type(unit)))
-        self._value = length_convert('nm',unit) * self._abs_size
-        self._unit_name = get_length_unit_name(self._unit)
+            raise TypeError('Unsupported length unit type: ' + str(type(unit)))
+        self.__value = length_convert('nm',unit) * self.__abs_size
+        self.__unit_name = get_length_unit_name(self.__unit)
         return self
 
+    @property
     def abs_size(self):
-        return self._abs_size
+        return self.__abs_size
+
+    @property
+    def value(self):
+        return self.__value
+
+    @property
+    def ref(self):
+        return self.__ref
+
+    @property
+    def unit(self):
+        return self.__unit
+
+    @property
+    def unit_name(self):
+        return self.__unit_name
 
     def __call__(self,unit=None):
-        return self._value * length_convert(self._unit,unit)
+        return self.__value * length_convert(self.__unit,unit)
 
     def __str__(self):
-        return str(self._value) + ' ' + self._unit_name
+        return str(self.__value) + ' ' + self.__unit_name
 
     def __lt__(self,other):
         if isinstance(other,Length):
-            return self._abs_size < other._abs_size
+            return self.__abs_size < other.abs_size
         else:
-            return self._value < other
+            return self.__value < other
 
     def __gt__(self,other):
         if isinstance(other,Length):
-            return self._abs_size > other._abs_size
+            return self.__abs_size > other.abs_size
         else:
-            return self._value > other
+            return self.__value > other
 
     def __eq__(self,other):
         if isinstance(other,Length):
-            return self._abs_size == other._abs_size
+            return self.__abs_size == other.abs_size
         else:
-            return self._value == other
+            return self.__value == other
 
     def __le__(self,other):
         if isinstance(other,Length):
-            return self._abs_size <= other._abs_size
+            return self.__abs_size <= other.abs_size
         else:
-            return self._value <= other
+            return self.__value <= other
 
     def __ge__(self,other):
         if isinstance(other,Length):
-            return self._abs_size >= other._abs_size
+            return self.__abs_size >= other.abs_size
         else:
-            return self._value >= other
+            return self.__value >= other
 
 class Energy:
     """Energy"""
@@ -192,77 +209,94 @@ class Energy:
         unit='kj/mol',
     ):
         if isinstance(value,Energy):
-            self._value = value._value
-            self._unit = value._unit
-            self._ref = value._ref
-            self._abs_size = value._abs_size
-            self._unit_name = value._unit_name
+            self.__value = value.value
+            self.__unit = value.unit
+            self.__ref = value.ref
+            self.__abs_size = value.abs_size
+            self.__unit_name = value.unit_name
         elif isinstance(value,(float,int)):
-            self._value = float(value)
+            self.__value = float(value)
             if isinstance(unit,(str,Units)):
-                self._unit = get_energy_unit(unit)
-                self._ref = get_energy_ref(unit)
+                self.__unit = get_energy_unit(unit)
+                self.__ref = get_energy_ref(unit)
             elif isinstance(unit,(float,int)):
-                self._unit = 'user'
-                self._ref = float(unit)
+                self.__unit = 'user'
+                self.__ref = float(unit)
             else:
                 raise TypeError('Unsupported energy unit type: ' + str(type(unit)))
-            self._abs_size = self._value * self._ref
-            self._unit_name = get_energy_unit_name(self._unit)
+            self.__abs_size = self.__value * self.__ref
+            self.__unit_name = get_energy_unit_name(self.__unit)
         else:
             raise TypeError('Unsupported energy value type: ' + str(type(value)))
 
     def change_unit(self,unit):
         if isinstance(unit,(str,Units)):
-            self._unit = get_energy_unit(unit)
-            self._ref = get_energy_ref(unit)
+            self.__unit = get_energy_unit(unit)
+            self.__ref = get_energy_ref(unit)
         elif isinstance(unit,(float,int)):
-            self._unit = 'user'
-            self._ref = unit
+            self.__unit = 'user'
+            self.__ref = unit
         else:
             raise TypeError('Unsupported energy unit type: ' + str(type(unit)))
-        self._value = energy_convert('kj/mol',unit) * self._abs_size
-        self._unit_name = get_energy_unit_name(self._unit)
+        self.__value = energy_convert('kj/mol',unit) * self.__abs_size
+        self.__unit_name = get_energy_unit_name(self.__unit)
         return self
 
-    def abs_size(self):
-        return self._abs_size
-
     def __call__(self,unit=None):
-        return self._value * energy_convert(self._unit,unit)
+        return self.__value * energy_convert(self.__unit,unit)
 
     def __str__(self):
-        return str(self._value) + ' ' + self._unit_name
+        return str(self.__value) + ' ' + self.__unit_name
 
     def __lt__(self,other):
         if isinstance(other,Energy):
-            return self._abs_size < other._abs_size
+            return self.__abs_size < other.abs_size
         else:
-            return self._value < other
+            return self.__value < other
 
     def __gt__(self,other):
         if isinstance(other,Energy):
-            return self._abs_size > other._abs_size
+            return self.__abs_size > other.abs_size
         else:
-            return self._value > other
+            return self.__value > other
 
     def __eq__(self,other):
         if isinstance(other,Energy):
-            return self._abs_size == other._abs_size
+            return self.__abs_size == other.abs_size
         else:
-            return self._value == other
+            return self.__value == other
 
     def __le__(self,other):
         if isinstance(other,Energy):
-            return self._abs_size <= other._abs_size
+            return self.__abs_size <= other.abs_size
         else:
-            return self._value <= other
+            return self.__value <= other
 
     def __ge__(self,other):
         if isinstance(other,Energy):
-            return self._abs_size >= other._abs_size
+            return self.__abs_size >= other.abs_size
         else:
-            return self._value >= other
+            return self.__value >= other
+
+    @property
+    def abs_size(self):
+        return self.__abs_size
+
+    @property
+    def value(self):
+        return self.__value
+
+    @property
+    def ref(self):
+        return self.__ref
+
+    @property
+    def unit(self):
+        return self.__unit
+
+    @property
+    def unit_name(self):
+        return self.__unit_name
 
 def get_length_ref(unit):
     if unit is None:
@@ -272,9 +306,9 @@ def get_length_ref(unit):
             raise KeyError('length unit "' + unit + '" is not recorded!')
         return _LENGTH_REF[unit.lower()]
     elif isinstance(unit,Units):
-        return unit.length_ref()
+        return unit.length_ref
     elif isinstance(unit,Length):
-        return unit._ref
+        return unit.ref
     elif isinstance(unit,(float,int)):
         return unit
     else:
@@ -288,9 +322,9 @@ def get_length_unit(unit):
             raise KeyError('length unit "' + unit + '" is not recorded!')
         return unit.lower()
     elif isinstance(unit,Units):
-        return unit.length_unit()
+        return unit.length_unit
     elif isinstance(unit,Length):
-        return unit._unit
+        return unit.unit
     elif isinstance(unit,(float,int)):
         return 'user'
     else:
@@ -304,9 +338,9 @@ def get_length_unit_name(unit):
             raise KeyError('length unit "' + unit + '" is not recorded!')
         return _LENGTH_NAME[unit.lower()]
     elif isinstance(unit,Units):
-        return unit.length_unit_name()
+        return unit.length_unit_name
     elif isinstance(unit,Length):
-        return unit._unit_name
+        return unit.unit_name
     elif isinstance(unit,(float,int)):
         return 'User_Length'
     else:
@@ -320,9 +354,9 @@ def get_energy_ref(unit):
             raise KeyError('energy unit "' + unit + '" is not recorded!')
         return _ENERGY_REF[unit.lower()]
     elif isinstance(unit,Units):
-        return unit.energy_ref()
+        return unit.energy_ref
     elif isinstance(unit,Energy):
-        return unit._ref
+        return unit.ref
     elif isinstance(unit,(float,int)):
         return unit
     else:
@@ -336,9 +370,9 @@ def get_energy_unit(unit):
             raise KeyError('energy unit "' + unit + '" is not recorded!')
         return unit.lower()
     elif isinstance(unit,Units):
-        return unit.energy_unit()
+        return unit.energy_unit
     elif isinstance(unit,Energy):
-        return unit._unit
+        return unit.unit
     elif isinstance(unit,(float,int)):
         return 'user'
     else:
@@ -352,9 +386,9 @@ def get_energy_unit_name(unit):
             raise KeyError('energy unit "' + unit + '" is not recorded!')
         return _ENERGY_NAME[unit.lower()]
     elif isinstance(unit,Units):
-        return unit.energy_unit_name()
+        return unit.energy_unit_name
     elif isinstance(unit,Energy):
-        return unit._unit_name
+        return unit.unit_name
     elif isinstance(unit,(float,int)):
         return 'User_Energy'
     else:
@@ -397,57 +431,6 @@ class Units:
         self.__coulomb = _COULOMB_DEFAULT_REF
         if self.__length_ref is not None and self.__energy_ref is not None:
             self.__coulomb *= self.__energy_ref * self.__length_ref
-
-    def length_ref(self):
-        return self.__length_ref
-
-    def energy_ref(self):
-        return self.__energy_ref
-
-    def force_ref(self):
-        if self.__energy_ref is None:
-            return None
-        else:
-            return self.__energy_ref / self.__length_ref
-
-    def acceleration_ref(self):
-        if self.__energy_ref is None or self.__length_ref is None:
-            return None
-        else:
-            return self.__energy_ref / self.__length_ref / self.__length_ref
-
-    def kinetic_ref(self):
-        if self.__energy_ref is None or self.__length_ref is None:
-            return None
-        else:
-            return self.__length_ref * self.__length_ref / self.__energy_ref
-
-    def velocity_ref(self):
-        if self.__energy_ref is None or self.__length_ref is None:
-            return None
-        else:
-            return math.sqrt(self.__energy_ref / self.__length_ref / self.__length_ref)
-
-    def length_unit(self):
-        return self.__length_unit
-
-    def energy_unit(self):
-        return self.__energy_unit
-
-    def length_unit_name(self):
-        return self.__length_unit_name
-
-    def energy_unit(self):
-        return self.__energy_unit
-
-    def energy_unit_name(self):
-        return self.__energy_unit_name
-
-    def force_unit(self):
-        return self.__energy_unit + '/' + self.__length_unit
-
-    def velocity_unit(self):
-        return self.__length_unit + '/ps'
 
     def set_length_unit(self, unit=None):
         if unit is not None:
@@ -513,20 +496,89 @@ class Units:
     def convert_energy_from(self, unit):
         return energy_convert(unit, self.__energy_unit)
 
+    @property
     def boltzmann_def(self):
         return _BOLTZMANN_DEFAULT_REF
 
+    @property
     def boltzmann(self):
         return self.__boltzmann
 
+    @property
     def coulomb(self):
         return self.__coulomb
 
+    @property
     def avogadro(self):
         return AVOGADRO_NUMBER
 
+    @property
     def gas_constant(self):
         return GAS_CONSTANT
+
+    @property
+    def length_unit(self):
+        return self.__length_unit
+
+    @property
+    def energy_unit(self):
+        return self.__energy_unit
+
+    @property
+    def length_unit_name(self):
+        return self.__length_unit_name
+
+    @property
+    def energy_unit(self):
+        return self.__energy_unit
+
+    @property
+    def energy_unit_name(self):
+        return self.__energy_unit_name
+
+    @property
+    def force_unit(self):
+        return self.__energy_unit + '/' + self.__length_unit
+
+    @property
+    def velocity_unit(self):
+        return self.__length_unit + '/ps'
+
+    @property
+    def length_ref(self):
+        return self.__length_ref
+
+    @property
+    def energy_ref(self):
+        return self.__energy_ref
+
+    @property
+    def force_ref(self):
+        if self.__energy_ref is None:
+            return None
+        else:
+            return self.__energy_ref / self.__length_ref
+
+    @property
+    def acceleration_ref(self):
+        if self.__energy_ref is None or self.__length_ref is None:
+            return None
+        else:
+            return self.__energy_ref / self.__length_ref / self.__length_ref
+
+    @property
+    def kinetic_ref(self):
+        if self.__energy_ref is None or self.__length_ref is None:
+            return None
+        else:
+            return self.__length_ref * self.__length_ref / self.__energy_ref
+
+    @property
+    def velocity_ref(self):
+        if self.__energy_ref is None or self.__length_ref is None:
+            return None
+        else:
+            return math.sqrt(self.__energy_ref / self.__length_ref / self.__length_ref)
 
 global_units = Units('nm','kj/mol')
 

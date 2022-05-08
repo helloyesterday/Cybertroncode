@@ -92,7 +92,7 @@ class RadicalBasisFunctions(Cell):
         self.clip_distance = Tensor(clip_distance,ms.bool_)
         self.rescale = Tensor(rescale,ms.bool_)
 
-        self.length_unit = self.units.length_unit()
+        self.length_unit = self.units.length_unit
 
         self.check_range()
         self.check_basis(num_basis,delta)
@@ -167,8 +167,8 @@ class RadicalBasisFunctions(Cell):
     def print_info(self, num_retraction: int=6, num_gap: int=3, char: str='-'):
         ret = char * num_retraction
         gap = char * num_gap
-        print(ret+gap+' Minimum distance: ' + str(self.r_min)+' '+self.units.length_unit())
-        print(ret+gap+' Maximum distance: ' + str(self.r_max)+' '+self.units.length_unit())
+        print(ret+gap+' Minimum distance: ' + str(self.r_min)+' '+self.units.length_unit)
+        print(ret+gap+' Maximum distance: ' + str(self.r_max)+' '+self.units.length_unit)
         print(ret+gap+' Number of basis functions: ' + str(self.num_basis))
         print(ret+gap+' Interval: ' + str(self.delta))
         print(ret+gap+' Sigma: ' + str(self.sigma))
@@ -284,10 +284,10 @@ class GaussianBasis(RadicalBasisFunctions):
     def print_info(self, num_retraction: int=6, num_gap: int=3, char: str='-'):
         ret = char * num_retraction
         gap = char * num_gap
-        print(ret+gap+' Minimum distance: ' + str(self.r_min)+' '+self.units.length_unit())
-        print(ret+gap+' Maximum distance: ' + str(self.r_max)+' '+self.units.length_unit())
-        print(ret+gap+' Sigma for Gaussian: ' + str(self.sigma)+' '+self.units.length_unit())
-        print(ret+gap+' Interval for Gaussian: ' + str(self.delta)+' '+self.units.length_unit())
+        print(ret+gap+' Minimum distance: ' + str(self.r_min)+' '+self.units.length_unit)
+        print(ret+gap+' Maximum distance: ' + str(self.r_max)+' '+self.units.length_unit)
+        print(ret+gap+' Sigma for Gaussian: ' + str(self.sigma)+' '+self.units.length_unit)
+        print(ret+gap+' Interval for Gaussian: ' + str(self.delta)+' '+self.units.length_unit)
         print(ret+gap+' Number of basis functions: ' + str(self.num_basis))
         if self.clip_distance:
             print(ret+gap+' Clip the range of distance to (r_min,r_max).')
@@ -430,9 +430,9 @@ class LogGaussianBasis(RadicalBasisFunctions):
     def print_info(self, num_retraction: int=6, num_gap: int=3, char: str='-'):
         ret = char * num_retraction
         gap = char * num_gap
-        print(ret+gap+' Minimum distance: ' + str(self.r_min)+' '+self.units.length_unit())
-        print(ret+gap+' Maximum distance: ' + str(self.r_max)+' '+self.units.length_unit())
-        print(ret+gap+' Reference distance: ' + str(self.r_ref)+' '+self.units.length_unit())
+        print(ret+gap+' Minimum distance: ' + str(self.r_min)+' '+self.units.length_unit)
+        print(ret+gap+' Maximum distance: ' + str(self.r_max)+' '+self.units.length_unit)
+        print(ret+gap+' Reference distance: ' + str(self.r_ref)+' '+self.units.length_unit)
         print(ret+gap+' Log Gaussian begin: ' + str(self.offsets[0]))
         print(ret+gap+' Log Gaussian end: ' + str(self.offsets[-1]))
         print(ret+gap+' Interval for log Gaussian: '+str(self.delta))

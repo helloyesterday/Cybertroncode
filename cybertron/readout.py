@@ -156,7 +156,7 @@ class Readout(nn.Cell):
     def set_scaleshift(self,scale:float=1,shift:float=0,type_ref:Tensor=None,atomwise_scaleshift:bool=None,unit:str=None):
         if unit is not None:
             self.units.set_energy_unit(unit)
-            set_hyper_parameter(self.hyper_param,'energy_unit',self.units.energy_unit_name())
+            set_hyper_parameter(self.hyper_param,'energy_unit',self.units.energy_unit_name)
         self.scale = Tensor(scale,ms.float32).reshape(-1)
         if self.scale.shape[-1] != self.dim_output and self.scale.shape[-1] != 1:
             raise ValueError('The dimension of "scale" ('+str(self.scale.shape[-1]) + \
@@ -189,7 +189,7 @@ class Readout(nn.Cell):
         set_hyper_parameter(self.hyper_param,'scale',self.scale)
         set_hyper_parameter(self.hyper_param,'shift',self.shift)
         set_hyper_parameter(self.hyper_param,'type_ref',self.type_ref)
-        set_hyper_parameter(self.hyper_param,'energy_unit',self.units.energy_unit_name())
+        set_hyper_parameter(self.hyper_param,'energy_unit',self.units.energy_unit_name)
         return self
 
     def print_info(self, num_retraction: int=0, num_gap: int=3, char: str='-'):
@@ -211,7 +211,7 @@ class Readout(nn.Cell):
             print(ret+gap+" Reference value for atom types:")
             for i,ref in enumerate(self.type_ref):
                 print(ret+gap+gap+' No.{: <5}'.format(str(i)+': ')+str(ref))
-        print(ret+gap+" Output unit: "+str(self.units.energy_unit()))
+        print(ret+gap+" Output unit: "+str(self.units.energy_unit))
         print(ret+gap+" Reduce axis: "+str(self.axis))
         print('-'*80)
 

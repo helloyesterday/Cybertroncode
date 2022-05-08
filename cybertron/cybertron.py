@@ -91,8 +91,8 @@ class Cybertron(nn.Cell):
         else:
             self.units = Units(length_unit,energy_unit)
 
-        self.length_unit = self.units.length_unit()
-        self.energy_unit = self.units.energy_unit()
+        self.length_unit = self.units.length_unit
+        self.energy_unit = self.units.energy_unit
         self.model = get_molecular_model(model,length_unit=self.length_unit)
 
         self.model_name = self.model.network_name
@@ -141,7 +141,7 @@ class Cybertron(nn.Cell):
                         readout[i],
                         model=self.model,
                         dim_output=self.dim_output[i],
-                        energy_unit=self.units.energy_unit(),
+                        energy_unit=self.units.energy_unit,
                     )
                     for i in range(self.num_readout)
                 ]
@@ -155,7 +155,7 @@ class Cybertron(nn.Cell):
                 readout,
                 model=self.model,
                 dim_output=self.dim_output,
-                energy_unit=self.units.energy_unit(),
+                energy_unit=self.units.energy_unit,
             )
             self.dim_output = self.readout.dim_output
             self.tot_out_dim = self.dim_output
@@ -235,21 +235,21 @@ class Cybertron(nn.Cell):
                 self.set_energy_unit(energy_unit)
         else:
             self.units = units
-            self.length_unit = self.units.length_unit()
-            self.energy_unit = self.units.energy_unit()
+            self.length_unit = self.units.length_unit
+            self.energy_unit = self.units.energy_unit
             self.input_unit_scale = self.units.convert_energy_to(self.model.units)
             self.output_unit_scale = self.get_output_unit_scale()
         return self
 
     def set_length_unit(self,length_unit:str):
         self.units = self.units.set_length_unit(length_unit)
-        self.length_unit = self.units.length_unit()
+        self.length_unit = self.units.length_unit
         self.input_unit_scale = self.units.convert_energy_to(self.model.units)
         return self
     
     def set_energy_unit(self,energy_units:str):
         self.units.set_energy_unit(energy_units)
-        self.energy_unit = self.units.energy_unit()
+        self.energy_unit = self.units.energy_unit
         self.output_unit_scale = self.get_output_unit_scale()
         return self
 
@@ -286,7 +286,7 @@ class Cybertron(nn.Cell):
         print("================================================================================")
         print("Cybertron Engine, Ride-on!")
         print('-'*80)
-        print(ret+' Length unit: ' + self.units.length_unit_name())
+        print(ret+' Length unit: ' + self.units.length_unit_name)
         print(ret+' Input unit scale: ' + str(self.input_unit_scale))
         if self.atom_types is not None:
             print(ret+' Using fixed atom type index:')
@@ -315,7 +315,7 @@ class Cybertron(nn.Cell):
             print('-'*80)
             self.readout.print_info(num_retraction=num_retraction,num_gap=num_gap,char=char)
             print(ret+" Output dimension: "+str(self.dim_output))
-        print(ret+" Output unit for Cybertron: "+self.units.energy_unit_name())
+        print(ret+" Output unit for Cybertron: "+self.units.energy_unit_name)
         print(ret+" Output unit scale: "+str(self.output_unit_scale))
         print("================================================================================")
 
