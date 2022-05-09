@@ -1,12 +1,10 @@
 # Copyright 2020-2022 Shenzhen Bay Laboratory & Peking University
-# 
+#
 # Tutorials for Cybertron
-# 
-# Tutorial 08: Read hyperparameters for networ trained with force
-# 
+#
 # Authors: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yi Qin Gao
 # Contact: yangyi@szbl.ac.cn
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -19,30 +17,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-
-import sys
-import numpy as np
-from mindspore import dataset as ds
-from mindspore.train import Model
-from mindspore import context
-
-sys.path.append('..')
-
-from sponge.checkpoint import load_hyperparam,load_checkpoint
-
-from cybertron.cybertron import Cybertron
-from cybertron.train import WithForceEvalCell
-from cybertron.train import MAE,RMSE
+"""
+Tutorial 08: Read hyperparameters for networ trained with force
+"""
 
 if __name__ == '__main__':
 
+    import numpy as np
+    from mindspore import dataset as ds
+    from mindspore.train import Model
+    from mindspore import context
+
+    import sys
+    sys.path.append('..')
+
+    from sponge.checkpoint import load_hyperparam, load_checkpoint
+    from cybertron.cybertron import Cybertron
+    from cybertron.train import MAE, RMSE
+    from cybertron.train import WithForceEvalCell
+
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    ckpt_file = 'tutorial_07/tutorial_07_MolCT-best.ckpt'
+    ckpt_file = 'Tutorial_07/Tutorial_07_MolCT-best.ckpt'
     hyper_param = load_hyperparam(ckpt_file)
 
     net = Cybertron(hyper_param=hyper_param)
-    load_checkpoint(ckpt_file,net)
+    load_checkpoint(ckpt_file, net)
 
     test_file = sys.path[0] + '/dataset_ethanol_origin_testset_1024.npz'
     test_data = np.load(test_file)
@@ -50,28 +50,31 @@ if __name__ == '__main__':
     scale = test_data['scale']
     shift = test_data['shift']
 
-    net.set_scaleshift(scale=scale,shift=shift,unit='kj/mol')
+    net.set_scaleshift(scale=scale, shift=shift, unit='kj/mol')
 
     net.print_info()
 
-    ds_test = ds.NumpySlicesDataset({'R':test_data['R'],'F':test_data['F'],'E':test_data['E']},shuffle=False)
+    ds_test = ds.NumpySlicesDataset(
+        {'R': test_data['R'], 'F': test_data['F'], 'E': test_data['E']}, shuffle=False)
     ds_test = ds_test.batch(1024)
     ds_test = ds_test.repeat(1)
-    
-    eval_network = WithForceEvalCell('RFE',net)
 
-    outdir = 'tutorial_08'
+    eval_network = WithForceEvalCell('RFE', net)
+
+    outdir = 'Tutorial_08'
     outname = outdir + '_' + net.model_name
 
     energy_mae = 'EnergyMAE'
     forces_mae = 'ForcesMAE'
     forces_rmse = 'ForcesRMSE'
-    model = Model(net,eval_network=eval_network,metrics={energy_mae:MAE([1,2]),forces_mae:MAE([3,4]),forces_rmse:RMSE([3,4],atom_aggregate='sum')})
+    model = Model(net, eval_network=eval_network,
+                  metrics={energy_mae: MAE([1, 2]), forces_mae: MAE([3, 4]),
+                           forces_rmse: RMSE([3, 4], atom_aggregate='sum')})
 
     print('Test dataset:')
     eval_metrics = model.eval(ds_test, dataset_sink_mode=False)
     info = ''
-    for k,v in eval_metrics.items():
+    for k, v in eval_metrics.items():
         info += k
         info += ': '
         info += str(v)
@@ -80,7 +83,7 @@ if __name__ == '__main__':
 
     outdir = 'tutorial_08'
     scaled_ckpt = outdir + '_' + net.model_name + '.ckpt'
-    net.save_checkpoint(scaled_ckpt,outdir)
+    net.save_checkpoint(scaled_ckpt, outdir)
 
     net2 = Cybertron(hyper_param=load_hyperparam(outdir+'/'+scaled_ckpt))
     net2.print_info()
