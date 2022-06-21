@@ -1,9 +1,10 @@
-# ============================================================================
-# Copyright 2021 The AIMM team at Shenzhen Bay Laboratory & Peking University
+# Copyright 2020-2022 The AIMM team at Shenzhen Bay Laboratory & Peking University
 #
 # People: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yaqiang Zhou, Huiyang Zhang,
 #         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
-# 
+#
+# Contact: yangyi@szbl.ac.cn
+#
 # This code is a part of Cybertron-Code package.
 #
 # The Cybertron-Code is open-source software based on the AI-framework:
@@ -21,11 +22,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+"""
+Extra activation function
+"""
 
 import mindspore.numpy as msnp
 from mindspore import nn
 from mindspore.nn import Cell
-# from mindspore.nn.layer import .activation import _activation
 from mindspore.nn.layer import activation
 from mindspore.ops import operations as P
 from mindspore.ops.primitive import Primitive, PrimitiveWithInfer, PrimitiveWithCheck
@@ -34,8 +37,8 @@ __all__ = [
     "ShiftedSoftplus",
     "Swish",
     "get_activation",
-    "get_activation_key",
-    ]
+]
+
 
 class ShiftedSoftplus(Cell):
     r"""Compute shifted soft-plus activation function.
@@ -50,6 +53,7 @@ class ShiftedSoftplus(Cell):
         mindspore.Tensor: shifted soft-plus of input.
 
     """
+
     def __init__(self):
         super().__init__()
         # self.softplus = P.Softplus()
@@ -60,9 +64,10 @@ class ShiftedSoftplus(Cell):
     def __str__(self):
         return 'ShiftedSoftplus<>'
 
-    def construct(self,x):
+    def construct(self, x):
         # return self.softplus(x) - self.log2
         return self.log1p(self.exp(x)) - self.log2
+
 
 class Swish(Cell):
     r"""Compute swish\SILU\SiL function.
@@ -77,6 +82,7 @@ class Swish(Cell):
         mindspore.Tensor: shifted soft-plus of input.
 
     """
+
     def __init__(self):
         super().__init__()
         self.sigmoid = nn.Sigmoid()
@@ -84,18 +90,21 @@ class Swish(Cell):
     def __str__(self):
         return 'Swish<>'
 
-    def construct(self,x):
+    def construct(self, x):
         return x * self.sigmoid(x)
+
 
 _ACTIVATIONS_BY_KEY = {
     'ssp': ShiftedSoftplus,
     'swish': Swish,
 }
+
 _ACTIVATIONS_BY_KEY.update(activation._activation)
 
-_ACTIVATIONS_BY_NAME = {a.__name__:a for a in _ACTIVATIONS_BY_KEY.values()}
+_ACTIVATIONS_BY_NAME = {a.__name__: a for a in _ACTIVATIONS_BY_KEY.values()}
 
-def get_activation(activation) -> Cell:
+
+def get_activation(activation_) -> Cell:
     """
     Gets the activation function.
 
@@ -114,19 +123,19 @@ def get_activation(activation) -> Cell:
         Sigmoid<>
     """
 
-    if activation is None:
+    if activation_ is None:
         return None
 
-    if isinstance(activation,(Cell,Primitive,PrimitiveWithCheck,PrimitiveWithCheck)):
-        return activation
-    elif isinstance(activation,str):
-        if activation.lower() == 'none':
+    if isinstance(activation_, (Cell, Primitive, PrimitiveWithCheck,
+                                PrimitiveWithInfer, PrimitiveWithCheck)):
+        return activation_
+    if isinstance(activation_, str):
+        if activation_.lower() == 'none':
             return None
-        if activation.lower() in _ACTIVATIONS_BY_KEY.keys():
-            return _ACTIVATIONS_BY_KEY[activation.lower()]()
-        elif activation in _ACTIVATIONS_BY_NAME.keys():
-            return _ACTIVATIONS_BY_NAME[activation]()
-        else:
-            raise ValueError("The activation corresponding to '{}' was not found.".format(activation))
-    else:
-        raise TypeError("Unsupported activation type: "+str(type(activation)))
+        if activation_.lower() in _ACTIVATIONS_BY_KEY.keys():
+            return _ACTIVATIONS_BY_KEY[activation_.lower()]()
+        if activation_ in _ACTIVATIONS_BY_NAME.keys():
+            return _ACTIVATIONS_BY_NAME[activation_]()
+        raise ValueError(
+            "The activation corresponding to '{}' was not found.".format(activation_))
+    raise TypeError("Unsupported activation type: "+str(type(activation_)))

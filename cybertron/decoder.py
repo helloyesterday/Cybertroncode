@@ -1,9 +1,10 @@
-# ============================================================================
-# Copyright 2021 The AIMM team at Shenzhen Bay Laboratory & Peking University
+# Copyright 2020-2022 The AIMM team at Shenzhen Bay Laboratory & Peking University
 #
 # People: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yaqiang Zhou, Huiyang Zhang,
 #         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
-# 
+#
+# Contact: yangyi@szbl.ac.cn
+#
 # This code is a part of Cybertron-Code package.
 #
 # The Cybertron-Code is open-source software based on the AI-framework:
@@ -21,13 +22,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+"""
+Decoder networks for readout function
+"""
 
 from mindspore import nn
 from mindspore.nn import Cell
-from mindspore.ops import operations as P
-from mindspore.ops import functional as F
 
-from .block import MLP,Dense
+from .block import MLP, Dense
 from .block import PreActResidual
 from .block import SeqPreActResidual
 from .block import PreActDense
@@ -37,9 +39,10 @@ __all__ = [
     "get_decoder",
     "SimpleDecoder",
     "ResidualOutputBlock",
-    ]
+]
 
 _DECODER_BY_KEY = dict()
+
 
 def _decoder_register(*aliases):
     """Return the alias register."""
@@ -55,17 +58,23 @@ def _decoder_register(*aliases):
         return cls
     return alias_reg
 
-class Decoder(nn.Cell):
+
+class Decoder(Cell):
     def __init__(self,
-        n_in,
-        n_out=1,
-        activation=None,
-        n_layers=1,
-    ):
+                 n_in: int,
+                 n_out: int = 1,
+                 activation: Cell = None,
+                 n_layers: int = 1,
+                 ):
+
         super().__init__()
 
         self.reg_key = 'none'
         self.name = 'decoder'
+
+        self.n_in = n_in
+        self.n_out = n_out
+        self.n_layers = n_layers
 
         self.output = None
         self.activation = activation
@@ -73,14 +82,16 @@ class Decoder(nn.Cell):
     def construct(self, x):
         return self.output(x)
 
+
 @_decoder_register('halve')
 class HalveDecoder(Decoder):
     def __init__(self,
-        n_in,
-        n_out,
-        activation,
-        n_layers=1,
-    ):
+                 n_in: int,
+                 n_out: int = 1,
+                 activation: Cell = None,
+                 n_layers: int = 1,
+                 ):
+
         super().__init__(
             n_in=n_in,
             n_out=n_out,
@@ -91,30 +102,32 @@ class HalveDecoder(Decoder):
         self.reg_key = 'halve'
         self.name = 'halve'
 
-        if n_layers > 0:
+        if self.n_layers > 0:
             n_hiddens = []
-            dim = n_in
-            for i in range(n_layers):
+            dim = self.n_in
+            for i in range(self.n_layers):
                 dim = dim // 2
                 if dim < n_out:
-                    raise ValueError("The dimension of hidden layer is smaller than output dimension")
+                    raise ValueError(
+                        "The dimension of hidden layer is smaller than output dimension")
                 n_hiddens.append(dim)
-            self.output = MLP(n_in, n_out, n_hiddens, activation=activation)
+            self.output = MLP(self.n_in, self.n_out, n_hiddens, activation=self.activation)
         else:
-            self.output = Dense(n_in, n_out, activation=activation)
+            self.output = Dense(self.n_in, self.n_out, activation=self.activation)
 
     def __str__(self):
         return 'halve'
 
+
 @_decoder_register('residual')
 class ResidualOutputBlock(Decoder):
-    def __init__(
-        self,
-        n_in,
-        n_out,
-        activation,
-        n_layers=1,
-    ):
+    def __init__(self,
+                 n_in: int,
+                 n_out: int = 1,
+                 activation: Cell = None,
+                 n_layers: int = 1,
+                 ):
+
         super().__init__(
             n_in=n_in,
             n_out=n_out,
@@ -125,29 +138,33 @@ class ResidualOutputBlock(Decoder):
         self.reg_key = 'residual'
         self.name = 'residual'
 
-        if n_layers == 1:
-            output_residual = PreActResidual(n_in,activation=activation)
+        if self.n_layers == 1:
+            output_residual = PreActResidual(self.n_in, activation=self.activation)
         else:
-            output_residual = SeqPreActResidual(n_in,activation=activation,n_res=n_layers)
+            output_residual = SeqPreActResidual(
+                self.n_in, activation=self.activation, n_res=self.n_layers)
 
         self.output = nn.SequentialCell([
             output_residual,
-            PreActDense(n_in,n_out,activation=activation),
+            PreActDense(self.n_in, self.n_out, activation=self.activation),
         ])
 
     def __str__(self):
         return 'residual'
 
-_DECODER_BY_NAME = {decoder.__name__:decoder for decoder in _DECODER_BY_KEY.values()}
 
-def get_decoder(
-        decoder: str,
-        n_in: int,
-        n_out: int,
-        activation: Cell=None,
-        n_layers: int=1,
-    ) -> Decoder:
-    if decoder is None or isinstance(decoder,Decoder):
+_DECODER_BY_NAME = {
+    decoder.__name__: decoder for decoder in _DECODER_BY_KEY.values()}
+
+
+def get_decoder(decoder: str,
+                n_in: int,
+                n_out: int,
+                activation: Cell = None,
+                n_layers: int = 1,
+                ) -> Decoder:
+
+    if decoder is None or isinstance(decoder, Decoder):
         return decoder
 
     if isinstance(decoder, str):
@@ -168,6 +185,7 @@ def get_decoder(
                 n_layers=n_layers,
             )
         else:
-            raise ValueError("The Decoder corresponding to '{}' was not found.".format(decoder))
+            raise ValueError(
+                "The Decoder corresponding to '{}' was not found.".format(decoder))
     else:
         raise TypeError("Unsupported init type '{}'.".format(type(decoder)))

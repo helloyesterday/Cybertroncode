@@ -1,9 +1,10 @@
-# ============================================================================
-# Copyright 2021 The AIMM team at Shenzhen Bay Laboratory & Peking University
+# Copyright 2020-2022 The AIMM team at Shenzhen Bay Laboratory & Peking University
 #
 # People: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yaqiang Zhou, Huiyang Zhang,
 #         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
-# 
+#
+# Contact: yangyi@szbl.ac.cn
+#
 # This code is a part of Cybertron-Code package.
 #
 # The Cybertron-Code is open-source software based on the AI-framework:
@@ -21,6 +22,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+"""
+Cutoff functions
+"""
 
 import math
 import mindspore as ms
@@ -37,9 +41,10 @@ __all__ = [
     "SmoothCutoff",
     "GaussianCutoff",
     "get_cutoff",
-    ]
+]
 
 _CUTOFF_BY_KEY = dict()
+
 
 def _cutoff_register(*aliases):
     """Return the alias register."""
@@ -57,6 +62,7 @@ def _cutoff_register(*aliases):
 
     return alias_reg
 
+
 class Cutoff(nn.Cell):
     def __init__(self, cutoff: float):
 
@@ -72,6 +78,10 @@ class Cutoff(nn.Cell):
         self.cutoff = cutoff
         self.inv_cutoff = msnp.reciprocal(self.cutoff)
         return self
+
+    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
+        raise NotImplementedError
+
 
 @_cutoff_register('cosine')
 class CosineCutoff(Cutoff):
@@ -95,11 +105,11 @@ class CosineCutoff(Cutoff):
         self.reg_key = 'cosine'
         self.name = 'cosine cutoff'
 
-        self.pi = Tensor(math.pi,ms.float32)
+        self.pi = Tensor(math.pi, ms.float32)
         self.cos = P.Cos()
         self.logical_and = P.LogicalAnd()
 
-    def construct(self, distances, neighbour_mask=None):
+    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
         """Compute cutoff.
 
         Args:
@@ -110,7 +120,7 @@ class CosineCutoff(Cutoff):
 
         """
         # Compute values of cutoff function
-        
+
         cuts = 0.5 * (self.cos(distances * self.pi * self.inv_cutoff) + 1.0)
 
         mask = distances < self.cutoff
@@ -121,6 +131,7 @@ class CosineCutoff(Cutoff):
         cutoffs = cuts * mask
 
         return cutoffs, mask
+
 
 @_cutoff_register('mollifier')
 class MollifierCutoff(Cutoff):
@@ -139,11 +150,7 @@ class MollifierCutoff(Cutoff):
 
     """
 
-    def __init__(
-        self,
-        cutoff: float,
-        eps: float=1e-8,
-    ):
+    def __init__(self, cutoff: float, eps: float = 1e-8):
         super().__init__(cutoff=cutoff)
 
         self.reg_key = 'mollifier'
@@ -153,11 +160,11 @@ class MollifierCutoff(Cutoff):
         self.exp = P.Exp()
         self.logical_and = P.LogicalAnd()
 
-    def set_eps(self,eps):
+    def set_eps(self, eps):
         self.eps = eps
         return self
 
-    def construct(self, distances, neighbour_mask=None):
+    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
         """Compute cutoff.
 
         Args:
@@ -168,16 +175,18 @@ class MollifierCutoff(Cutoff):
 
         """
 
-        exponent = 1.0 - msnp.reciprocal(1.0 - F.square(distances * self.inv_cutoff))
+        exponent = 1.0 - \
+            msnp.reciprocal(1.0 - F.square(distances * self.inv_cutoff))
         cutoffs = self.exp(exponent)
-        
+
         mask = (distances + self.eps) < self.cutoff
         if neighbour_mask is not None:
-            mask = self.logical_and(mask,neighbour_mask)
+            mask = self.logical_and(mask, neighbour_mask)
 
         cutoffs = cutoffs * mask
 
         return cutoffs, mask
+
 
 @_cutoff_register('hard')
 class HardCutoff(Cutoff):
@@ -202,7 +211,7 @@ class HardCutoff(Cutoff):
 
         self.logical_and = P.LogicalAnd()
 
-    def construct(self, distances, neighbour_mask=None):
+    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
         """Compute cutoff.
 
         Args:
@@ -216,9 +225,10 @@ class HardCutoff(Cutoff):
         mask = distances < self.cutoff
 
         if neighbour_mask is not None:
-            self.logical_and(mask,neighbour_mask)
+            self.logical_and(mask, neighbour_mask)
 
-        return F.cast(mask,distances.dtype), mask
+        return F.cast(mask, distances.dtype), mask
+
 
 @_cutoff_register('smooth')
 class SmoothCutoff(Cutoff):
@@ -247,6 +257,7 @@ class SmoothCutoff(Cutoff):
         d_min (float, optional): the minimum distance
 
     """
+
     def __init__(self, cutoff: float):
         super().__init__(cutoff=cutoff)
 
@@ -255,8 +266,8 @@ class SmoothCutoff(Cutoff):
 
         self.pow = P.Pow()
         self.logical_and = P.LogicalAnd()
-        
-    def construct(self, distance, neighbour_mask=None):
+
+    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
         """Compute cutoff.
 
         Args:
@@ -266,22 +277,23 @@ class SmoothCutoff(Cutoff):
             mindspore.Tensor or float: values of cutoff function.
 
         """
-        dd = distance * self.inv_cutoff
-        cuts =  -  6. * self.pow(dd,5) \
-                + 15. * self.pow(dd,4) \
-                - 10. * self.pow(dd,3)
+        dd = distances * self.inv_cutoff
+        cuts = -  6. * self.pow(dd, 5) \
+            + 15. * self.pow(dd, 4) \
+            - 10. * self.pow(dd, 3)
 
         cutoffs = 1 + cuts
-        mask_upper = distance > 0
-        mask_lower = distance < self.cutoff
-        
+        mask_upper = distances > 0
+        mask_lower = distances < self.cutoff
+
         if neighbour_mask is not None:
-            mask_lower = self.logical_and(mask_lower,neighbour_mask)
-        
+            mask_lower = self.logical_and(mask_lower, neighbour_mask)
+
         cutoffs = msnp.where(mask_upper, cutoffs, 1)
         cutoffs = msnp.where(mask_lower, cutoffs, 0)
-        
+
         return cutoffs, mask_lower
+
 
 @_cutoff_register('gaussian')
 class GaussianCutoff(Cutoff):
@@ -298,11 +310,7 @@ class GaussianCutoff(Cutoff):
 
     """
 
-    def __init__(
-        self,
-        cutoff: float,
-        sigma: float=None,
-    ):
+    def __init__(self, cutoff: float, sigma: float = None):
         super().__init__(cutoff=cutoff)
 
         self.reg_key = 'gaussian'
@@ -316,32 +324,34 @@ class GaussianCutoff(Cutoff):
         self.exp = P.Exp()
         self.logical_and = P.LogicalAnd()
 
-    def set_sigma(self,sigma):
+    def set_sigma(self, sigma):
         self.sigma = sigma
         self.inv_sigma2 = msnp.reciprocal(self.sigma * self.sigma)
         return self
 
-    def construct(self, distance, neighbour_mask=None):
-        dd = distance - self.cutoff
+    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
+        dd = distances - self.cutoff
         dd2 = dd * dd
 
         gauss = self.exp(-0.5 * dd2 * self.inv_sigma2)
 
         cuts = 1. - gauss
-        mask = distance < self.cutoff
+        mask = distances < self.cutoff
         if neighbour_mask is not None:
-            mask = self.logical_and(mask,neighbour_mask)
-        
+            mask = self.logical_and(mask, neighbour_mask)
+
         cuts = cuts * mask
 
         return cuts, mask
 
-_CUTOFF_BY_NAME = {cut.__name__:cut for cut in _CUTOFF_BY_KEY.values()}
 
-def get_cutoff(cutoff_fn:str,cutoff_dis:float) -> Cutoff:
+_CUTOFF_BY_NAME = {cut.__name__: cut for cut in _CUTOFF_BY_KEY.values()}
+
+
+def get_cutoff(cutoff_fn: str, cutoff_dis: float) -> Cutoff:
     if cutoff_fn is None:
         return None
-    if isinstance(cutoff_fn,Cutoff):
+    if isinstance(cutoff_fn, Cutoff):
         return cutoff_fn
 
     elif isinstance(cutoff_fn, str):
@@ -351,7 +361,6 @@ def get_cutoff(cutoff_fn:str,cutoff_dis:float) -> Cutoff:
             return _CUTOFF_BY_KEY[cutoff_fn.lower()](cutoff=cutoff_dis)
         elif cutoff_fn in _CUTOFF_BY_NAME.keys():
             return _CUTOFF_BY_NAME[cutoff_fn](cutoff=cutoff_dis)
-        else:
-            raise ValueError("The Cutoff corresponding to '{}' was not found.".format(cutoff_fn))
-    else:
-        raise TypeError("Unsupported Cutoff type '{}'.".format(type(cutoff_fn)))
+        raise ValueError(
+            "The Cutoff corresponding to '{}' was not found.".format(cutoff_fn))
+    raise TypeError("Unsupported Cutoff type '{}'.".format(type(cutoff_fn)))

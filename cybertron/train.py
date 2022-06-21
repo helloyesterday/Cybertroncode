@@ -1,9 +1,10 @@
-# ============================================================================
-# Copyright 2021 The AIMM team at Shenzhen Bay Laboratory & Peking University
+# Copyright 2020-2022 The AIMM team at Shenzhen Bay Laboratory & Peking University
 #
 # People: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yaqiang Zhou, Huiyang Zhang,
 #         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
-# 
+#
+# Contact: yangyi@szbl.ac.cn
+#
 # This code is a part of Cybertron-Code package.
 #
 # The Cybertron-Code is open-source software based on the AI-framework:
@@ -21,13 +22,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+"""
+Modules for training
+"""
 
 import os
+from shutil import copyfile
+from collections import deque
 import numpy as np
 import mindspore as ms
 import mindspore.numpy as msnp
-from shutil import copyfile
-from collections import deque
 from mindspore import nn
 from mindspore import Tensor
 from mindspore.nn import Cell
@@ -35,7 +39,7 @@ from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.ops import composite as C
 from mindspore.nn import TrainOneStepCell
-from mindspore.train.callback import Callback,RunContext
+from mindspore.train.callback import Callback, RunContext
 from mindspore.train.callback._callback import InternalCallbackParam
 from mindspore.nn.metrics import Metric
 from mindspore.train._utils import _make_directory
@@ -43,16 +47,13 @@ from mindspore.nn.learning_rate_schedule import LearningRateSchedule
 from mindspore._checkparam import Validator as validator
 from mindspore import context
 
-from sponge import hyperparam
-
-from cybertron.cybertron import Cybertron
+from .cybertron import Cybertron
 
 from sponge.checkpoint import save_checkpoint
 
 _cur_dir = os.getcwd()
 
 __all__ = [
-    "EvalScaleShift",
     "WithForceLossCell",
     "WithLabelLossCell",
     "WithForceEvalCell",
@@ -60,91 +61,94 @@ __all__ = [
     "TrainMonitor",
     "MAE",
     "MSE",
-    "MAEAveragedByAtoms",
     "MLoss",
     "TransformerLR",
-    ]
+]
+
 
 class OutputScaleShift(Cell):
-    def __init__(
-        self,
-        scale=1,
-        shift=0,
-        type_ref=None,
-        atomwise_scaleshift=None,
-        axis=-2,
-    ):
+    def __init__(self,
+                 scale=1,
+                 shift=0,
+                 type_ref=None,
+                 atomwise_scaleshift=None,
+                 axis=-2,
+                 ):
+
         super().__init__()
 
-        self.scale = Tensor(scale,ms.float32)
-        self.shift = Tensor(shift,ms.float32)
+        self.scale = Tensor(scale, ms.float32)
+        self.shift = Tensor(shift, ms.float32)
 
         self.type_ref = None
         if type_ref is not None:
-            self.type_ref = Tensor(type_ref,ms.float32)
+            self.type_ref = Tensor(type_ref, ms.float32)
 
-        self.atomwise_scaleshift = Tensor(atomwise_scaleshift,ms.bool_)
+        self.atomwise_scaleshift = Tensor(atomwise_scaleshift, ms.bool_)
         self.all_atomwsie = False
         if self.atomwise_scaleshift.all():
             self.all_atomwsie = True
-        
+
         self.all_graph = False
         if not self.atomwise_scaleshift.any():
             self.all_graph = True
 
         if (not self.all_atomwsie) and (not self.all_graph):
-            self.atomwise_scaleshift = F.reshape(self.atomwise_scaleshift,(1,-1))
+            self.atomwise_scaleshift = F.reshape(
+                self.atomwise_scaleshift, (1, -1))
 
         self.axis = axis
 
         self.reduce_sum = P.ReduceSum()
         self.keep_sum = P.ReduceSum(keep_dims=True)
 
-    def construct(self, outputs:Tensor, num_atoms:Tensor, atom_types:Tensor=None):
+    def construct(self, outputs: Tensor, num_atoms: Tensor, atom_types: Tensor = None):
         ref = 0
         if self.type_ref is not None:
-            ref = F.gather(self.type_ref,atom_types,0)
-            ref = self.reduce_sum(ref,self.axis)
-        
+            ref = F.gather(self.type_ref, atom_types, 0)
+            ref = self.reduce_sum(ref, self.axis)
+
         outputs = outputs * self.scale + ref
         if self.all_atomwsie:
             return outputs + self.shift * num_atoms
-        elif self.all_graph:
+        if self.all_graph:
             return outputs + self.shift
-        else:
-            atomwise_output = outputs + self.shift * num_atoms
-            graph_output = outputs + self.shift
-            return msnp.where(self.atomwise_scaleshift,atomwise_output,graph_output)
+        
+        atomwise_output = outputs + self.shift * num_atoms
+        graph_output = outputs + self.shift
+        return msnp.where(self.atomwise_scaleshift, atomwise_output, graph_output)
+
 
 class DatasetNormalization(Cell):
-    def __init__(
-        self,
-        scale=1,
-        shift=0,
-        type_ref=None,
-        atomwise_scaleshift=None,
-        axis=-2,
-    ):
+    def __init__(self,
+                 scale=1,
+                 shift=0,
+                 type_ref=None,
+                 atomwise_scaleshift=None,
+                 axis=-2,
+                 ):
+
         super().__init__()
 
-        self.scale = Tensor(scale,ms.float32)
-        self.shift = Tensor(shift,ms.float32)
+        self.scale = Tensor(scale, ms.float32)
+        self.shift = Tensor(shift, ms.float32)
 
         self.type_ref = None
         if type_ref is not None:
-            self.type_ref = Tensor(type_ref,ms.float32)
+            self.type_ref = Tensor(type_ref, ms.float32)
 
-        self.atomwise_scaleshift = Tensor(atomwise_scaleshift,ms.bool_)
+        self.atomwise_scaleshift = Tensor(atomwise_scaleshift, ms.bool_)
         self.all_atomwsie = False
         if self.atomwise_scaleshift.all():
             self.all_atomwsie = True
-        
+
         self.all_graph = False
         if not self.atomwise_scaleshift.any():
             self.all_graph = True
 
         if (not self.all_atomwsie) and (not self.all_graph):
-            self.atomwise_scaleshift = F.reshape(self.atomwise_scaleshift,(1,-1))
+            self.atomwise_scaleshift = F.reshape(
+                self.atomwise_scaleshift, (1, -1))
 
         self.axis = axis
 
@@ -154,30 +158,32 @@ class DatasetNormalization(Cell):
     def construct(self, label, num_atoms, atom_types=None):
         ref = 0
         if self.type_ref is not None:
-            ref = F.gather(self.type_ref,atom_types,0)
-            ref = self.reduce_sum(ref,self.axis)
+            ref = F.gather(self.type_ref, atom_types, 0)
+            ref = self.reduce_sum(ref, self.axis)
 
         label -= ref
         if self.all_atomwsie:
             return (label - self.shift * num_atoms) / self.scale
-        elif self.all_graph:
+        if self.all_graph:
             return (label - self.shift) / self.scale
-        else:
-            atomwise_norm = (label - self.shift * num_atoms) / self.scale
-            graph_norm = (label - self.shift) / self.scale
-            return msnp.where(self.atomwise_scaleshift,atomwise_norm,graph_norm)
+
+        atomwise_norm = (label - self.shift * num_atoms) / self.scale
+        graph_norm = (label - self.shift) / self.scale
+        return msnp.where(self.atomwise_scaleshift, atomwise_norm, graph_norm)
+
 
 class LossWithEnergyAndForces(nn.loss.loss.LossBase):
     def __init__(self,
-        ratio_energy=1,
-        ratio_forces=100,
-        force_dis=1,
-        ratio_normlize=True,
-        reduction='mean',
-    ):
+                 ratio_energy=1,
+                 ratio_forces=100,
+                 force_dis=1,
+                 ratio_normlize=True,
+                 reduction='mean',
+                 ):
+
         super().__init__(reduction)
 
-        self.force_dis = Tensor(force_dis,ms.float32)
+        self.force_dis = Tensor(force_dis, ms.float32)
         self.ratio_normlize = ratio_normlize
 
         self.ratio_energy = ratio_energy
@@ -190,10 +196,10 @@ class LossWithEnergyAndForces(nn.loss.loss.LossBase):
         self.reduce_mean = P.ReduceMean()
         self.reduce_sum = P.ReduceSum()
 
-    def _calc_loss(self,diff):
+    def _calc_loss(self, diff):
         return diff
 
-    def construct(self, pred_energy, label_energy, pred_forces=None, label_forces=None,  num_atoms=1, atom_mask=None):
+    def construct(self, pred_energy, label_energy, pred_forces=None, label_forces=None, num_atoms=1, atom_mask=None):
 
         if pred_forces is None:
             loss = self._calc_loss(pred_energy - label_energy)
@@ -210,30 +216,32 @@ class LossWithEnergyAndForces(nn.loss.loss.LossBase):
             fdiff = (pred_forces - label_forces) * self.force_dis
             fdiff = self._calc_loss(fdiff)
             # (B,A)
-            fdiff = self.reduce_sum(fdiff,-1)
+            fdiff = self.reduce_sum(fdiff, -1)
 
             if atom_mask is None:
-                floss = self.reduce_mean(fdiff,-1)
+                floss = self.reduce_mean(fdiff, -1)
             else:
                 fdiff = fdiff * atom_mask
-                floss = self.reduce_sum(fdiff,-1)
+                floss = self.reduce_sum(fdiff, -1)
                 floss = floss / num_atoms
 
         y = (eloss * self.ratio_energy + floss * self.ratio_forces) / self.norm
 
-        natoms = F.cast(num_atoms,pred_energy.dtype)
+        natoms = F.cast(num_atoms, pred_energy.dtype)
         weights = natoms / self.reduce_mean(natoms)
 
-        return self.get_loss(y,weights)
+        return self.get_loss(y, weights)
+
 
 class MAELoss(LossWithEnergyAndForces):
     def __init__(self,
-        ratio_energy=1,
-        ratio_forces=0,
-        force_dis=1,
-        ratio_normlize=True,
-        reduction='mean',
-    ):
+                 ratio_energy=1,
+                 ratio_forces=0,
+                 force_dis=1,
+                 ratio_normlize=True,
+                 reduction='mean',
+                 ):
+
         super().__init__(
             ratio_energy=ratio_energy,
             ratio_forces=ratio_forces,
@@ -241,19 +249,22 @@ class MAELoss(LossWithEnergyAndForces):
             ratio_normlize=ratio_normlize,
             reduction=reduction,
         )
+
         self.abs = P.Abs()
-    
+
     def _calc_loss(self, diff):
         return self.abs(diff)
 
+
 class MSELoss(LossWithEnergyAndForces):
     def __init__(self,
-        ratio_energy=1,
-        ratio_forces=0,
-        force_dis=1,
-        ratio_normlize=True,
-        reduction='mean',
-    ):
+                 ratio_energy=1,
+                 ratio_forces=0,
+                 force_dis=1,
+                 ratio_normlize=True,
+                 reduction='mean',
+                 ):
+
         super().__init__(
             ratio_energy=ratio_energy,
             ratio_forces=ratio_forces,
@@ -261,15 +272,17 @@ class MSELoss(LossWithEnergyAndForces):
             ratio_normlize=ratio_normlize,
             reduction=reduction,
         )
+
         self.square = P.Square()
-    
+
     def _calc_loss(self, diff):
         return self.square(diff)
+
 
 class CrossEntropyLoss(nn.loss.loss.LossBase):
     def __init__(self, reduction='mean', use_sigmoid=False):
         super().__init__(reduction)
-        
+
         self.sigmoid = None
         if use_sigmoid:
             self.sigmoid = P.Sigmoid()
@@ -281,25 +294,29 @@ class CrossEntropyLoss(nn.loss.loss.LossBase):
             pos_pred = self.sigmoid(pos_pred)
             neg_pred = self.sigmoid(neg_pred)
 
-        pos_loss = self.cross_entropy(pos_pred,F.ones_like(pos_pred))
-        neg_loss = self.cross_entropy(neg_pred,F.zeros_like(neg_pred))
+        pos_loss = self.cross_entropy(pos_pred, F.ones_like(pos_pred))
+        neg_loss = self.cross_entropy(neg_pred, F.zeros_like(neg_pred))
 
-        return  pos_loss + neg_loss
+        return pos_loss + neg_loss
+
 
 class WithCell(Cell):
     def __init__(self,
-        datatypes: str,
-        network: Cybertron,
-        loss_fn: Cell,
-        fulltypes: str='RZCDNnBbE',
-        cell_name: str='',
-    ):
+                 datatypes: str,
+                 network: Cybertron,
+                 loss_fn: Cell,
+                 fulltypes: str = 'RZCDNnBbE',
+                 cell_name: str = '',
+                 ):
+
         super().__init__(auto_prefix=False)
+
+        #pylint: disable=invalid-name
 
         self.fulltypes = fulltypes
         self.datatypes = datatypes
 
-        if not isinstance(self.datatypes,str):
+        if not isinstance(self.datatypes, str):
             raise TypeError('Type of "datatypes" must be str')
 
         for datatype in self.datatypes:
@@ -309,17 +326,18 @@ class WithCell(Cell):
         for datatype in self.fulltypes:
             num = self.datatypes.count(datatype)
             if num > 1:
-                raise ValueError('There are '+str(num)+' "' + datatype + '" in datatype "' + self.datatypes + '".')
+                raise ValueError('There are '+str(num)+' "' + datatype +
+                                 '" in datatype "' + self.datatypes + '".')
 
-        self.R = self.datatypes.find('R') # positions
-        self.Z = self.datatypes.find('Z') # atom_types
-        self.C = self.datatypes.find('C') # pbcbox
-        self.D = self.datatypes.find('D') # distances
-        self.N = self.datatypes.find('N') # neighbours
-        self.n = self.datatypes.find('n') # neighbour_mask
-        self.B = self.datatypes.find('B') # bonds
-        self.b = self.datatypes.find('b') # bond_mask
-        self.E = self.datatypes.find('E') # energy
+        self.R = self.datatypes.find('R')  # positions
+        self.Z = self.datatypes.find('Z')  # atom_types
+        self.C = self.datatypes.find('C')  # pbcbox
+        self.D = self.datatypes.find('D')  # distances
+        self.N = self.datatypes.find('N')  # neighbours
+        self.n = self.datatypes.find('n')  # neighbour_mask
+        self.B = self.datatypes.find('B')  # bonds
+        self.b = self.datatypes.find('b')  # bond_mask
+        self.E = self.datatypes.find('E')  # energy
 
         if self.E < 0:
             raise TypeError('The datatype "E" must be included!')
@@ -332,22 +350,24 @@ class WithCell(Cell):
             self.hyper_param = self._network.hyper_param
 
         self.atom_types = None
-        if (context.get_context("mode") == context.PYNATIVE_MODE and 
-            'atom_types' in self._network.__dict__['_tensor_list'].keys()) or \
-            (context.get_context("mode") == context.GRAPH_MODE and
-            'atom_types' in self._network.__dict__.keys()):
+        if (context.get_context("mode") == context.PYNATIVE_MODE and
+                'atom_types' in self._network.__dict__['_tensor_list'].keys()) or \
+                (context.get_context("mode") == context.GRAPH_MODE and
+                 'atom_types' in self._network.__dict__.keys()):
             self.atom_types = self._network.atom_types
 
         print(self.cls_name + ' with input type: ' + self.datatypes)
 
         self.keep_sum = P.ReduceSum(keep_dims=True)
 
+
 class WithForceLossCell(WithCell):
     def __init__(self,
-        datatypes: str,
-        network: Cybertron,
-        loss_fn: Cell,
-    ):
+                 datatypes: str,
+                 network: Cybertron,
+                 loss_fn: Cell,
+                 ):
+
         super().__init__(
             datatypes=datatypes,
             network=network,
@@ -355,9 +375,12 @@ class WithForceLossCell(WithCell):
             fulltypes='RZCDNnBbFE'
         )
 
-        self.F = self.datatypes.find('F') # force
+        #pylint: disable=invalid-name
+
+        self.F = self.datatypes.find('F')  # force
         if self.F < 0:
-            raise TypeError('The datatype "F" must be included in WithForceLossCell!')
+            raise TypeError(
+                'The datatype "F" must be included in WithForceLossCell!')
 
         self.grad_op = C.GradOperation()
 
@@ -400,26 +423,27 @@ class WithForceLossCell(WithCell):
         if atom_types is None:
             atom_types = self.atom_types
 
-        num_atoms = F.cast(atom_types>0,out.dtype)
-        num_atoms = self.keep_sum(num_atoms,-1)
+        num_atoms = F.cast(atom_types > 0, out.dtype)
+        num_atoms = self.keep_sum(num_atoms, -1)
 
         if atom_types is None:
-            return self._loss_fn(out,energy,fout,forces)
-        else:
-            atom_mask = atom_types > 0
-            return self._loss_fn(out,energy,fout,forces,num_atoms,atom_mask)
+            return self._loss_fn(out, energy, fout, forces)
+        atom_mask = atom_types > 0
+        return self._loss_fn(out, energy, fout, forces, num_atoms, atom_mask)
 
     @property
     def backbone_network(self):
         return self._network
 
+
 class WithLabelLossCell(WithCell):
     def __init__(self,
-        datatypes: str,
-        network: Cybertron,
-        loss_fn: Cell,
-        # with_penalty=False,
-    ):
+                 datatypes: str,
+                 network: Cybertron,
+                 loss_fn: Cell,
+                 # with_penalty=False,
+                 ):
+
         super().__init__(
             datatypes=datatypes,
             network=network,
@@ -457,39 +481,40 @@ class WithLabelLossCell(WithCell):
         if atom_types is None:
             atom_types = self.atom_types
 
-        num_atoms = F.cast(atom_types>0,out.dtype)
-        num_atoms = self.keep_sum(num_atoms,-1)
+        num_atoms = F.cast(atom_types > 0, out.dtype)
+        num_atoms = self.keep_sum(num_atoms, -1)
 
-        return self._loss_fn(out,label)
+        return self._loss_fn(out, label)
 
 
 class WithEvalCell(WithCell):
     def __init__(self,
-        datatypes: str,
-        network: Cybertron,
-        loss_fn: Cell=None,
-        scale: float=None,
-        shift: float=None,
-        type_ref: Tensor=None,
-        atomwise_scaleshift: Tensor=None,
-        eval_data_is_normed=True,
-        add_cast_fp32=False,
-        fulltypes='RZCDNnBbE'
-    ):
+                 datatypes: str,
+                 network: Cybertron,
+                 loss_fn: Cell = None,
+                 scale: float = None,
+                 shift: float = None,
+                 type_ref: Tensor = None,
+                 atomwise_scaleshift: Tensor = None,
+                 eval_data_is_normed=True,
+                 add_cast_fp32=False,
+                 fulltypes='RZCDNnBbE'
+                 ):
+
         super().__init__(
             datatypes=datatypes,
             network=network,
             loss_fn=loss_fn,
             fulltypes=fulltypes
         )
-        
+
         self.scale = scale
         self.shift = shift
 
         if atomwise_scaleshift is None:
             atomwise_scaleshift = self._network.atomwise_scaleshift
         else:
-            atomwise_scaleshift = Tensor(atomwise_scaleshift,ms.bool_)
+            atomwise_scaleshift = Tensor(atomwise_scaleshift, ms.bool_)
         self.atomwise_scaleshift = atomwise_scaleshift
 
         self.scaleshift = None
@@ -504,7 +529,7 @@ class WithEvalCell(WithCell):
                 shift = 0
 
             if type_ref is not None:
-                self.type_ref = Tensor(type_ref,ms.float32)
+                self.type_ref = Tensor(type_ref, ms.float32)
 
             self.scaleshift = OutputScaleShift(
                 scale=scale,
@@ -529,26 +554,29 @@ class WithEvalCell(WithCell):
             scale = self.scale.asnumpy().reshape(-1)
             shift = self.shift.asnumpy().reshape(-1)
             atomwise_scaleshift = self.scaleshift.atomwise_scaleshift.asnumpy().reshape(-1)
-            print('   with scaleshift for training '+
-                ('and evaluate ' if eval_data_is_normed else ' ')+'dataset:')
+            print('   with scaleshift for training ' +
+                  ('and evaluate ' if eval_data_is_normed else ' ')+'dataset:')
             if atomwise_scaleshift.size == 1:
                 print('   Scale: '+str(scale))
                 print('   Shift: '+str(shift))
-                print('   Scaleshift mode: '+('atomwise' if atomwise_scaleshift else 'graph'))
+                print('   Scaleshift mode: ' +
+                      ('atomwise' if atomwise_scaleshift else 'graph'))
             else:
-                print('   {:>6s}. {:>16s}{:>16s}{:>12s}'.format('Output','Scale','Shift','Mode'))
-                for i,m in enumerate(atomwise_scaleshift):
-                    _scale = scale if scale.size == 1 else scale[i]
-                    _shift = scale if shift.size == 1 else shift[i]
+                print('   {:>6s}. {:>16s}{:>16s}{:>12s}'.format(
+                    'Output', 'Scale', 'Shift', 'Mode'))
+                for i, m in enumerate(atomwise_scaleshift):
+                    scale_ = scale if scale.size == 1 else scale[i]
+                    shift_ = scale if shift.size == 1 else shift[i]
                     mode = 'Atomwise' if m else 'graph'
-                    print('   {:<6s}{:>16.6e}{:>16.6e}{:>12s}'.format(str(i)+': ',_scale,_shift,mode))
+                    print('   {:<6s}{:>16.6e}{:>16.6e}{:>12s}'.format(
+                        str(i)+': ', scale_, shift_, mode))
             if type_ref is not None:
                 print('   with reference value for atom types:')
                 info = '   Type '
                 for i in range(self.type_ref.shape[-1]):
                     info += '{:>10s}'.format('Label'+str(i))
                 print(info)
-                for i,ref in enumerate(self.type_ref):
+                for i, ref in enumerate(self.type_ref):
                     info = '   {:<7s} '.format(str(i)+':')
                     for r in ref:
                         info += '{:>10.2e}'.format(r.asnumpy())
@@ -557,18 +585,20 @@ class WithEvalCell(WithCell):
         self.add_cast_fp32 = add_cast_fp32
         self.reducesum = P.ReduceSum(keep_dims=True)
 
+
 class WithLabelEvalCell(WithEvalCell):
     def __init__(self,
-        datatypes: str,
-        network: Cybertron,
-        loss_fn: Cell=None,
-        scale: float=None,
-        shift: float=None,
-        type_ref: Tensor=None,
-        atomwise_scaleshift: Tensor=None,
-        eval_data_is_normed=True,
-        add_cast_fp32=False,
-    ):
+                 datatypes: str,
+                 network: Cybertron,
+                 loss_fn: Cell = None,
+                 scale: float = None,
+                 shift: float = None,
+                 type_ref: Tensor = None,
+                 atomwise_scaleshift: Tensor = None,
+                 eval_data_is_normed=True,
+                 add_cast_fp32=False,
+                 ):
+
         super().__init__(
             datatypes=datatypes,
             network=network,
@@ -613,8 +643,8 @@ class WithLabelEvalCell(WithEvalCell):
         if atom_types is None:
             atom_types = self.atom_types
 
-        num_atoms = F.cast(atom_types>0,ms.int32)
-        num_atoms = msnp.sum(atom_types>0,-1,keepdims=True)
+        num_atoms = F.cast(atom_types > 0, ms.int32)
+        num_atoms = msnp.sum(atom_types > 0, -1, keepdims=True)
 
         loss = 0
         if self._loss_fn is not None:
@@ -634,16 +664,17 @@ class WithLabelEvalCell(WithEvalCell):
 
 class WithForceEvalCell(WithEvalCell):
     def __init__(self,
-        datatypes,
-        network: Cybertron,
-        loss_fn: Cell=None,
-        scale: float=None,
-        shift: float=None,
-        type_ref: Tensor=None,
-        atomwise_scaleshift: Tensor=None,
-        eval_data_is_normed: bool=True,
-        add_cast_fp32: bool=False,
-    ):
+                 datatypes,
+                 network: Cybertron,
+                 loss_fn: Cell = None,
+                 scale: float = None,
+                 shift: float = None,
+                 type_ref: Tensor = None,
+                 atomwise_scaleshift: Tensor = None,
+                 eval_data_is_normed: bool = True,
+                 add_cast_fp32: bool = False,
+                 ):
+
         super().__init__(
             datatypes=datatypes,
             network=network,
@@ -657,10 +688,11 @@ class WithForceEvalCell(WithEvalCell):
             fulltypes='RZCDNnBbFE',
         )
 
-        self.F = self.datatypes.find('F') # force
+        self.F = self.datatypes.find('F')  # force
 
         if self.F < 0:
-            raise TypeError('The datatype "F" must be included in WithForceEvalCell!')
+            raise TypeError(
+                'The datatype "F" must be included in WithForceEvalCell!')
 
         self.grad_op = C.GradOperation()
 
@@ -709,33 +741,40 @@ class WithForceEvalCell(WithEvalCell):
         if atom_types is None:
             atom_types = self.atom_types
 
-        num_atoms = F.cast(atom_types>0,ms.int32)
-        num_atoms = msnp.sum(atom_types>0,-1,keepdims=True)
+        num_atoms = F.cast(atom_types > 0, ms.int32)
+        num_atoms = msnp.sum(atom_types > 0, -1, keepdims=True)
 
         loss = 0
         if self._loss_fn is not None:
             atom_mask = atom_types > 0
             if self.normalize_eval:
-                normed_label_energy = self.normalization(label_energy, num_atoms, atom_types)
+                normed_label_energy = self.normalization(
+                    label_energy, num_atoms, atom_types)
                 normed_label_forces = label_forces / self.scale
-                loss = self._loss_fn(output_energy, normed_label_energy, output_forces, normed_label_forces, num_atoms, atom_mask)
+                loss = self._loss_fn(output_energy, normed_label_energy,
+                                     output_forces, normed_label_forces, num_atoms, atom_mask)
             else:
-                loss = self._loss_fn(output_energy, label_energy, output_forces, label_forces, num_atoms, atom_mask)
+                loss = self._loss_fn(
+                    output_energy, label_energy, output_forces, label_forces, num_atoms, atom_mask)
 
         if self.scaleshift is not None:
-            output_energy = self.scaleshift(output_energy,num_atoms,atom_types)
+            output_energy = self.scaleshift(
+                output_energy, num_atoms, atom_types)
             output_forces = output_forces * self.scale
             if self.scaleshift_eval:
-                label_energy = self.scaleshift(label_energy, num_atoms, atom_types)
+                label_energy = self.scaleshift(
+                    label_energy, num_atoms, atom_types)
                 label_forces = label_forces * self.scale
-        
+
         return loss, output_energy, label_energy, output_forces, label_forces, num_atoms
+
 
 class WithAdversarialLossCell(Cell):
     def __init__(self,
-        network: Cell,
-        loss_fn: Cell,
-    ):
+                 network: Cell,
+                 loss_fn: Cell,
+                 ):
+
         super().__init__(auto_prefix=False)
         self._network = network
         self._loss_fn = loss_fn
@@ -749,8 +788,19 @@ class WithAdversarialLossCell(Cell):
     def backbone_network(self):
         return self._network
 
+
 class TrainMonitor(Callback):
-    def __init__(self, model, name, directory=None, per_epoch=1, per_step=0, avg_steps=0, eval_dataset=None, best_ckpt_metrics=None):
+    def __init__(self,
+                 model,
+                 name,
+                 directory=None,
+                 per_epoch=1,
+                 per_step=0,
+                 avg_steps=0,
+                 eval_dataset=None,
+                 best_ckpt_metrics=None
+                 ):
+
         super().__init__()
         if not isinstance(per_epoch, int) or per_epoch < 0:
             raise ValueError("per_epoch must be int and >= 0.")
@@ -764,11 +814,12 @@ class TrainMonitor(Callback):
             self.train_num = deque(maxlen=avg_steps)
             self.loss_record = deque(maxlen=avg_steps)
 
-        if per_epoch * per_step !=0:
+        if per_epoch * per_step != 0:
             if per_epoch == 1:
                 per_epoch = 0
             else:
-                raise ValueError("per_epoch and per_step cannot larger than 0 at same time.")
+                raise ValueError(
+                    "per_epoch and per_step cannot larger than 0 at same time.")
         self.model = model
         self._per_epoch = per_epoch
         self._per_step = per_step
@@ -807,34 +858,34 @@ class TrainMonitor(Callback):
         Args:
             run_context (RunContext): Include some information of the model.
         """
-        cb_params:InternalCallbackParam = run_context.original_args()
-        train_network:TrainOneStepCell = cb_params.train_network
+        cb_params: InternalCallbackParam = run_context.original_args()
+        train_network: TrainOneStepCell = cb_params.train_network
         cells = train_network._cells
         if 'network' in cells.keys() and 'hyper_param' in cells['network'].__dict__.keys():
             self.hyper_param = cells['network'].hyper_param
 
-    def _write_ckpt_file(self,filename:str,info:str,network:TrainOneStepCell):
+    def _write_ckpt_file(self, filename: str, info: str, network: TrainOneStepCell):
         ckptfile = os.path.join(self._directory, filename + '.ckpt')
         ckptbck = os.path.join(self._directory, filename + '.bck.ckpt')
         ckptdata = os.path.join(self._directory, self._ckptdata)
 
         if os.path.exists(ckptfile):
-            os.rename(ckptfile,ckptbck)
-        
-        save_checkpoint(network,ckptfile,append_dict=self.hyper_param)
+            os.rename(ckptfile, ckptbck)
+
+        save_checkpoint(network, ckptfile, append_dict=self.hyper_param)
         with open(ckptdata, "a") as f:
             f.write(info + os.linesep)
 
-    def _output_data(self,cb_params):
+    def _output_data(self, cb_params):
         cur_epoch = cb_params.cur_epoch_num
 
         opt = cb_params.optimizer
         if opt is None:
             opt = cb_params.train_network.optimizer
-        
+
         if opt.dynamic_lr:
             step = opt.global_step
-            if not isinstance(step,int):
+            if not isinstance(step, int):
                 step = step.asnumpy()[0]
         else:
             step = cb_params.cur_step_num
@@ -843,14 +894,14 @@ class TrainMonitor(Callback):
             mov_avg = sum(self.loss_record) / sum(self.train_num)
         else:
             mov_avg = self.loss_record / self.train_num
-        
+
         title = "#! FIELDS step"
         info = 'Epoch: ' + str(cur_epoch) + ', Step: ' + str(step)
         outdata = '{:>10d}'.format(step)
 
         lr = opt.learning_rate
         if opt.dynamic_lr:
-            step = F.cast(step,ms.int32)
+            step = F.cast(step, ms.int32)
             if opt.is_group_lr:
                 lr = ()
                 for learning_rate in opt.learning_rate:
@@ -865,20 +916,22 @@ class TrainMonitor(Callback):
         outdata += '{:>15e}'.format(lr)
 
         title += " last_loss avg_loss"
-        info += ', Last_Loss: ' + str(self.last_loss) + ', Avg_loss: ' + str(mov_avg)
+        info += ', Last_Loss: ' + \
+            str(self.last_loss) + ', Avg_loss: ' + str(mov_avg)
         outdata += '{:>15e}'.format(self.last_loss) + '{:>15e}'.format(mov_avg)
 
         _make_directory(self._directory)
 
         if self.eval_dataset is not None:
-            eval_metrics = self.model.eval(self.eval_dataset, dataset_sink_mode=False)
-            for k,v in eval_metrics.items():
+            eval_metrics = self.model.eval(
+                self.eval_dataset, dataset_sink_mode=False)
+            for k, v in eval_metrics.items():
                 info += ', '
                 info += k
                 info += ': '
                 info += str(v)
 
-                if isinstance(v,np.ndarray) and v.size > 1:
+                if isinstance(v, np.ndarray) and v.size > 1:
                     for i in range(v.size):
                         title += (' ' + k + str(i))
                         outdata += '{:>15e}'.format(v[i])
@@ -892,19 +945,24 @@ class TrainMonitor(Callback):
                     output_ckpt = vnow < self.best_value
                     num_best = np.count_nonzero(output_ckpt)
                     if num_best > 0:
-                        self._write_ckpt_file(self._ckptfile,info,cb_params.train_network)
-                        source_ckpt = os.path.join(self._directory, self._ckptfile + '.ckpt')
+                        self._write_ckpt_file(
+                            self._ckptfile, info, cb_params.train_network)
+                        source_ckpt = os.path.join(
+                            self._directory, self._ckptfile + '.ckpt')
                         for i in range(len(vnow)):
                             if output_ckpt[i]:
-                                dest_ckpt = os.path.join(self._directory, self._ckptfile + '-' + str(i) + '.ckpt')
-                                bck_ckpt = os.path.join(self._directory, self._ckptfile + '-' + str(i) + '.ckpt.bck')
+                                dest_ckpt = os.path.join(
+                                    self._directory, self._ckptfile + '-' + str(i) + '.ckpt')
+                                bck_ckpt = os.path.join(
+                                    self._directory, self._ckptfile + '-' + str(i) + '.ckpt.bck')
                                 if os.path.exists(dest_ckpt):
-                                    os.rename(dest_ckpt,bck_ckpt)
-                                copyfile(source_ckpt,dest_ckpt)
-                        self.best_value = np.minimum(vnow,self.best_value)
+                                    os.rename(dest_ckpt, bck_ckpt)
+                                copyfile(source_ckpt, dest_ckpt)
+                        self.best_value = np.minimum(vnow, self.best_value)
                 else:
                     if vnow < self.best_value:
-                        self._write_ckpt_file(self._ckptfile,info,cb_params.train_network)
+                        self._write_ckpt_file(
+                            self._ckptfile, info, cb_params.train_network)
                         self.best_value = vnow
 
         print(info, flush=True)
@@ -916,10 +974,10 @@ class TrainMonitor(Callback):
         with open(filename, "a") as f:
             f.write(outdata + os.linesep)
 
-    def step_end(self, run_context:RunContext):
-        cb_params:InternalCallbackParam = run_context.original_args()
+    def step_end(self, run_context: RunContext):
+        cb_params: InternalCallbackParam = run_context.original_args()
         loss = cb_params.net_outputs
-        
+
         if isinstance(loss, (tuple, list)):
             if isinstance(loss[0], Tensor) and isinstance(loss[0].asnumpy(), np.ndarray):
                 loss = loss[0]
@@ -948,8 +1006,9 @@ class TrainMonitor(Callback):
         if self._per_epoch > 0 and cur_epoch % self._per_epoch == 0:
             self._output_data(cb_params)
 
+
 class MaxError(Metric):
-    def __init__(self,indexes=[1,2],reduce_all_dims=True):
+    def __init__(self, indexes=(1, 2), reduce_all_dims=True):
         super().__init__()
         self.clear()
         self._indexes = indexes
@@ -972,13 +1031,15 @@ class MaxError(Metric):
     def eval(self):
         return self._max_error
 
+
 class Error(Metric):
     def __init__(self,
-        indexes=[1,2],
-        reduce_all_dims=True,
-        averaged_by_atoms=False,
-        atom_aggregate='mean',
-    ):
+                 indexes=(1, 2),
+                 reduce_all_dims=True,
+                 averaged_by_atoms=False,
+                 atom_aggregate='mean',
+                 ):
+
         super().__init__()
         self.clear()
         self._indexes = indexes
@@ -988,8 +1049,9 @@ class Error(Metric):
 
         self.reduce_all_dims = reduce_all_dims
 
-        if atom_aggregate.lower() not in ('mean','sum'):
-            raise ValueError('aggregate_by_atoms method must be "mean" or "sum"')
+        if atom_aggregate.lower() not in ('mean', 'sum'):
+            raise ValueError(
+                'aggregate_by_atoms method must be "mean" or "sum"')
         self.atom_aggregate = atom_aggregate.lower()
 
         if reduce_all_dims:
@@ -998,7 +1060,8 @@ class Error(Metric):
             self.axis = 0
 
         if averaged_by_atoms and not self.read_num_atoms:
-            raise ValueError('When to use averaged_by_atoms, the index of atom number must be set at "indexes".')
+            raise ValueError(
+                'When to use averaged_by_atoms, the index of atom number must be set at "indexes".')
 
         self.averaged_by_atoms = averaged_by_atoms
 
@@ -1009,20 +1072,20 @@ class Error(Metric):
         self._error_sum = 0
         self._samples_num = 0
 
-    def _calc_error(self,y,y_pred):
+    def _calc_error(self, y, y_pred):
         return y.reshape(y_pred.shape) - y_pred
 
     def update(self, *inputs):
         y_pred = self._convert_data(inputs[self._indexes[0]])
         y = self._convert_data(inputs[self._indexes[1]])
 
-        error = self._calc_error(y,y_pred)
+        error = self._calc_error(y, y_pred)
         if len(error.shape) > 2:
-            axis = tuple(range(2,len(error.shape)))
+            axis = tuple(range(2, len(error.shape)))
             if self.atom_aggregate == 'mean':
-                error = np.mean(error,axis=axis)
+                error = np.mean(error, axis=axis)
             else:
-                error = np.sum(error,axis=axis)
+                error = np.sum(error, axis=axis)
 
         tot = y.shape[0]
         if self.read_num_atoms:
@@ -1036,7 +1099,7 @@ class Error(Metric):
         elif self.reduce_all_dims:
             tot = error.size
 
-        self._error_sum += np.sum(error,axis=self.axis)
+        self._error_sum += np.sum(error, axis=self.axis)
         self._samples_num += tot
 
     def eval(self):
@@ -1045,13 +1108,16 @@ class Error(Metric):
         return self._error_sum / self._samples_num
 
 # mean absolute error
+
+
 class MAE(Error):
     def __init__(self,
-        indexes=[1,2],
-        reduce_all_dims=True,
-        averaged_by_atoms=False,
-        atom_aggregate='mean',
-    ):
+                 indexes=(1, 2),
+                 reduce_all_dims=True,
+                 averaged_by_atoms=False,
+                 atom_aggregate='mean',
+                 ):
+
         super().__init__(
             indexes=indexes,
             reduce_all_dims=reduce_all_dims,
@@ -1059,17 +1125,20 @@ class MAE(Error):
             atom_aggregate=atom_aggregate,
         )
 
-    def _calc_error(self,y,y_pred):
+    def _calc_error(self, y, y_pred):
         return np.abs(y.reshape(y_pred.shape) - y_pred)
 
 # mean square error
+
+
 class MSE(Error):
     def __init__(self,
-        indexes=[1,2],
-        reduce_all_dims=True,
-        averaged_by_atoms=False,
-        atom_aggregate='mean',
-    ):
+                 indexes=(1, 2),
+                 reduce_all_dims=True,
+                 averaged_by_atoms=False,
+                 atom_aggregate='mean',
+                 ):
+
         super().__init__(
             indexes=indexes,
             reduce_all_dims=reduce_all_dims,
@@ -1077,17 +1146,20 @@ class MSE(Error):
             atom_aggregate=atom_aggregate,
         )
 
-    def _calc_error(self,y,y_pred):
+    def _calc_error(self, y, y_pred):
         return np.square(y.reshape(y_pred.shape) - y_pred)
 
 # mean norm error
+
+
 class MNE(Error):
     def __init__(self,
-        indexes=[1,2],
-        reduce_all_dims=True,
-        averaged_by_atoms=False,
-        atom_aggregate='mean',
-    ):
+                 indexes=(1, 2),
+                 reduce_all_dims=True,
+                 averaged_by_atoms=False,
+                 atom_aggregate='mean',
+                 ):
+
         super().__init__(
             indexes=indexes,
             reduce_all_dims=reduce_all_dims,
@@ -1095,18 +1167,21 @@ class MNE(Error):
             atom_aggregate=atom_aggregate,
         )
 
-    def _calc_error(self,y,y_pred):
+    def _calc_error(self, y, y_pred):
         diff = y.reshape(y_pred.shape) - y_pred
-        return np.linalg.norm(diff,axis=-1)
+        return np.linalg.norm(diff, axis=-1)
 
 # root mean square error
+
+
 class RMSE(Error):
     def __init__(self,
-        indexes=[1,2],
-        reduce_all_dims=True,
-        averaged_by_atoms=False,
-        atom_aggregate='mean',
-    ):
+                 indexes=(1, 2),
+                 reduce_all_dims=True,
+                 averaged_by_atoms=False,
+                 atom_aggregate='mean',
+                 ):
+
         super().__init__(
             indexes=indexes,
             reduce_all_dims=reduce_all_dims,
@@ -1114,7 +1189,7 @@ class RMSE(Error):
             atom_aggregate=atom_aggregate,
         )
 
-    def _calc_error(self,y,y_pred):
+    def _calc_error(self, y, y_pred):
         return np.square(y.reshape(y_pred.shape) - y_pred)
 
     def eval(self):
@@ -1122,8 +1197,9 @@ class RMSE(Error):
             raise RuntimeError('Total samples num must not be 0.')
         return np.sqrt(self._error_sum / self._samples_num)
 
+
 class MLoss(Metric):
-    def __init__(self,index=0):
+    def __init__(self, index=0):
         super().__init__()
         self.clear()
         self._index = index
@@ -1140,7 +1216,8 @@ class MLoss(Metric):
             loss = loss.reshape(1)
 
         if loss.ndim != 1:
-            raise ValueError("Dimensions of loss must be 1, but got {}".format(loss.ndim))
+            raise ValueError(
+                "Dimensions of loss must be 1, but got {}".format(loss.ndim))
 
         loss = loss.mean(-1)
         self._sum_loss += loss
@@ -1151,29 +1228,32 @@ class MLoss(Metric):
             raise RuntimeError('Total number can not be 0.')
         return self._sum_loss / self._total_num
 
+
 class TransformerLR(LearningRateSchedule):
     def __init__(self, learning_rate=1.0, warmup_steps=4000, dimension=1):
         super().__init__()
         if not isinstance(learning_rate, float):
             raise TypeError("learning_rate must be float.")
-        validator.check_non_negative_float(learning_rate, "learning_rate", self.cls_name)
-        validator.check_positive_int(warmup_steps, 'warmup_steps', self.cls_name)
+        validator.check_non_negative_float(
+            learning_rate, "learning_rate", self.cls_name)
+        validator.check_positive_int(
+            warmup_steps, 'warmup_steps', self.cls_name)
 
         self.learning_rate = learning_rate
 
         self.pow = P.Pow()
-        self.warmup_steps = F.cast(warmup_steps,ms.float32)
+        self.warmup_steps = F.cast(warmup_steps, ms.float32)
         # self.warmup_scale = self.pow(F.cast(warmup_steps,ms.float32),-1.5)
-        self.dimension = F.cast(dimension,ms.float32)
+        self.dimension = F.cast(dimension, ms.float32)
         # self.dim_scale = self.pow(F.cast(dimension,ms.float32),-0.5)
 
         self.min = P.Minimum()
 
     def construct(self, global_step):
-        step_num = F.cast(global_step,ms.float32)
-        warmup_scale = self.pow(self.warmup_steps,-1.5)
-        dim_scale = self.pow(self.dimension,-0.5)
-        lr1 = self.pow(step_num,-0.5)
+        step_num = F.cast(global_step, ms.float32)
+        warmup_scale = self.pow(self.warmup_steps, -1.5)
+        dim_scale = self.pow(self.dimension, -0.5)
+        lr1 = self.pow(step_num, -0.5)
         lr2 = step_num*warmup_scale
         lr_percent = dim_scale * self.min(lr1, lr2)
         return self.learning_rate * lr_percent

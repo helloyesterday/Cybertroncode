@@ -1,9 +1,10 @@
-# ============================================================================
-# Copyright 2021 The AIMM team at Shenzhen Bay Laboratory & Peking University
+# Copyright 2020-2022 The AIMM team at Shenzhen Bay Laboratory & Peking University
 #
 # People: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yaqiang Zhou, Huiyang Zhang,
 #         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
-# 
+#
+# Contact: yangyi@szbl.ac.cn
+#
 # This code is a part of Cybertron-Code package.
 #
 # The Cybertron-Code is open-source software based on the AI-framework:
@@ -21,9 +22,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+"""
+Aggregator for readout network
+"""
 
 import mindspore as ms
 from mindspore import nn
+from mindspore.nn import Cell
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
@@ -31,7 +36,7 @@ from mindspore.common.initializer import Normal
 
 from sponge.functions import get_integer
 
-from .block import MLP,Dense
+from .block import MLP, Dense
 from .base import SoftmaxWithMask
 from .base import MultiheadAttention
 
@@ -48,7 +53,7 @@ __all__ = [
     "ListMean",
     "LinearTransformation",
     "MultipleChannelRepresentation",
-    ]
+]
 
 _AGGREGATOR_BY_KEY = dict()
 _LIST_AGGREGATOR_ALIAS = dict()
@@ -69,6 +74,7 @@ def _aggregator_register(*aliases):
 
     return alias_reg
 
+
 def _list_aggregator_register(*aliases):
     """Return the alias register."""
     def alias_reg(cls):
@@ -85,12 +91,9 @@ def _list_aggregator_register(*aliases):
 
     return alias_reg
 
+
 class Aggregator(nn.Cell):
-    def __init__(
-        self,
-        dim: int,
-        axis: int = -2,
-    ):
+    def __init__(self, dim: int, axis: int = -2):
         super().__init__()
 
         self.reg_key = 'aggregator'
@@ -99,14 +102,13 @@ class Aggregator(nn.Cell):
         self.dim = get_integer(dim)
         self.axis = get_integer(axis)
         self.reduce_sum = P.ReduceSum()
+    def construct(self, nodes, atom_mask=None, num_atoms=None):
+        raise NotImplementedError
+
 
 class ListAggregator(nn.Cell):
-    def __init__(self,
-        dim: int,
-        num_agg=None,
-        n_hidden=0,
-        activation=None,
-    ):
+    def __init__(self, dim: int, num_agg: int = None,
+                 n_hidden: int = 0, activation: Cell = None):
         super().__init__()
 
         self.reg_key = 'none'
@@ -119,16 +121,14 @@ class ListAggregator(nn.Cell):
         self.stack = P.Stack(-1)
         self.reduce_sum = P.ReduceSum()
 
+    def construct(self, xlist, atom_mask=None):
+        raise NotImplementedError
+
+
 @_aggregator_register('sum')
 class TensorSummation(Aggregator):
-    def __init__(self,
-        dim=None,
-        axis=-2,
-    ):
-        super().__init__(
-            dim=None,
-            axis=axis,
-        )
+    def __init__(self, dim: int = None, axis: int = -2):
+        super().__init__(dim=None, axis=axis)
 
         self.reg_key = 'sum'
         self.name = 'sum'
@@ -136,22 +136,17 @@ class TensorSummation(Aggregator):
     def __str__(self):
         return "sum"
 
-    def construct(self,nodes,atom_mask=None,num_atoms=None):
+    def construct(self, nodes, atom_mask=None, num_atoms=None):
         if atom_mask is not None:
-            nodes = nodes * F.expand_dims(atom_mask,-1)
-        agg = self.reduce_sum(nodes,self.axis)
+            nodes = nodes * F.expand_dims(atom_mask, -1)
+        agg = self.reduce_sum(nodes, self.axis)
         return agg
+
 
 @_aggregator_register('mean')
 class TensorMean(Aggregator):
-    def __init__(self,
-        dim=None,
-        axis=-2,
-    ):
-        super().__init__(
-            dim=None,
-            axis=axis,
-        )
+    def __init__(self, dim: int = None, axis: int = -2):
+        super().__init__(dim=None, axis=axis)
         self.reg_key = 'mean'
         self.name = 'mean'
 
@@ -161,37 +156,31 @@ class TensorMean(Aggregator):
     def __str__(self):
         return "mean"
 
-    def construct(self,nodes,atom_mask=None,num_atoms=None):
+    def construct(self, nodes, atom_mask=None, num_atoms=None):
         if atom_mask is not None:
-            nodes = nodes * F.expand_dims(atom_mask,-1)
-            agg = self.reduce_sum(nodes,self.axis)
+            nodes = nodes * F.expand_dims(atom_mask, -1)
+            agg = self.reduce_sum(nodes, self.axis)
             return agg / num_atoms
         else:
-            return self.reduce_mean(nodes,self.axis)
+            return self.reduce_mean(nodes, self.axis)
 
 # Softmax-based generalized mean-max-sum aggregator
 @_aggregator_register('softmax')
 class SoftmaxGeneralizedAggregator(Aggregator):
-    def __init__(self,
-        dim,
-        axis=-2,
-    ):
-        super().__init__(
-            dim=dim,
-            axis=axis,
-        )
+    def __init__(self, dim: int, axis: int = -2):
+        super().__init__(dim=dim, axis=axis)
 
         self.reg_key = 'softmax'
         self.name = 'softmax'
 
-        self.beta  = ms.Parameter(initializer('one', 1), name="beta")
+        self.beta = ms.Parameter(initializer('one', 1), name="beta")
         self.rho = ms.Parameter(initializer('zero', 1), name="rho")
 
         self.softmax = P.Softmax(axis=self.axis)
         self.softmax_with_mask = SoftmaxWithMask(axis=self.axis)
         self.mol_sum = P.ReduceSum(keep_dims=True)
 
-        self.expand_ones = P.Ones()((1,1,self.dim),ms.int32)
+        self.expand_ones = P.Ones()((1, 1, self.dim), ms.int32)
 
     def __str__(self):
         return "softmax"
@@ -206,28 +195,22 @@ class SoftmaxGeneralizedAggregator(Aggregator):
         if atom_mask is None:
             agg_nodes = self.softmax(px) * nodes
         else:
-            atom_mask = F.expand_dims(atom_mask,-1)
+            atom_mask = F.expand_dims(atom_mask, -1)
             mask = (self.expand_ones * atom_mask) > 0
-            agg_nodes = self.softmax_with_mask(px,mask) * nodes * atom_mask
-        
-        agg_nodes = self.reduce_sum(agg_nodes,self.axis)
+            agg_nodes = self.softmax_with_mask(px, mask) * nodes * atom_mask
+
+        agg_nodes = self.reduce_sum(agg_nodes, self.axis)
 
         return scale * agg_nodes
 
 # PowerMean-based generalized mean-max-sum aggregator
 @_aggregator_register('powermean')
 class PowermeanGeneralizedAggregator(Aggregator):
-    def __init__(self,
-        dim,
-        axis=-2,
-    ):
-        super().__init__(
-            dim=dim,
-            axis=axis,
-        )
+    def __init__(self, dim: int, axis: int = -2):
+        super().__init__(dim=dim, axis=axis)
         self.reg_key = 'powermean'
         self.name = 'powermean'
-        self.beta  = ms.Parameter(initializer('one', 1), name="beta")
+        self.beta = ms.Parameter(initializer('one', 1), name="beta")
         self.rho = ms.Parameter(initializer('one', 1), name="rho")
 
         self.power = P.Pow()
@@ -241,38 +224,33 @@ class PowermeanGeneralizedAggregator(Aggregator):
             num_atoms = nodes.shape[self.axis]
 
         scale = num_atoms / (1 + self.beta * (num_atoms - 1))
-        xp = self.power(nodes,self.rho)
+        xp = self.power(nodes, self.rho)
         if atom_mask is not None:
-            xp = xp * F.expand_dims(atom_mask,-1)
-        agg_nodes = self.reduce_sum(xp,self.axis)
+            xp = xp * F.expand_dims(atom_mask, -1)
+        agg_nodes = self.reduce_sum(xp, self.axis)
 
-        return self.power(scale*agg_nodes,1.0/self.rho)
+        return self.power(scale*agg_nodes, 1.0/self.rho)
+
 
 @_aggregator_register('transformer')
 class TransformerAggregator(Aggregator):
-    def __init__(self,
-        dim,
-        axis=-2,
-        n_heads=8,
-    ):
-        super().__init__(
-            dim=dim,
-            axis=axis,
-        )
+    def __init__(self, dim: int, axis: int = -2, n_heads: int = 8):
+        super().__init__(dim=dim, axis=axis)
 
         self.reg_key = 'transformer'
         self.name = 'transformer'
 
-        self.a2q = Dense(dim,dim,has_bias=False)
-        self.a2k = Dense(dim,dim,has_bias=False)
-        self.a2v = Dense(dim,dim,has_bias=False)
+        self.a2q = Dense(dim, dim, has_bias=False)
+        self.a2k = Dense(dim, dim, has_bias=False)
+        self.a2v = Dense(dim, dim, has_bias=False)
 
-        self.layer_norm = nn.LayerNorm((dim,),-1,-1)
-        
-        self.multi_head_attention = MultiheadAttention(dim,n_heads,dim_tensor=3)
+        self.layer_norm = nn.LayerNorm((dim,), -1, -1)
+
+        self.multi_head_attention = MultiheadAttention(
+            dim, n_heads, dim_tensor=3)
 
         self.squeeze = P.Squeeze(-1)
-        self.mean = TensorMean(dim,axis)
+        self.mean = TensorMean(dim, axis)
 
     def __str__(self):
         return "transformer"
@@ -288,7 +266,7 @@ class TransformerAggregator(Aggregator):
 
         """
         # [B, A, F]
-        x =  self.layer_norm(nodes)
+        x = self.layer_norm(nodes)
 
         # [B, A, F]
         Q = self.a2q(x)
@@ -296,109 +274,79 @@ class TransformerAggregator(Aggregator):
         V = self.a2v(x)
 
         # [B, A, F]
-        x = self.multi_head_attention(Q,K,V,atom_mask)
+        x = self.multi_head_attention(Q, K, V, atom_mask)
 
         # [B, 1, F]
-        return self.mean(x,atom_mask,num_atoms)
+        return self.mean(x, atom_mask, num_atoms)
+
 
 @_list_aggregator_register('sum')
 class ListSummation(ListAggregator):
-    def __init__(self,
-        dim=None,
-        num_agg=None,
-        n_hidden=0,
-        activation=None,
-    ):
-        super().__init__(
-            dim=None,
-            num_agg=None,
-            n_hidden=0,
-            activation=None,
-        )
+    def __init__(self, dim: int = None, num_agg: int = None,
+                 n_hidden: int = 0, activation: Cell = None):
+        super().__init__(dim=None, num_agg=None, n_hidden=0, activation=None)
         self.reg_key = 'sum'
 
     def __str__(self):
         return "sum"
 
-    def construct(self,xlist,atom_mask=None):
+    def construct(self, xlist, atom_mask=None):
         xt = self.stack(xlist)
-        y = self.reduce_sum(xt,-1)
+        y = self.reduce_sum(xt, -1)
         if atom_mask is not None:
-            y = y * F.expand_dims(atom_mask,-1)
+            y = y * F.expand_dims(atom_mask, -1)
         return y
+
 
 @_list_aggregator_register('mean')
 class ListMean(ListAggregator):
-    def __init__(self,
-        dim=None,
-        num_agg=None,
-        n_hidden=0,
-        activation=None,
-    ):
-        super().__init__(
-            dim=None,
-            num_agg=None,
-            n_hidden=0,
-            activation=None,
-        )
+    def __init__(self, dim: int = None, num_agg: int = None,
+                 n_hidden: int = 0, activation: Cell = None):
+        super().__init__(dim=None, num_agg=None, n_hidden=0, activation=None)
         self.reg_key = 'mean'
         self.reduce_mean = P.ReduceMean()
 
     def __str__(self):
         return "mean"
 
-    def construct(self,xlist,atom_mask=None):
+    def construct(self, xlist, atom_mask=None):
         xt = self.stack(xlist)
-        y = self.reduce_mean(xt,-1)
+        y = self.reduce_mean(xt, -1)
         if atom_mask is not None:
-            y = y * F.expand_dims(atom_mask,-1)
+            y = y * F.expand_dims(atom_mask, -1)
         return y
+
 
 @_list_aggregator_register('linear')
 class LinearTransformation(ListAggregator):
-    def __init__(self,
-        dim,
-        num_agg=None,
-        n_hidden=0,
-        activation=None,
-    ):
-        super().__init__(
-            dim=dim,
-            num_agg=None,
-            n_hidden=0,
-            activation=None,
-        )
+    def __init__(self, dim: int = None, num_agg: int = None,
+                 n_hidden: int = 0, activation: Cell = None):
+        super().__init__(dim=None, num_agg=None, n_hidden=0, activation=None)
         self.reg_key = 'linear'
 
-        self.scale = ms.Parameter(initializer(Normal(1.0),[self.dim,]), name="scale")
-        self.shift = ms.Parameter(initializer(Normal(1.0),[self.dim,]), name="shift")
+        self.scale = ms.Parameter(initializer(
+            Normal(1.0), [self.dim,]), name="scale")
+        self.shift = ms.Parameter(initializer(
+            Normal(1.0), [self.dim,]), name="shift")
 
     def __str__(self):
         return "linear"
 
-    def construct(self,ylist,atom_mask=None):
-        yt = self.stack(ylist)
-        ysum = self.reduce_sum(yt,-1)
+    def construct(self, xlist, atom_mask=None):
+        yt = self.stack(xlist)
+        ysum = self.reduce_sum(yt, -1)
         y = self.scale * ysum + self.shift
         if atom_mask is not None:
-            y = y * F.expand_dims(atom_mask,-1)
+            y = y * F.expand_dims(atom_mask, -1)
         return y
 
 # Multiple-Channel Representation Readout
+
+
 @_list_aggregator_register('mcr')
 class MultipleChannelRepresentation(ListAggregator):
-    def __init__(self,
-        dim,
-        num_agg,
-        n_hidden=0,
-        activation=None,
-    ):
-        super().__init__(
-            dim=dim,
-            num_agg=num_agg,
-            n_hidden=n_hidden,
-            activation=activation,
-        )
+    def __init__(self, dim: int, num_agg: int, n_hidden: int = 0, activation: Cell = None):
+        super().__init__(dim=dim, num_agg=num_agg, n_hidden=n_hidden, activation=activation)
 
         self.reg_key = 'mcr'
 
@@ -410,46 +358,46 @@ class MultipleChannelRepresentation(ListAggregator):
         if self.n_hidden > 0:
             hidden_layers = [dim,] * self.n_hidden
             self.mcr = nn.CellList([
-                MLP(self.dim, sub_dims[i], hidden_layers, activation=self.activation)
-                for i in range(self.um_agg)
-                ])
+                MLP(self.dim, sub_dims[i], hidden_layers,
+                    activation=self.activation)
+                for i in range(self.num_agg)
+            ])
         else:
             self.mcr = nn.CellList([
                 Dense(self.dim, sub_dims[i], activation=self.activation)
                 for i in range(self.num_agg)
-                ])
+            ])
 
         self.concat = P.Concat(-1)
 
     def __str__(self):
         return "MCR"
 
-    def construct(self,xlist,atom_mask=None):
+    def construct(self, xlist, atom_mask=None):
         Xt = ()
         for i in range(self.num_agg):
             Xt = Xt + (self.mcr[i](xlist[i]),)
         y = self.concat(Xt)
         if atom_mask is not None:
-            y = y * F.expand_dims(atom_mask,-1)
+            y = y * F.expand_dims(atom_mask, -1)
         return y
 
-_AGGREGATOR_BY_NAME = {agg.__name__:agg for agg in _AGGREGATOR_BY_KEY.values()}
 
-def get_aggregator(
-        aggregator,
-        dim,
-        axis=-2
-    ) -> Aggregator:
-    if aggregator is None or isinstance(aggregator,Aggregator):
+_AGGREGATOR_BY_NAME = {
+    agg.__name__: agg for agg in _AGGREGATOR_BY_KEY.values()}
+
+
+def get_aggregator(aggregator: Aggregator, dim: int, axis: int = -2) -> Aggregator:
+    if aggregator is None or isinstance(aggregator, Aggregator):
         return aggregator
-    elif isinstance(aggregator, str):
+    if isinstance(aggregator, str):
         if aggregator.lower() == 'none':
             return None
         if aggregator.lower() in _AGGREGATOR_BY_KEY.keys():
-            return _AGGREGATOR_BY_KEY[aggregator.lower()](dim=dim,axis=axis)
+            return _AGGREGATOR_BY_KEY[aggregator.lower()](dim=dim, axis=axis)
         elif aggregator in _AGGREGATOR_BY_NAME.keys():
-            return _AGGREGATOR_BY_NAME[aggregator](dim=dim,axis=axis)
-        else:
-            raise ValueError("The Aggregator corresponding to '{}' was not found.".format(aggregator))
-    else:
-        raise TypeError("Unsupported Aggregator type '{}'.".format(type(aggregator)))
+            return _AGGREGATOR_BY_NAME[aggregator](dim=dim, axis=axis)
+        raise ValueError(
+            "The Aggregator corresponding to '{}' was not found.".format(aggregator))
+    raise TypeError(
+        "Unsupported Aggregator type '{}'.".format(type(aggregator)))

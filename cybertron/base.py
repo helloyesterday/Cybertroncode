@@ -1,9 +1,10 @@
-# ============================================================================
-# Copyright 2021 The AIMM team at Shenzhen Bay Laboratory & Peking University
+# Copyright 2020-2022 The AIMM team at Shenzhen Bay Laboratory & Peking University
 #
 # People: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yaqiang Zhou, Huiyang Zhang,
 #         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
-# 
+#
+# Contact: yangyi@szbl.ac.cn
+#
 # This code is a part of Cybertron-Code package.
 #
 # The Cybertron-Code is open-source software based on the AI-framework:
@@ -21,24 +22,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+"""
+Basic functions
+"""
 
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import Tensor
 from mindspore import nn
+from mindspore.nn import Cell
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.common.parameter import Parameter
-from mindspore.common.initializer import initializer,Constant
+from mindspore.common.initializer import initializer, Constant
 
-from .block import Dense,Residual
+from .block import Dense, Residual
 from .cutoff import SmoothCutoff
 
 __all__ = [
     "GraphNorm",
-    "Filter",
-    "ResFilter",
-    "CFconv",
     "Aggregate",
     "SmoothReciprocal",
     "SoftmaxWithMask",
@@ -47,33 +49,38 @@ __all__ = [
     "FeedForward",
     "Pondering",
     "ACTWeight",
-    "FullConnectNeighbours",
-    ]
+]
 
-class GraphNorm(nn.Cell):
+
+class GraphNorm(Cell):
+
     def __init__(self,
-        dim_feature,
-        node_axis=-2,
-        alpha_init='one',
-        beta_init='zero',
-        gamma_init='one'
-    ):
+                 dim_feature,
+                 node_axis=-2,
+                 alpha_init='one',
+                 beta_init='zero',
+                 gamma_init='one'
+                 ):
+
         super().__init__()
-        self.alpha = Parameter(initializer(alpha_init, dim_feature), name="alpha")
-        self.beta  = Parameter(initializer(beta_init,  dim_feature), name="beta")
-        self.gamma = Parameter(initializer(gamma_init, dim_feature), name="gamma")
+        self.alpha = Parameter(initializer(
+            alpha_init, dim_feature), name="alpha")
+        self.beta = Parameter(initializer(
+            beta_init, dim_feature), name="beta")
+        self.gamma = Parameter(initializer(
+            gamma_init, dim_feature), name="gamma")
 
         self.axis = node_axis
 
         self.reduce_mean = P.ReduceMean(keep_dims=True)
 
         self.sqrt = P.Sqrt()
-    
+
     def construct(self, nodes):
-        mu = self.reduce_mean(nodes,self.axis)
+        mu = self.reduce_mean(nodes, self.axis)
 
         nodes2 = nodes * nodes
-        mu2 = self.reduce_mean(nodes2,self.axis)
+        mu2 = self.reduce_mean(nodes2, self.axis)
 
         a = self.alpha
         sigma2 = mu2 + (a*a - 2*a) * mu * mu
@@ -83,19 +90,20 @@ class GraphNorm(nn.Cell):
 
         return y
 
-class Aggregate(nn.Cell):
+
+class Aggregate(Cell):
 
     def __init__(self, axis, mean=False):
         super().__init__()
         self.average = mean
         self.axis = axis
-        self.reduce_sum=P.ReduceSum()
-        self.maximum=P.Maximum()
+        self.reduce_sum = P.ReduceSum()
+        self.maximum = P.Maximum()
 
-    def construct(self, inputs:Tensor, mask:Tensor=None):
+    def construct(self, inputs: Tensor, mask: Tensor = None):
         # mask input
         if mask is not None:
-            inputs = inputs * F.expand_dims(mask,-1)
+            inputs = inputs * F.expand_dims(mask, -1)
         # compute sum of input along axis
 
         y = self.reduce_sum(inputs, self.axis)
@@ -103,19 +111,20 @@ class Aggregate(nn.Cell):
         if self.average:
             # get the number of items along axis
             if mask is not None:
-                N = self.reduce_sum(mask, self.axis)
-                N = self.maximum(N, other=F.ones_like(N))
+                num = self.reduce_sum(mask, self.axis)
+                num = self.maximum(num, other=F.ones_like(num))
             else:
-                N = inputs.shape[self.axis]
-                
-            y = y / N
+                num = inputs.shape[self.axis]
+
+            y = y / num
         return y
 
-class SmoothReciprocal(nn.Cell):
+
+class SmoothReciprocal(Cell):
     def __init__(self,
-        dmax,
-        cutoff_network=None
-    ):
+                 dmax,
+                 cutoff_network=None
+                 ):
         super().__init__()
 
         if cutoff_network is None:
@@ -125,55 +134,58 @@ class SmoothReciprocal(nn.Cell):
 
         self.sqrt = P.Sqrt()
 
-    def construct(self,rij,mask):
-        phi2rij,_ = self.cutoff_network(rij*2,mask)
+    def construct(self, rij, mask):
+        phi2rij, _ = self.cutoff_network(rij*2, mask)
 
-        r_near = phi2rij * msnp.reciprocal(self.sqrt(rij * rij + 1.0) )
-        r_far = msnp.where( rij > 0, (1.0 - phi2rij) * msnp.reciprocal(rij), 0)
-        
+        r_near = phi2rij * msnp.reciprocal(self.sqrt(rij * rij + 1.0))
+        r_far = msnp.where(rij > 0, (1.0 - phi2rij) * msnp.reciprocal(rij), 0)
+
         reciprocal = r_near + r_far
         if mask is not None:
             reciprocal = reciprocal * mask
 
         return reciprocal
 
-class SoftmaxWithMask(nn.Cell):
-    def __init__(self,axis=-1):
+
+class SoftmaxWithMask(Cell):
+    def __init__(self, axis=-1):
         super().__init__()
         self.softmax = P.Softmax(axis)
 
         self.large_neg = -5e4
 
     def construct(self, x, mask):
-        xm = msnp.where(mask,x,self.large_neg)
+        xm = msnp.where(mask, x, self.large_neg)
         return self.softmax(xm)
 
-class PositionalEmbedding(nn.Cell):
-    def __init__(self,dim,use_distances=True,use_bonds=False,use_public_layer_norm=True):
+
+class PositionalEmbedding(Cell):
+    def __init__(self, dim, use_distances=True, use_bonds=False, use_public_layer_norm=True):
         super().__init__()
 
         if not (use_bonds or use_distances):
-            raise ValueError('"use_bonds" and "use_distances" cannot be both "False" when initializing "PositionalEmbedding"!')
+            raise ValueError(
+                '"use_bonds" and "use_distances" cannot be both "False" when initializing "PositionalEmbedding"!')
 
         self.use_distances = use_distances
         self.use_bonds = use_bonds
 
         if use_public_layer_norm:
-            self.norm = nn.LayerNorm((dim,),-1,-1)
+            self.norm = nn.LayerNorm((dim,), -1, -1)
             self.x_norm = self.norm
             self.g_norm = self.norm
         else:
-            self.x_norm = nn.LayerNorm((dim,),-1,-1)
-            self.g_norm = nn.LayerNorm((dim,),-1,-1)
+            self.x_norm = nn.LayerNorm((dim,), -1, -1)
+            self.g_norm = nn.LayerNorm((dim,), -1, -1)
 
-        self.x2q = Dense(dim,dim,has_bias=False)
-        self.x2k = Dense(dim,dim,has_bias=False)
-        self.x2v = Dense(dim,dim,has_bias=False)
+        self.x2q = Dense(dim, dim, has_bias=False)
+        self.x2k = Dense(dim, dim, has_bias=False)
+        self.x2v = Dense(dim, dim, has_bias=False)
 
         self.mul = P.Mul()
         self.concat = P.Concat(-2)
-    
-    def construct(self,xi,xij,g_ii=1,g_ij=1,b_ii=0,b_ij=0,t=0):
+
+    def construct(self, xi, xij, g_ii=1, g_ij=1, b_ii=0, b_ij=0, t=0):
         r"""Get query, key and query from atom types and positions
 
         Args:
@@ -197,9 +209,9 @@ class PositionalEmbedding(nn.Cell):
 
         """
 
-        # if self.use_bonds:
-        #     xi += b_ii
-        #     xij += b_ij
+        if self.use_bonds:
+            xi += b_ii
+            xij += b_ij
 
         # e_ii = self.x_norm(xi + t)
         # e_ij = self.x_norm(xij + t)
@@ -219,32 +231,33 @@ class PositionalEmbedding(nn.Cell):
         # # [B, A, N', F]
         # value = self.x2v(e_ij) * g_ij
 
-        # [B, A, V] * [B, A, V] = [B, A, V]
-        xgii = self.mul(xi,g_ii)
-        # [B, A, N, V] * [B, A, N, V] = [B, A, N, V]
-        xgij = self.mul(xij,g_ij)
+        # [B, A, v] * [B, A, v] = [B, A, v]
+        xgii = self.mul(xi, g_ii)
+        # [B, A, N, v] * [B, A, N, v] = [B, A, N, v]
+        xgij = self.mul(xij, g_ij)
 
-        # [B, A, 1, V]
-        xgii = F.expand_dims(xgii,-2)
-        # [B, A, N', V]
-        xgij = self.concat((xgii,xgij))
+        # [B, A, 1, v]
+        xgii = F.expand_dims(xgii, -2)
+        # [B, A, N', v]
+        xgij = self.concat((xgii, xgij))
         # if c_ij is not None:
-        #     # [B, A, N', V] * [B, A, N', 1]
+        #     # [B, A, N', v] * [B, A, N', 1]
         #     xgij = xgij * F.expand_dims(c_ij,-1)
-        
+
         xgii = self.norm(xgii + t)
         xgij = self.norm(xgij + t)
 
-        # [B, A, 1, V]
+        # [B, A, 1, v]
         query = self.x2q(xgii)
-        # [B, A, N', V]
-        key   = self.x2k(xgij)
-        # [B, A, N', V]
+        # [B, A, N', v]
+        key = self.x2k(xgij)
+        # [B, A, N', v]
         value = self.x2v(xgij)
 
         return query, key, value
 
-class MultiheadAttention(nn.Cell):
+
+class MultiheadAttention(Cell):
     r"""Compute multi-head attention.
 
     Args:
@@ -259,7 +272,8 @@ class MultiheadAttention(nn.Cell):
         f:  Dimensions per head (F = f * h)
 
     """
-    def __init__(self,dim_feature,n_heads=8,dim_tensor=4):
+
+    def __init__(self, dim_feature, n_heads=8, dim_tensor=4):
         super().__init__()
 
         # D
@@ -277,7 +291,7 @@ class MultiheadAttention(nn.Cell):
         # shape = (h, f)
         self.reshape_tail = (self.n_heads, self.size_per_head)
 
-        self.output = Dense(dim_feature,dim_feature,has_bias=False)
+        self.output = Dense(dim_feature, dim_feature, has_bias=False)
 
         self.mul = P.Mul()
         self.div = P.Div()
@@ -296,15 +310,14 @@ class MultiheadAttention(nn.Cell):
         self.transpose = P.Transpose()
 
         self.softmax_with_mask = SoftmaxWithMask()
-    
-    def construct(
-        self,
-        query: Tensor,
-        key: Tensor,
-        value: Tensor,
-        mask: Tensor = None,
-        cutoff: Tensor = None
-    ):
+
+    def construct(self,
+                  query: Tensor,
+                  key: Tensor,
+                  value: Tensor,
+                  mask: Tensor = None,
+                  cutoff: Tensor = None
+                  ):
         r"""Compute multi-head attention.
 
         Args:
@@ -318,131 +331,143 @@ class MultiheadAttention(nn.Cell):
             Mindspore.Tensor [..., F]: multi-head attention output.
 
         """
+        #pylint: disable=invalid-name
+
         if self.n_heads > 1:
             q_reshape = query.shape[:-1] + self.reshape_tail
-            k_reshape = key.shape[:-1]   + self.reshape_tail
+            k_reshape = key.shape[:-1] + self.reshape_tail
             v_reshape = value.shape[:-1] + self.reshape_tail
 
             # [..., 1, h, f] or [..., X, h, f]
-            Q = F.reshape(query,q_reshape)
+            Q = F.reshape(query, q_reshape)
             # [..., h, 1, f] or [..., h, X, f]
-            Q = self.transpose(Q,self.trans_shape)
+            Q = self.transpose(Q, self.trans_shape)
 
             # [..., X, h, f]
-            K = F.reshape(key,k_reshape)
+            K = F.reshape(key, k_reshape)
             # [..., h, X, f]
-            K = self.transpose(K,self.trans_shape)
+            K = self.transpose(K, self.trans_shape)
 
             # [..., X, h, f]
-            V = F.reshape(value,v_reshape)
+            V = F.reshape(value, v_reshape)
             # [..., h, X, f]
-            V = self.transpose(V,self.trans_shape)
+            V = self.transpose(V, self.trans_shape)
 
             # [..., h, 1, f] x [..., h, X, f]^T = [..., h, 1, X]
-            # or 
+            # or
             # [..., h, X, f] x [..., h, X, f]^T = [..., h, X, X]
-            attention_scores = self.bmmt(Q,K)
+            attention_scores = self.bmmt(Q, K)
             # ([..., h, 1, X] or [..., h, X, X]) / sqrt(f)
-            attention_scores = self.mul(attention_scores,self.scores_mul)
+            attention_scores = self.mul(attention_scores, self.scores_mul)
 
             if mask is None:
                 # [..., h, 1, X] or [..., h, X, X]
                 attention_probs = self.softmax(attention_scores)
             else:
                 # [..., X] -> [..., 1, 1, X]
-                exmask = F.expand_dims(F.expand_dims(mask,-2),-2)
+                exmask = F.expand_dims(F.expand_dims(mask, -2), -2)
                 # [..., 1, 1, X] -> ([..., h, 1, X] or [..., h, X, X])
                 mhmask = (exmask * F.ones_like(attention_scores)) > 0
                 # [..., h, 1, X] or [..., h, X, X]
-                attention_probs = self.softmax_with_mask(attention_scores,mhmask)
+                attention_probs = self.softmax_with_mask(
+                    attention_scores, mhmask)
 
                 if cutoff is not None:
                     # [..., X] -> [..., 1, 1, X]
-                    excut  = F.expand_dims(F.expand_dims(cutoff,-2),-2)
+                    excut = F.expand_dims(F.expand_dims(cutoff, -2), -2)
                     # [..., h, 1, X] * [..., 1, 1, X]
                     # or
                     # [..., h, X, X] * [..., 1, 1, X] = [..., h, X, X]
-                    attention_probs = self.mul(attention_probs,excut)
+                    attention_probs = self.mul(attention_probs, excut)
 
             # [..., h, 1, X] x [..., h, X, f] = [..., h, 1, f]
             # or
             # [..., h, X, X] x [..., h, X, f] = [..., h, X, f]
-            context = self.bmm(attention_probs,V)
+            context = self.bmm(attention_probs, V)
             # [..., 1, h, f] or [..., X, h, f]
-            context = self.transpose(context,self.trans_shape)
+            context = self.transpose(context, self.trans_shape)
             # [..., 1, F] or [..., X, F]
-            context = F.reshape(context,query.shape)
+            context = F.reshape(context, query.shape)
 
         else:
             # [..., 1, F] x [..., F, X] / sqrt(F) = [..., 1, X]
-            # or 
+            # or
             # [..., X, F] x [..., F, X] / sqrt(F) = [..., X, X]
-            attention_scores = self.bmmt(query,key) * self.scores_mul
-            
+            attention_scores = self.bmmt(query, key) * self.scores_mul
+
             if mask is None:
                 # [..., 1, X] or [..., X, X]
                 attention_probs = self.softmax(attention_scores)
             else:
                 # [..., X] -> [..., 1, X]
-                mask = F.expand_dims(mask,-2)
+                mask = F.expand_dims(mask, -2)
                 # [..., 1, X]
-                attention_probs = self.softmax_with_mask(attention_scores,mask)
+                attention_probs = self.softmax_with_mask(
+                    attention_scores, mask)
 
                 if cutoff is not None:
                     # [..., 1, X] * [..., 1, X]
-                    attention_probs = attention_probs * F.expand_dims(cutoff,-2)
-            
+                    attention_probs = attention_probs * \
+                        F.expand_dims(cutoff, -2)
+
             # [..., 1, X] x [..., X, F] = [..., 1, F]
             # or
             # [..., X, X] x [..., X, F] = [..., X, F]
-            context = self.bmm(attention_probs,value)
+            context = self.bmm(attention_probs, value)
 
         # [..., 1, F] or [..., X, F]
         return self.output(context)
 
-class FeedForward(nn.Cell):
-    def __init__(self,dim,activation,n_hidden=1):
+
+class FeedForward(Cell):
+    def __init__(self, dim, activation, n_hidden=1):
         super().__init__()
 
-        self.norm = nn.LayerNorm((dim,),-1,-1)
-        self.residual = Residual(dim,activation=activation,n_hidden=n_hidden)
+        self.norm = nn.LayerNorm((dim,), -1, -1)
+        self.residual = Residual(dim, activation=activation, n_hidden=n_hidden)
 
-    def construct(self,x):
+    def construct(self, x):
         nx = self.norm(x)
         return self.residual(nx)
 
-class Pondering(nn.Cell):
-    def __init__(self,n_in,n_hidden=0,bias_const=1.):
+
+class Pondering(Cell):
+    def __init__(self, n_in, n_hidden=0, bias_const=1.):
         super().__init__()
 
         if n_hidden == 0:
-            self.dense = nn.Dense(n_in,1,has_bias=True,weight_init='xavier_uniform',bias_init=Constant(bias_const),activation='sigmoid',)
+            self.dense = nn.Dense(n_in, 1, has_bias=True, weight_init='xavier_uniform', bias_init=Constant(
+                bias_const), activation='sigmoid',)
         elif n_hidden > 0:
-            nets=[]
+            nets = []
             for i in range(n_hidden):
-                nets.append(nn.Dense(n_in, n_in, weight_init='xavier_uniform', activation='relu'))
-            nets.append(nn.Dense(n_in, 1, bias_init=Constant(bias_const), activation='sigmoid'))
+                nets.append(
+                    nn.Dense(n_in, n_in, weight_init='xavier_uniform', activation='relu'))
+            nets.append(nn.Dense(n_in, 1, bias_init=Constant(
+                bias_const), activation='sigmoid'))
             self.dense = nn.SequentialCell(nets)
         else:
             raise ValueError("n_hidden cannot be negative!")
 
         self.squeeze = P.Squeeze(-1)
 
-    def construct(self,x):
+    def construct(self, x):
         y = self.dense(x)
         return self.squeeze(y)
 
 # Modified from:
 # https://github.com/andreamad8/Universal-Transformer-Pytorch/blob/master/models/UTransformer.py
-class ACTWeight(nn.Cell):
-    def __init__(self,shape,threshold=0.9):
+
+
+class ACTWeight(Cell):
+    def __init__(self, shape, threshold=0.9):
         super().__init__()
         self.threshold = threshold
 
         self.zeros_like = P.ZerosLike()
         self.ones_like = P.OnesLike()
 
-    def construct(self,prob,halting_prob):
+    def construct(self, prob, halting_prob):
 
         # Mask for inputs which have not halted last cy
         running = F.cast(halting_prob < 1.0, ms.float32)
@@ -450,9 +475,9 @@ class ACTWeight(nn.Cell):
         # Add the halting probability for this step to the halting
         # probabilities for those input which haven't halted yet
         add_prob = prob * running
-        new_prob = halting_prob + add_prob 
-        mask_run = F.cast(new_prob <= self.threshold,ms.float32)
-        mask_halt = F.cast(new_prob > self.threshold,ms.float32)
+        new_prob = halting_prob + add_prob
+        mask_run = F.cast(new_prob <= self.threshold, ms.float32)
+        mask_halt = F.cast(new_prob > self.threshold, ms.float32)
 
         # Mask of inputs which haven't halted, and didn't halt this step
         still_running = mask_run * running
@@ -475,6 +500,6 @@ class ACTWeight(nn.Cell):
         # prob when the input hasn't halted yet
         # the remainders when it halted this step
         update_weights = prob * still_running + new_halted * remainders
-        w = F.expand_dims(update_weights,-1)
+        w = F.expand_dims(update_weights, -1)
 
         return w, dp, dn
