@@ -35,6 +35,7 @@ from mindspore.ops import functional as F
 from mindspore.ops import operations as P
 from mindspore.train._utils import _make_directory
 
+import sponge.checkpoint as checkpoint
 from sponge.functions import get_integer
 from sponge.hyperparam import get_class_parameters
 from sponge.hyperparam import get_hyper_parameter, get_hyper_string
@@ -42,7 +43,7 @@ from sponge.hyperparam import set_class_into_hyper_param
 from sponge.colvar import IndexDistances
 from sponge.units import Units, global_units
 from sponge.neighbours import FullConnectNeighbours
-import sponge.checkpoint as checkpoint
+from sponge.potential import PotentialCell
 
 from .readout import Readout, get_readout
 from .model import MolecularModel, get_molecular_model
@@ -580,3 +581,230 @@ class Cybertron(Cell):
             return self.concat(ytuple) * self.output_unit_scale
 
         return self.readout(x, xlist, atom_types, atom_mask, num_atoms) * self.output_unit_scale
+
+class CybertronFF(PotentialCell):
+    def __init__(self,
+                 model: MolecularModel = None,
+                 readout: Readout = 'atomwise',
+                 num_atoms: int = None,
+                 atom_types: Tensor = None,
+                 bond_types: Tensor = None,
+                 use_pbc: bool = None,
+                 length_unit: str = None,
+                 energy_unit: str = None,
+                 hyper_param: dict = None,
+                 ):
+
+        super().__init__(
+            exclude_index=None,
+            length_unit=length_unit,
+            energy_unit=energy_unit,
+            use_pbc=use_pbc,
+        )
+
+        dim_output = 1
+        pbc_box = None
+        if hyper_param is not None:
+            model = get_class_parameters(hyper_param, 'hyperparam.model')
+            num_readout = get_hyper_parameter(
+                hyper_param, 'hyperparam.num_readout')
+            readout = get_class_parameters(
+                hyper_param, 'hyperparam.readout', num_readout)
+            dim_output = get_hyper_parameter(
+                hyper_param, 'hyperparam.dim_output')
+            num_atoms = get_hyper_parameter(
+                hyper_param, 'hyperparam.num_atoms')
+            atom_types = get_hyper_parameter(
+                hyper_param, 'hyperparam.atom_types')
+            bond_types = get_hyper_parameter(
+                hyper_param, 'hyperparam.bond_types')
+            pbc_box = get_hyper_parameter(hyper_param, 'hyperparam.pbc_box')
+            use_pbc = get_hyper_parameter(hyper_param, 'hyperparam.use_pbc')
+            length_unit = get_hyper_string(
+                hyper_param, 'hyperparam.length_unit')
+            energy_unit = get_hyper_string(
+                hyper_param, 'hyperparam.energy_unit')
+
+        if dim_output != 1:
+            raise ValueError('The output dimension of CybertronFF must be 1 but got: '+str(dim_output))
+        if readout is None:
+            raise ValueError('The readout function in CybertronFF cannot be None!')
+
+        self.model = get_molecular_model(model, length_unit=self.length_unit)
+
+        self.model_name = self.model.network_name
+        self.model_hyper_param = self.model.hyper_param
+        self.dim_feature = self.model.dim_feature
+        self.activation = self.model.activation
+        self.input_unit_scale = self.units.convert_energy_to(self.model.units)
+        self.calc_distance = self.model.calc_distance
+
+        if isinstance(readout, (list, tuple)):
+            raise ValueError('CybertronFF cannot accept multiple readouts!')
+
+        self.readout = get_readout(
+            readout,
+            model=self.model,
+            dim_output=1,
+            energy_unit=self.units.energy_unit,
+        )
+        if self.readout.dim_output != 1:
+            raise ValueError('The output dimension of readout in CybertronFF must be 1 but got: '+
+                             str(self.readout.dim_output))
+        self.dim_output = self.readout.dim_output
+        
+        self.atomwise_scaleshift = self.readout.atomwise_scaleshift
+        self.output_unit_scale = self.get_output_unit_scale()
+
+        if atom_types is None:
+            raise ValueError('For CybertronFF, atom_types cannot be None')
+
+        # (1,A)
+        self.atom_types = Tensor(atom_types, ms.int32).reshape(1, -1)
+        self.atom_mask = atom_types > 0
+        natoms = self.atom_types.shape[-1]
+        if self.atom_mask.all():
+            self.num_atoms = natoms
+        else:
+            self.num_atoms = F.cast(atom_types > 0, ms.int32)
+            self.num_atoms = msnp.sum(num_atoms, -1, keepdims=True)
+
+        self.bond_types = None
+        self.bond_mask = None
+        if bond_types is not None:
+            self.bond_types = Tensor(
+                bond_types, ms.int32).reshape(1, natoms, -1)
+            self.bond_mask = bond_types > 0
+
+        self.pbc_box = None
+        if pbc_box is not None:
+            # (1,D)
+            self.pbc_box = Tensor(pbc_box, ms.float32).reshape(1, -1)
+
+        cutoff = self.model.cutoff
+
+        self.hyper_param = dict()
+        self.hyper_types = {
+            'model': 'Cell',
+            'num_readout': 'int',
+            'readout': 'Cell',
+            'dim_output': 'int',
+            'num_atoms': 'int',
+            'atom_types': 'int',
+            'bond_types': 'int',
+            'pbc_box': 'bool',
+            'use_pbc': 'bool',
+            'length_unit': 'str',
+            'energy_unit': 'str',
+        }
+
+        self.set_hyper_param()
+
+        self.concat = P.Concat(-1)
+
+    def set_units(self, length_unit: str = None, energy_unit: str = None, units: Units = None):
+        """set units"""
+        if units is None:
+            if length_unit is not None:
+                self.units.set_length_unit(length_unit)
+            if energy_unit is not None:
+                self.units.set_energy_unit(energy_unit)
+        else:
+            self.units = units
+            self.length_unit = self.units.length_unit
+            self.energy_unit = self.units.energy_unit
+            self.input_unit_scale = self.units.convert_energy_to(
+                self.model.units)
+            self.output_unit_scale = self.get_output_unit_scale()
+        return self
+
+    def get_output_unit_scale(self) -> Tensor:
+        """get the scale factor of output unit"""
+        output_unit_scale = self.units.convert_energy_from(
+            self.readout.energy_unit)
+        return Tensor(output_unit_scale, ms.float32)
+
+    def set_hyper_param(self):
+        """set hyperparameters"""
+        set_class_into_hyper_param(self.hyper_param, self.hyper_types, self, 'hyperparam')
+        return self
+
+    def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
+        """print the infomation of CybertronFF"""
+        ret = char * num_retraction
+        gap = char * num_gap
+        print("================================================================================")
+        print("Cybertron Force Field:")
+        print('-'*80)
+        print(ret+' Length unit: ' + self.units.length_unit_name)
+        print(ret+' Input unit scale: ' + str(self.input_unit_scale))
+        for i, atom in enumerate(self.atom_types[0]):
+            print(
+                ret+gap+' Atom {: <7}'.format(str(i)+': ')+str(atom.asnumpy()))
+        if self.bond_types is not None:
+            print(ret+' Using fixed bond connection:')
+            for b in self.bond_types[0]:
+                print(ret+gap+' '+str(b.asnumpy()))
+            print(ret+' Fixed bond mask:')
+            for m in self.bond_mask[0]:
+                print(ret+gap+' '+str(m.asnumpy()))
+        print('-'*80)
+        self.model.print_info(num_retraction=num_retraction,
+                              num_gap=num_gap, char=char)
+
+        print(ret+" Readout network: "+self.readout.cls_name)
+        print('-'*80)
+        self.readout.print_info(
+            num_retraction=num_retraction, num_gap=num_gap, char=char)
+        print(ret+" Output unit for Cybertron: "+self.units.energy_unit_name)
+        print(ret+" Output unit scale: "+str(self.output_unit_scale))
+        print("================================================================================")
+
+    def set_scaleshift(self,
+                       scale: float = 1,
+                       shift: float = 0,
+                       type_ref: Tensor = None,
+                       atomwise_scaleshift: bool = None,
+                       unit: str = None,
+                       ):
+        """set the scale and shift"""
+
+        self.readout.set_scaleshift(
+            scale=scale, shift=shift, type_ref=type_ref, atomwise_scaleshift=atomwise_scaleshift, unit=unit)
+        self.atomwise_scaleshift = self.readout.atomwise_scaleshift
+
+        if unit is not None:
+            self.units.set_energy_unit(unit)
+            self.output_unit_scale = self.get_output_unit_scale()
+
+        self.set_hyper_param()
+        return self
+
+    def save_checkpoint(self, ckpt_file_name: str, directory: str = None):
+        """save checkpoint file"""
+        if directory is not None:
+            directory = _make_directory(directory)
+        else:
+            directory = _cur_dir
+        ckpt_file = os.path.join(directory, ckpt_file_name)
+        if os.path.exists(ckpt_file):
+            os.remove(ckpt_file)
+        checkpoint.save_checkpoint(
+            self, ckpt_file, append_dict=self.hyper_param)
+        return self
+    
+    def construct(self,
+                  coordinates: Tensor,
+                  neighbour_vectors: Tensor,
+                  neighbour_distances: Tensor,
+                  neighbour_index: Tensor,
+                  neighbour_mask: Tensor = None,
+                  pbc_box: Tensor = None
+                  ):
+
+        x, xlist = self.model(neighbour_distances, self.atom_types, self.atom_mask,
+                              neighbour_index, neighbour_mask)
+        
+        energy = self.readout(x, xlist, self.atom_types, self.atom_mask, self.num_atoms)
+
+        return energy * self.output_unit_scale
