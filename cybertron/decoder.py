@@ -27,6 +27,7 @@ Decoder networks for readout function
 """
 
 from mindspore import nn
+from mindspore import Tensor
 from mindspore.nn import Cell
 
 from .block import MLP, Dense
@@ -37,7 +38,7 @@ from .block import PreActDense
 __all__ = [
     "Decoder",
     "get_decoder",
-    "SimpleDecoder",
+    "HalveDecoder",
     "ResidualOutputBlock",
 ]
 
@@ -60,6 +61,19 @@ def _decoder_register(*aliases):
 
 
 class Decoder(Cell):
+    r"""Decoder network to reduce the dimension of representation
+
+    Args:
+
+        n_in (int):         Input dimension.
+
+        n_out (int):        Output dimension. Default: 1
+
+        activation (Cell):  Activation function. Default: None
+
+        n_layers (int):     Number of hidden layers. Default: 1
+
+    """
     def __init__(self,
                  n_in: int,
                  n_out: int = 1,
@@ -79,12 +93,26 @@ class Decoder(Cell):
         self.output = None
         self.activation = activation
 
-    def construct(self, x):
+    def construct(self, x: Tensor):
+        #pylint: disable=not-callable
         return self.output(x)
 
 
 @_decoder_register('halve')
 class HalveDecoder(Decoder):
+    r"""A MLP decoder with halve number of layers.
+
+    Args:
+
+        n_in (int):         Input dimension.
+
+        n_out (int):        Output dimension. Default: 1
+
+        activation (Cell):  Activation function. Default: None
+
+        n_layers (int):     Number of hidden layers. Default: 1
+
+    """
     def __init__(self,
                  n_in: int,
                  n_out: int = 1,
@@ -121,6 +149,19 @@ class HalveDecoder(Decoder):
 
 @_decoder_register('residual')
 class ResidualOutputBlock(Decoder):
+    r"""Residual block type decoder
+
+    Args:
+
+        n_in (int):         Input dimension.
+
+        n_out (int):        Output dimension. Default: 1
+
+        activation (Cell):  Activation function. Default: None
+
+        n_layers (int):     Number of hidden layers. Default: 1
+
+    """
     def __init__(self,
                  n_in: int,
                  n_out: int = 1,
@@ -163,7 +204,7 @@ def get_decoder(decoder: str,
                 activation: Cell = None,
                 n_layers: int = 1,
                 ) -> Decoder:
-
+    """get decoder by name"""
     if decoder is None or isinstance(decoder, Decoder):
         return decoder
 
@@ -177,15 +218,15 @@ def get_decoder(decoder: str,
                 activation=activation,
                 n_layers=n_layers,
             )
-        elif decoder in _DECODER_BY_NAME.keys():
+        if decoder in _DECODER_BY_NAME.keys():
             return _DECODER_BY_NAME[decoder](
                 n_in=n_in,
                 n_out=n_out,
                 activation=activation,
                 n_layers=n_layers,
             )
-        else:
-            raise ValueError(
-                "The Decoder corresponding to '{}' was not found.".format(decoder))
-    else:
-        raise TypeError("Unsupported init type '{}'.".format(type(decoder)))
+
+        raise ValueError(
+            "The Decoder corresponding to '{}' was not found.".format(decoder))
+
+    raise TypeError("Unsupported init type '{}'.".format(type(decoder)))

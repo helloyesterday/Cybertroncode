@@ -26,12 +26,50 @@
 Dataset Pre-processor
 """
 
-import numpy as np
 from operator import itemgetter
+import numpy as np
 from numpy import ndarray
 from sponge.units import Units
 
+
 class DatasetProcessor:
+    r"""A dataset pre-processor
+
+        Args:
+
+            name (str):             Name of dataset
+
+            atom_types (ndarray):   Numpy array of shape (N, A) or (A). Data type is int
+                                    Atom types (atomic number).
+
+            position (ndarray):     Numpy array of shape (N, A, D). Data type is float
+                                    Position coordinates
+
+            label (ndarray):        Numpy array of shape (N, E). Data type is float
+                                    Dataset label
+
+            force (ndarray):        Numpy array of shape (N, A, D). Data type is float
+                                    Force of each atom. Default: None
+
+            type_ref (ndarray):     Numpy array of shape (A, E). Data type is float
+                                    Reference value for each atom type. Default: None
+
+            length_unit (str):      Unit of position coordinates. Default: 'nm'
+
+            energy_unit (str):      Unit of energy. Default: None
+
+        Symbols:
+
+            N:  Number of dataset.
+
+            A:  Maximum number of atoms in molecule.
+
+            E:  Number of label.
+
+            D:  Dimension of position coordinate, usually is 3.
+
+        """
+
     def __init__(self,
                  name: str,
                  atom_types: ndarray,     # (N,A) or (A)
@@ -194,7 +232,8 @@ class DatasetProcessor:
 
         self.data_index = np.arange(self.n_data, dtype=np.int32)
 
-    def set_atom_types(self, atom_types):
+    def set_atom_types(self, atom_types: ndarray):
+        """set atom types"""
         self.atom_types = np.array(atom_types, np.int32)
         if self.atom_types.ndim == 1:
             self.atom_types = np.expand_dims(self.atom_types, 0)
@@ -216,13 +255,15 @@ class DatasetProcessor:
         return self
 
     def shuffle_dataset(self):
+        """shuffle the order of dataset"""
         index = np.arange(self.n_data, dtype=np.int32)
         np.random.shuffle(index)
         self.data_index = self.data_index[index]
         self._gather_dataset(index)
         return index
 
-    def _gather_dataset(self, index):
+    def _gather_dataset(self, index: ndarray):
+        """gather data by index"""
         if not self.single_molecule:
             self.set_atom_types(self.atom_types[index])
         self.position = self.position[index]
@@ -231,42 +272,47 @@ class DatasetProcessor:
             self.force = self.force[index]
         return self
 
-    def exclude_data(self, index: np.array):
+    def exclude_data(self, index: ndarray):
+        """exclude data by index"""
         ex_idx = set(np.array(index).tolist())
-        _idx = set(self.data_index.tolist()) - ex_idx
-        self.data_index = np.array(list(_idx), np.int32)
+        idx_ = set(self.data_index.tolist()) - ex_idx
+        self.data_index = np.array(list(idx_), np.int32)
         origin_num = self.n_data
         self.n_data = self.data_index.size
         exculed_num = origin_num - self.n_data
         self._gather_dataset(self.data_index)
-        print('Remove {:d} samples from the dataset.'
-              .format(exculed_num, self.n_data))
+        print('Remove {:d} samples from {:d} dataset.'.format(exculed_num, self.n_data))
         print('-'*105)
         self._do_data_analysis()
         return self.data_index
 
     def _get_broadcast_value(self, value: float, name: str):
+        """broadcast value"""
         value = np.array(value).reshape(-1)
         if value.size != self.n_label:
             if value.size == 1:
                 value = value.repeat(self.n_label)
             else:
-                raise ValueError('The number of  "{s}" ({d}) does not match'
-                                 'the number of label ({d})'.format(name, value.size, self.n_label))
+                raise ValueError('The number of  "'+name+'" ('+str(value.size)+
+                                 ') does not match the number of label ('+str(self.n_label)+')')
+        return value
 
     def set_graph_scaleshift(self, scale: float, shift: float):
+        """set graph scale and shift"""
         self.graph_scale = self._get_broadcast_value(scale, 'scale')
         self.graph_shift = self._get_broadcast_value(shift, 'shift')
         return self
 
     def set_atomwise_scaleshift(self, scale: float, shift: float):
+        """set atomwise scale and shift"""
         self.atom_scale = self._get_broadcast_value(scale, 'scale')
         self.atom_shift = self._get_broadcast_value(shift, 'shift')
         return self
 
     def get_scaleshift_mode(self, mode):
+        """get the mode of scale and shift"""
         if isinstance(mode, str):
-            mode = [self.scaleshift_mode[mode],]
+            mode = [self.scaleshift_mode[mode]]
         mode = np.array(mode)
         if mode.size != self.n_label:
             if mode.size == 1:
@@ -280,6 +326,7 @@ class DatasetProcessor:
         return mode
 
     def get_scaleshift(self, atom_scale, atom_shift, graph_scale, graph_shift, mode):
+        """set scale and shift"""
         atomwise_scaleshift = self.get_scaleshift_mode(mode)
         scale = np.select([atomwise_scaleshift], [atom_scale], graph_scale)
         shift = np.select([atomwise_scaleshift], [atom_shift], graph_shift)
@@ -293,6 +340,9 @@ class DatasetProcessor:
                                potential_index: int = 0,
                                dtype: type = np.float32,
                                ) -> dict:
+
+        """get normalized dataset"""
+
         atomwise_scaleshift = self.get_scaleshift_mode(mode)
         if scale is None:
             scale = np.where(atomwise_scaleshift, self.atom_std, self.mol_std)
@@ -339,6 +389,7 @@ class DatasetProcessor:
         return dataset
 
     def get_origin_dataset(self, index: list = Ellipsis, dtype: type = np.float64, analysis_info: bool = True) -> dict:
+        """get original dataset"""
         dataset = {}
         dataset['name'] = self.name
         dataset['num_atoms'] = self.n_atom
@@ -393,13 +444,14 @@ class DatasetProcessor:
                     shuffle: bool = False,
                     dtype: type = np.float32,
                     ):
+        """get dataset"""
 
         if num_test is None:
             num_test = self.n_data - num_train - num_valid
         if num_test < 0 or num_train + num_valid + num_test > self.n_data:
             raise ValueError('The total number of "num_train" ({:d}), "num_valid" ({:d}) and '
-                            '"num_test" ({:d}) is larger than the number of dataset ({:d}).'.
-                            format(num_train, num_valid, num_test, self.n_data))
+                             '"num_test" ({:d}) is larger than the number of dataset ({:d}).'.
+                             format(num_train, num_valid, num_test, self.n_data))
 
         atomwise_scaleshift = self.get_scaleshift_mode(mode)
         if scale is None:
@@ -482,6 +534,7 @@ class DatasetProcessor:
                      potential_index: int = 0,
                      shuffle: bool = False,
                      ):
+        """save dataset"""
 
         ds_train, ds_valid, ds_test = self.get_dataset(
             num_train,
@@ -523,6 +576,7 @@ class DatasetProcessor:
         return ds_train, ds_valid, ds_test
 
     def convert_units(self, length_unit: str = None, energy_unit: str = None, energy_index: list = Ellipsis):
+        """convert units of dataset"""
         if length_unit is not None:
             scale = self.units.convert_length_to(length_unit)
             self.position *= scale
@@ -555,6 +609,7 @@ class DatasetProcessor:
             self._do_data_analysis()
 
     def label_analysis(self, label, num_atoms=None):
+        """analyse label"""
         def _label_analysis(label):
             lavg = np.mean(label, 0)
             lstd = np.std(label, 0)
@@ -588,6 +643,7 @@ class DatasetProcessor:
         return mol_info, atom_info
 
     def force_analysis(self, force: ndarray, atom_mask: ndarray = None, tot_atoms: ndarray = None):
+        """analyse force"""
         # (N,A)
         if atom_mask is None:
             fnorm = np.linalg.norm(force, axis=-1)
@@ -614,6 +670,7 @@ class DatasetProcessor:
         return favg, fstd, fmax, fmid
 
     def _do_data_analysis(self):
+        """analyse label"""
         label = self.label - \
             self.get_label_ref(self.atom_types, self.atom_mask)
         mol_info, atom_info = self.label_analysis(label, self.num_atoms)
@@ -629,28 +686,31 @@ class DatasetProcessor:
         return self
 
     def get_label_ref(self, atom_types: ndarray, atom_mask: ndarray = None) -> ndarray:
+        """get reference of each label"""
         if self.type_ref is None:
             return 0
-        else:
-            if atom_mask is None:
-                atom_mask = atom_types > 0
-            # (N,A,E) = (N,A,E) * (N,A,1)
-            ref = self.type_ref[atom_types] * np.expand_dims(atom_mask, -1)
-            # (N,E)
-            return np.sum(ref, axis=-2)
+
+        if atom_mask is None:
+            atom_mask = atom_types > 0
+        # (N,A,E) = (N,A,E) * (N,A,1)
+        ref = self.type_ref[atom_types] * np.expand_dims(atom_mask, -1)
+        # (N,E)
+        return np.sum(ref, axis=-2)
 
     def label_normalization(self, mode: str, label: ndarray, scale: float, shift: float, num_atoms: int) -> ndarray:
+        """normalize label"""
         atomwise_scaleshift = self.get_scaleshift_mode(mode)
         if atomwise_scaleshift.all():
             return (label - shift * num_atoms) / scale
-        elif not atomwise_scaleshift.any():
+        if not atomwise_scaleshift.any():
             return (label - shift) / scale
-        else:
-            atomwsie_norm = (label - shift * num_atoms) / scale
-            graph_norm = (label - shift) / scale
-            return np.select([atomwise_scaleshift], [atomwsie_norm], graph_norm)
+
+        atomwsie_norm = (label - shift * num_atoms) / scale
+        graph_norm = (label - shift) / scale
+        return np.select([atomwise_scaleshift], [atomwsie_norm], graph_norm)
 
     def _get_scalar(self, data: ndarray, name: str):
+        """get scalar from input"""
         scalar = np.array(data, np.float64)
         if scalar.ndim == 1:
             scalar = np.expand_dims(data, 0)
@@ -662,17 +722,18 @@ class DatasetProcessor:
                              ' does not match the number of position!')
         return scalar
 
-    def _get_ref(self, data: np.array, n_ref: int, name: str) -> ndarray:
+    def _get_ref(self, data: ndarray, n_ref: int, name: str) -> ndarray:
+        """get reference value"""
         ref = np.array(data, np.float64)
         if ref.ndim == 1:
             ref = np.expand_dims(ref, -1)
         if ref.ndim != 2:
-            raise ValueError('The shape of '+name +
-                             '_ref should be (N_type,N_'+name+')')
+            raise ValueError('The shape of '+name +'_ref should be (N_type, N_'+name+')')
         if ref.shape[0] <= self.max_atomic_id:
             raise ValueError('The size of "'+name+'_ref" '+str(ref.shape[0]) +
                              ' is over the range of maximum atomic index ('+str(self.max_atomic_id)+')')
         if ref.shape[-1] != n_ref:
-            raise ValueError('The number of "{:s}" in "{:s}_ref" ({:d}) does not match that in "{:s}" ({:d}).'.
-                             format(name, name, ref.shape[-1], name, n_ref))
+            name_ref = name + '_ref'
+            raise ValueError('The number of "{:s}" in "{:s}" ({:d}) mismatch ({:d}).'.
+                             format(name, name_ref, ref.shape[-1], n_ref))
         return ref

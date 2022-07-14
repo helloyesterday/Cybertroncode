@@ -27,6 +27,7 @@ Aggregator for readout network
 """
 
 import mindspore as ms
+from mindspore import Tensor
 from mindspore import nn
 from mindspore.nn import Cell
 from mindspore.ops import operations as P
@@ -43,20 +44,21 @@ from .base import MultiheadAttention
 __all__ = [
     "Aggregator",
     "get_aggregator",
+    "get_interaction_aggregator",
     "TensorSummation",
     "TensorMean",
     "SoftmaxGeneralizedAggregator",
     "PowermeanGeneralizedAggregator",
-    "ListAggregator",
-    "get_list_aggregator",
-    "ListSummation",
-    "ListMean",
+    "InteractionAggregator",
+    "InteractionSummation",
+    "InteractionMean",
     "LinearTransformation",
     "MultipleChannelRepresentation",
 ]
 
 _AGGREGATOR_BY_KEY = dict()
-_LIST_AGGREGATOR_ALIAS = dict()
+_INTERACTION_AGGREGATOR_BY_KEY = dict()
+
 
 def _aggregator_register(*aliases):
     """Return the alias register."""
@@ -75,17 +77,17 @@ def _aggregator_register(*aliases):
     return alias_reg
 
 
-def _list_aggregator_register(*aliases):
+def _interaction_aggregator_register(*aliases):
     """Return the alias register."""
     def alias_reg(cls):
         name = cls.__name__
         name = name.lower()
-        if name not in _LIST_AGGREGATOR_ALIAS:
-            _LIST_AGGREGATOR_ALIAS[name] = cls
+        if name not in _INTERACTION_AGGREGATOR_BY_KEY:
+            _INTERACTION_AGGREGATOR_BY_KEY[name] = cls
 
         for alias in aliases:
-            if alias not in _LIST_AGGREGATOR_ALIAS:
-                _LIST_AGGREGATOR_ALIAS[alias] = cls
+            if alias not in _INTERACTION_AGGREGATOR_BY_KEY:
+                _INTERACTION_AGGREGATOR_BY_KEY[alias] = cls
 
         return cls
 
@@ -93,7 +95,29 @@ def _list_aggregator_register(*aliases):
 
 
 class Aggregator(nn.Cell):
-    def __init__(self, dim: int, axis: int = -2):
+    r"""Network to aggreate the outputs of each atoms.
+
+    Args:
+
+        dim (int):  Feature dimension.
+
+        axis (int): Axis to aggreate. Default: -2
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        O:  Last dimension of the tensor for each node (atom).
+
+    """
+
+    def __init__(self,
+                 dim: int,
+                 axis: int = -2
+                 ):
+
         super().__init__()
 
         self.reg_key = 'aggregator'
@@ -102,13 +126,57 @@ class Aggregator(nn.Cell):
         self.dim = get_integer(dim)
         self.axis = get_integer(axis)
         self.reduce_sum = P.ReduceSum()
-    def construct(self, nodes, atom_mask=None, num_atoms=None):
+
+    def construct(self, nodes: Tensor, atom_mask: Tensor = None, num_atoms: Tensor = None):
+        """Aggregate the outputs of each atoms.
+
+        Args:
+            nodes (Tensor):     Tensor of shape (B, A, X). Data type is float.
+                                Output vectors for each atom (node).
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool.
+                                Mask for atoms.
+                                Default: None
+            num_atoms (Tensor): Tensor of shape (B, 1). Data type is int.
+                                Number of atoms.
+                                Default: None
+
+        Returns:
+            output (Tensor):    Tensor of shape (B, X). Data type is float.
+
+        """
         raise NotImplementedError
 
 
-class ListAggregator(nn.Cell):
-    def __init__(self, dim: int, num_agg: int = None,
-                 n_hidden: int = 0, activation: Cell = None):
+class InteractionAggregator(nn.Cell):
+    r"""Network to aggreate the representation of each interaction layer.
+
+    Args:
+
+        dim (int):          Feature dimension.
+
+        num_agg (int):      Number of interaction layer to be aggregate. Default: None
+
+        n_hidden (int):     Number of hidden layers. Dafault: 0
+
+        activation (Cell):  Activation function. Default: None
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        F:  Feature dimension.
+
+    """
+
+    def __init__(self,
+                 dim: int,
+                 num_agg: int = None,
+                 n_hidden: int = 0,
+                 activation: Cell = None
+                 ):
+
         super().__init__()
 
         self.reg_key = 'none'
@@ -121,14 +189,50 @@ class ListAggregator(nn.Cell):
         self.stack = P.Stack(-1)
         self.reduce_sum = P.ReduceSum()
 
-    def construct(self, xlist, atom_mask=None):
+    def construct(self, ylist: list, atom_mask: Tensor = None):
+        """Aggregate the representations of each interaction layer.
+
+        Args:
+            ylist (list):       List of representation of interactions layers.
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool.
+                                Mask for atoms.Default: None
+
+        Returns:
+            output (Tensor):    Tensor of shape (B, X). Data type is float.
+
+        """
         raise NotImplementedError
 
 
 @_aggregator_register('sum')
 class TensorSummation(Aggregator):
-    def __init__(self, dim: int = None, axis: int = -2):
-        super().__init__(dim=None, axis=axis)
+    r"""A aggregator to sum all the tensors.
+
+    Args:
+
+        dim (int):  Feature dimension. Default: None
+
+        axis (int): Axis to aggreate. Default: -2
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        O:  Last dimension of the tensor for each node (atom).
+
+    """
+
+    def __init__(self,
+                 dim: int = None,
+                 axis: int = -2
+                 ):
+
+        super().__init__(
+            dim=dim,
+            axis=axis
+        )
 
         self.reg_key = 'sum'
         self.name = 'sum'
@@ -136,17 +240,61 @@ class TensorSummation(Aggregator):
     def __str__(self):
         return "sum"
 
-    def construct(self, nodes, atom_mask=None, num_atoms=None):
+    def construct(self, nodes: Tensor, atom_mask: Tensor = None, num_atoms: Tensor = None):
+        """To sum all tensors.
+
+        Args:
+            nodes (Tensor):     Tensor of shape (B, A, X). Data type is float.
+                                Output vectors for each atom (node).
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool.
+                                Mask for atoms.
+                                Default: None
+            num_atoms (Tensor): Tensor of shape (B, 1). Data type is int.
+                                Number of atoms.
+                                Default: None
+
+        Returns:
+            output (Tensor):    Tensor of shape (B, X). Data type is float.
+
+        """
         if atom_mask is not None:
+            # (B,A,X) * (B,A,1)
             nodes = nodes * F.expand_dims(atom_mask, -1)
+        # (B,X) <- (B,A,X)
         agg = self.reduce_sum(nodes, self.axis)
         return agg
 
 
 @_aggregator_register('mean')
 class TensorMean(Aggregator):
-    def __init__(self, dim: int = None, axis: int = -2):
-        super().__init__(dim=None, axis=axis)
+    r"""A aggregator to average all the tensors.
+
+    Args:
+
+        dim (int):  Feature dimension. Default: None
+
+        axis (int): Axis to aggreate. Default: -2
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        O:  Last dimension of the tensor for each node (atom).
+
+    """
+
+    def __init__(self,
+                 dim: int = None,
+                 axis: int = -2
+                 ):
+
+        super().__init__(
+            dim=dim,
+            axis=axis
+        )
+
         self.reg_key = 'mean'
         self.name = 'mean'
 
@@ -156,19 +304,64 @@ class TensorMean(Aggregator):
     def __str__(self):
         return "mean"
 
-    def construct(self, nodes, atom_mask=None, num_atoms=None):
-        if atom_mask is not None:
-            nodes = nodes * F.expand_dims(atom_mask, -1)
-            agg = self.reduce_sum(nodes, self.axis)
-            return agg / num_atoms
-        else:
+    def construct(self, nodes: Tensor, atom_mask: Tensor = None, num_atoms: Tensor = None):
+        """To average all tensors.
+
+        Args:
+            nodes (Tensor):     Tensor of shape (B, A, X). Data type is float.
+                                Output vectors for each atom (node).
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool.
+                                Mask for atoms.
+                                Default: None
+            num_atoms (Tensor): Tensor of shape (B, 1). Data type is int.
+                                Number of atoms.
+                                Default: None
+
+        Returns:
+            output (Tensor):    Tensor of shape (B, X). Data type is float.
+
+        """
+        if atom_mask is None:
+            # (B,X) <- (B,A,X)
             return self.reduce_mean(nodes, self.axis)
 
-# Softmax-based generalized mean-max-sum aggregator
+        # (B,A,X) * (B,A,1)
+        nodes = nodes * F.expand_dims(atom_mask, -1)
+        # (B,X) <- (B,A,X)
+        agg = self.reduce_sum(nodes, self.axis)
+        # (B,X) / (B,1)
+        return agg / num_atoms
+
+
 @_aggregator_register('softmax')
 class SoftmaxGeneralizedAggregator(Aggregator):
-    def __init__(self, dim: int, axis: int = -2):
-        super().__init__(dim=dim, axis=axis)
+    r"""A Softmax-based generalized mean-max-sum aggregator.
+
+    Args:
+
+        dim (int):  Feature dimension.
+
+        axis (int): Axis to aggreate. Default: -2
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        O:  Last dimension of the tensor for each node (atom).
+
+    """
+
+    def __init__(self,
+                 dim: int,
+                 axis: int = -2
+                 ):
+
+        super().__init__(
+            dim=dim,
+            axis=axis
+        )
 
         self.reg_key = 'softmax'
         self.name = 'softmax'
@@ -185,7 +378,23 @@ class SoftmaxGeneralizedAggregator(Aggregator):
     def __str__(self):
         return "softmax"
 
-    def construct(self, nodes, atom_mask=None, num_atoms=None):
+    def construct(self, nodes: Tensor, atom_mask: Tensor = None, num_atoms: Tensor = None):
+        """To aggregate all tensors using softmax-based generalized mean-max-sum.
+
+        Args:
+            nodes (Tensor):     Tensor of shape (B, A, X). Data type is float.
+                                Output vectors for each atom (node).
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool.
+                                Mask for atoms.
+                                Default: None
+            num_atoms (Tensor): Tensor of shape (B, 1). Data type is int.
+                                Number of atoms.
+                                Default: None
+
+        Returns:
+            output (Tensor):    Tensor of shape (B, X). Data type is float.
+
+        """
         if num_atoms is None:
             num_atoms = nodes.shape[self.axis]
 
@@ -203,11 +412,37 @@ class SoftmaxGeneralizedAggregator(Aggregator):
 
         return scale * agg_nodes
 
-# PowerMean-based generalized mean-max-sum aggregator
+
 @_aggregator_register('powermean')
 class PowermeanGeneralizedAggregator(Aggregator):
-    def __init__(self, dim: int, axis: int = -2):
-        super().__init__(dim=dim, axis=axis)
+    r"""A PowerMean-based generalized mean-max-sum aggregator.
+
+    Args:
+
+        dim (int):  Feature dimension.
+
+        axis (int): Axis to aggreate. Default: -2
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        O:  Last dimension of the tensor for each node (atom).
+
+    """
+
+    def __init__(self,
+                 dim: int,
+                 axis: int = -2
+                 ):
+
+        super().__init__(
+            dim=dim,
+            axis=axis
+        )
+
         self.reg_key = 'powermean'
         self.name = 'powermean'
         self.beta = ms.Parameter(initializer('one', 1), name="beta")
@@ -219,7 +454,23 @@ class PowermeanGeneralizedAggregator(Aggregator):
     def __str__(self):
         return "powermean"
 
-    def construct(self, nodes, atom_mask=None, num_atoms=None):
+    def construct(self, nodes: Tensor, atom_mask: Tensor = None, num_atoms: Tensor = None):
+        """To aggregate all tensors using PowerMean-based generalized mean-max-sum.
+
+        Args:
+            nodes (Tensor):     Tensor of shape (B, A, X). Data type is float.
+                                Output vectors for each atom (node).
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool.
+                                Mask for atoms.
+                                Default: None
+            num_atoms (Tensor): Tensor of shape (B, 1). Data type is int.
+                                Number of atoms.
+                                Default: None
+
+        Returns:
+            output (Tensor):    Tensor of shape (B, X). Data type is float.
+
+        """
         if num_atoms is None:
             num_atoms = nodes.shape[self.axis]
 
@@ -234,8 +485,34 @@ class PowermeanGeneralizedAggregator(Aggregator):
 
 @_aggregator_register('transformer')
 class TransformerAggregator(Aggregator):
-    def __init__(self, dim: int, axis: int = -2, n_heads: int = 8):
-        super().__init__(dim=dim, axis=axis)
+    r"""A transformer-type aggregator.
+
+    Args:
+
+        dim (int):  Feature dimension.
+
+        axis (int): Axis to aggreate. Default: -2
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        O:  Last dimension of the tensor for each node (atom).
+
+    """
+
+    def __init__(self,
+                 dim: int,
+                 axis: int = -2,
+                 n_heads: int = 8
+                 ):
+
+        super().__init__(
+            dim=dim,
+            axis=axis
+        )
 
         self.reg_key = 'transformer'
         self.name = 'transformer'
@@ -255,16 +532,25 @@ class TransformerAggregator(Aggregator):
     def __str__(self):
         return "transformer"
 
-    def construct(self, nodes, atom_mask=None, num_atoms=None):
-        r"""Transformer type aggregator.
+    def construct(self, nodes: Tensor, atom_mask: Tensor = None, num_atoms: Tensor = None):
+        """To aggregate all tensors using PowerMean-based generalized mean-max-sum.
 
         Args:
-            nodes (Mindspore.Tensor[float] [B, A, F]):
+            nodes (Tensor):     Tensor of shape (B, A, X). Data type is float.
+                                Output vectors for each atom (node).
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool.
+                                Mask for atoms.
+                                Default: None
+            num_atoms (Tensor): Tensor of shape (B, 1). Data type is int.
+                                Number of atoms.
+                                Default: None
 
         Returns:
-            Mindspore.Tensor [..., F]: multi-head attention output.
+            output (Tensor):    Tensor of shape (B, X). Data type is float.
 
         """
+        #pylint: disable=invalid-name
+
         # [B, A, F]
         x = self.layer_norm(nodes)
 
@@ -280,73 +566,205 @@ class TransformerAggregator(Aggregator):
         return self.mean(x, atom_mask, num_atoms)
 
 
-@_list_aggregator_register('sum')
-class ListSummation(ListAggregator):
-    def __init__(self, dim: int = None, num_agg: int = None,
-                 n_hidden: int = 0, activation: Cell = None):
-        super().__init__(dim=None, num_agg=None, n_hidden=0, activation=None)
+@_interaction_aggregator_register('sum')
+class InteractionSummation(InteractionAggregator):
+    r"""A interaction aggregator to summation all representations of interaction layers
+
+    Args:
+
+        dim (int):          Feature dimension.
+
+        num_agg (int):      Number of interaction layer to be aggregate. Default: None
+
+        n_hidden (int):     Number of hidden layers. Dafault: 0
+
+        activation (Cell):  Activation function. Default: None
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        F:  Feature dimension.
+
+    """
+
+    def __init__(self,
+                 dim: int = None,
+                 num_agg: int = None,
+                 n_hidden: int = 0,
+                 activation: Cell = None
+                 ):
+
+        super().__init__(
+            dim=None,
+            num_agg=None,
+            n_hidden=0,
+            activation=None
+        )
+
         self.reg_key = 'sum'
 
     def __str__(self):
         return "sum"
 
-    def construct(self, xlist, atom_mask=None):
-        xt = self.stack(xlist)
+    def construct(self, ylist, atom_mask=None):
+        xt = self.stack(ylist)
         y = self.reduce_sum(xt, -1)
         if atom_mask is not None:
             y = y * F.expand_dims(atom_mask, -1)
         return y
 
 
-@_list_aggregator_register('mean')
-class ListMean(ListAggregator):
-    def __init__(self, dim: int = None, num_agg: int = None,
-                 n_hidden: int = 0, activation: Cell = None):
-        super().__init__(dim=None, num_agg=None, n_hidden=0, activation=None)
+@_interaction_aggregator_register('mean')
+class InteractionMean(InteractionAggregator):
+    r"""A interaction aggregator to average all representations of interaction layers
+
+    Args:
+
+        dim (int):          Feature dimension.
+
+        num_agg (int):      Number of interaction layer to be aggregate. Default: None
+
+        n_hidden (int):     Number of hidden layers. Dafault: 0
+
+        activation (Cell):  Activation function. Default: None
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        F:  Feature dimension.
+
+    """
+
+    def __init__(self,
+                 dim: int = None,
+                 num_agg: int = None,
+                 n_hidden: int = 0,
+                 activation: Cell = None
+                 ):
+
+        super().__init__(
+            dim=None,
+            num_agg=None,
+            n_hidden=0,
+            activation=None
+        )
+
         self.reg_key = 'mean'
         self.reduce_mean = P.ReduceMean()
 
     def __str__(self):
         return "mean"
 
-    def construct(self, xlist, atom_mask=None):
-        xt = self.stack(xlist)
+    def construct(self, ylist: list, atom_mask: Tensor = None):
+        xt = self.stack(ylist)
         y = self.reduce_mean(xt, -1)
         if atom_mask is not None:
             y = y * F.expand_dims(atom_mask, -1)
         return y
 
 
-@_list_aggregator_register('linear')
-class LinearTransformation(ListAggregator):
-    def __init__(self, dim: int = None, num_agg: int = None,
-                 n_hidden: int = 0, activation: Cell = None):
-        super().__init__(dim=None, num_agg=None, n_hidden=0, activation=None)
+@_interaction_aggregator_register('linear')
+class LinearTransformation(InteractionAggregator):
+    r"""A interaction aggregator to aggregate all representations of interaction layers
+        by using linear transformation
+
+    Args:
+
+        dim (int):          Feature dimension.
+
+        num_agg (int):      Number of interaction layer to be aggregate. Default: None
+
+        n_hidden (int):     Number of hidden layers. Dafault: 0
+
+        activation (Cell):  Activation function. Default: None
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        F:  Feature dimension.
+
+    """
+
+    def __init__(self,
+                 dim: int = None,
+                 num_agg: int = None,
+                 n_hidden: int = 0,
+                 activation: Cell = None
+                 ):
+
+        super().__init__(
+            dim=None,
+            num_agg=None,
+            n_hidden=0,
+            activation=None
+        )
+
         self.reg_key = 'linear'
 
         self.scale = ms.Parameter(initializer(
-            Normal(1.0), [self.dim,]), name="scale")
+            Normal(1.0), [self.dim]), name="scale")
         self.shift = ms.Parameter(initializer(
-            Normal(1.0), [self.dim,]), name="shift")
+            Normal(1.0), [self.dim]), name="shift")
 
     def __str__(self):
         return "linear"
 
-    def construct(self, xlist, atom_mask=None):
-        yt = self.stack(xlist)
+    def construct(self, ylist: list, atom_mask: Tensor = None):
+        yt = self.stack(ylist)
         ysum = self.reduce_sum(yt, -1)
         y = self.scale * ysum + self.shift
         if atom_mask is not None:
             y = y * F.expand_dims(atom_mask, -1)
         return y
 
-# Multiple-Channel Representation Readout
 
+@_interaction_aggregator_register('mcr')
+class MultipleChannelRepresentation(InteractionAggregator):
+    r"""A Multiple-Channel Representation (MCR) interaction aggregator to
+        aggregate all representations of interaction layers
 
-@_list_aggregator_register('mcr')
-class MultipleChannelRepresentation(ListAggregator):
-    def __init__(self, dim: int, num_agg: int, n_hidden: int = 0, activation: Cell = None):
-        super().__init__(dim=dim, num_agg=num_agg, n_hidden=n_hidden, activation=activation)
+    Args:
+
+        dim (int):          Feature dimension.
+
+        num_agg (int):      Number of interaction layer to be aggregate. Default: None
+
+        n_hidden (int):     Number of hidden layers. Dafault: 0
+
+        activation (Cell):  Activation function. Default: None
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        F:  Feature dimension.
+
+    """
+
+    def __init__(self,
+                 dim: int,
+                 num_agg: int,
+                 n_hidden: int = 0,
+                 activation: Cell = None
+                 ):
+
+        super().__init__(
+            dim=dim,
+            num_agg=num_agg,
+            n_hidden=n_hidden,
+            activation=activation
+        )
 
         self.reg_key = 'mcr'
 
@@ -356,7 +774,7 @@ class MultipleChannelRepresentation(ListAggregator):
         sub_dims.append(last_dim)
 
         if self.n_hidden > 0:
-            hidden_layers = [dim,] * self.n_hidden
+            hidden_layers = [dim] * self.n_hidden
             self.mcr = nn.CellList([
                 MLP(self.dim, sub_dims[i], hidden_layers,
                     activation=self.activation)
@@ -373,11 +791,11 @@ class MultipleChannelRepresentation(ListAggregator):
     def __str__(self):
         return "MCR"
 
-    def construct(self, xlist, atom_mask=None):
-        Xt = ()
+    def construct(self, ylist: list, atom_mask: Tensor = None):
+        readouts = ()
         for i in range(self.num_agg):
-            Xt = Xt + (self.mcr[i](xlist[i]),)
-        y = self.concat(Xt)
+            readouts = readouts + (self.mcr[i](ylist[i]),)
+        y = self.concat(readouts)
         if atom_mask is not None:
             y = y * F.expand_dims(atom_mask, -1)
         return y
@@ -386,8 +804,15 @@ class MultipleChannelRepresentation(ListAggregator):
 _AGGREGATOR_BY_NAME = {
     agg.__name__: agg for agg in _AGGREGATOR_BY_KEY.values()}
 
+_INTERACTION_AGGREGATOR_BY_NAME = {
+    agg.__name__: agg for agg in _INTERACTION_AGGREGATOR_BY_KEY.values()}
 
-def get_aggregator(aggregator: Aggregator, dim: int, axis: int = -2) -> Aggregator:
+
+def get_aggregator(aggregator: Aggregator,
+                   dim: int,
+                   axis: int = -2
+                   ) -> Aggregator:
+    """get aggregator by name"""
     if aggregator is None or isinstance(aggregator, Aggregator):
         return aggregator
     if isinstance(aggregator, str):
@@ -395,9 +820,29 @@ def get_aggregator(aggregator: Aggregator, dim: int, axis: int = -2) -> Aggregat
             return None
         if aggregator.lower() in _AGGREGATOR_BY_KEY.keys():
             return _AGGREGATOR_BY_KEY[aggregator.lower()](dim=dim, axis=axis)
-        elif aggregator in _AGGREGATOR_BY_NAME.keys():
+        if aggregator in _AGGREGATOR_BY_NAME.keys():
             return _AGGREGATOR_BY_NAME[aggregator](dim=dim, axis=axis)
         raise ValueError(
             "The Aggregator corresponding to '{}' was not found.".format(aggregator))
     raise TypeError(
         "Unsupported Aggregator type '{}'.".format(type(aggregator)))
+
+
+def get_interaction_aggregator(aggregator: InteractionAggregator,
+                               dim: int,
+                               axis: int = -2
+                               ) -> InteractionAggregator:
+    """get aggregator by name"""
+    if aggregator is None or isinstance(aggregator, InteractionAggregator):
+        return aggregator
+    if isinstance(aggregator, str):
+        if aggregator.lower() == 'none':
+            return None
+        if aggregator.lower() in _INTERACTION_AGGREGATOR_BY_KEY.keys():
+            return _INTERACTION_AGGREGATOR_BY_KEY[aggregator.lower()](dim=dim, axis=axis)
+        if aggregator in _INTERACTION_AGGREGATOR_BY_NAME.keys():
+            return _INTERACTION_AGGREGATOR_BY_NAME[aggregator](dim=dim, axis=axis)
+        raise ValueError(
+            "The Interaction Aggregator corresponding to '{}' was not found.".format(aggregator))
+    raise TypeError(
+        "Unsupported Interaction Aggregator type '{}'.".format(type(aggregator)))

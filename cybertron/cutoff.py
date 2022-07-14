@@ -64,6 +64,12 @@ def _cutoff_register(*aliases):
 
 
 class Cutoff(nn.Cell):
+    r"""Cutoff network.
+
+    Args:
+        cutoff (float): Cutoff distance.
+
+    """
     def __init__(self, cutoff: float):
 
         super().__init__()
@@ -74,20 +80,31 @@ class Cutoff(nn.Cell):
 
         self.inv_cutoff = msnp.reciprocal(self.cutoff)
 
-    def set_cutoff(self, cutoff):
+    def set_cutoff(self, cutoff: float):
+        """set cutoff distance"""
         self.cutoff = cutoff
         self.inv_cutoff = msnp.reciprocal(self.cutoff)
         return self
 
     def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
+        """Compute cutoff.
+
+        Args:
+            distances (Tensor):         Tensor of shape (..., K). Data type is float.
+            neighbour_mask (Tensor):    Tensor of shape (..., K). Data type is bool.
+
+        Returns:
+            cutoff (Tensor):    Tensor of shape (..., K). Data type is float.
+
+        """
         raise NotImplementedError
 
 
 @_cutoff_register('cosine')
 class CosineCutoff(Cutoff):
-    r"""Class of Behler cosine cutoff.
+    r"""Cutoff network.
 
-    .. math::
+    Math:
        f(r) = \begin{cases}
         0.5 \times \left[1 + \cos\left(\frac{\pi r}{r_\text{cutoff}}\right)\right]
           & r < r_\text{cutoff} \\
@@ -95,7 +112,7 @@ class CosineCutoff(Cutoff):
         \end{cases}
 
     Args:
-        cutoff (float, optional): cutoff radius.
+        cutoff (float): Cutoff distance.
 
     """
 
@@ -113,13 +130,13 @@ class CosineCutoff(Cutoff):
         """Compute cutoff.
 
         Args:
-            distances (mindspore.Tensor): values of interatomic distances.
+            distances (Tensor):         Tensor of shape (..., K). Data type is float.
+            neighbour_mask (Tensor):    Tensor of shape (..., K). Data type is bool.
 
         Returns:
-            mindspore.Tensor: values of cutoff function.
+            cutoff (Tensor):    Tensor of shape (..., K). Data type is float.
 
         """
-        # Compute values of cutoff function
 
         cuts = 0.5 * (self.cos(distances * self.pi * self.inv_cutoff) + 1.0)
 
@@ -135,9 +152,9 @@ class CosineCutoff(Cutoff):
 
 @_cutoff_register('mollifier')
 class MollifierCutoff(Cutoff):
-    r"""Class for mollifier cutoff scaled to have a value of 1 at :math:`r=0`.
+    r"""mollifier cutoff network.
 
-    .. math::
+    Math:
        f(r) = \begin{cases}
         \exp\left(1 - \frac{1}{1 - \left(\frac{r}{r_\text{cutoff}}\right)^2}\right)
           & r < r_\text{cutoff} \\
@@ -145,8 +162,7 @@ class MollifierCutoff(Cutoff):
         \end{cases}
 
     Args:
-        cutoff (float, optional): Cutoff radius.
-        eps (float, optional): offset added to distances for numerical stability.
+        cutoff (float): Cutoff distance.
 
     """
 
@@ -161,6 +177,7 @@ class MollifierCutoff(Cutoff):
         self.logical_and = P.LogicalAnd()
 
     def set_eps(self, eps):
+        """set eps"""
         self.eps = eps
         return self
 
@@ -168,10 +185,11 @@ class MollifierCutoff(Cutoff):
         """Compute cutoff.
 
         Args:
-            distances (mindspore.Tensor): values of interatomic distances.
+            distances (Tensor):         Tensor of shape (..., K). Data type is float.
+            neighbour_mask (Tensor):    Tensor of shape (..., K). Data type is bool.
 
         Returns:
-            mindspore.Tensor: values of cutoff function.
+            cutoff (Tensor):    Tensor of shape (..., K). Data type is float.
 
         """
 
@@ -190,16 +208,16 @@ class MollifierCutoff(Cutoff):
 
 @_cutoff_register('hard')
 class HardCutoff(Cutoff):
-    r"""Class of hard cutoff.
+    r"""Hard cutoff network.
 
-    .. math::
+    Math:
        f(r) = \begin{cases}
         1 & r \leqslant r_\text{cutoff} \\
         0 & r > r_\text{cutoff} \\
         \end{cases}
 
     Args:
-        cutoff (float): cutoff radius.
+        cutoff (float): Cutoff distance.
 
     """
 
@@ -215,10 +233,11 @@ class HardCutoff(Cutoff):
         """Compute cutoff.
 
         Args:
-            distances (mindspore.Tensor): values of interatomic distances.
+            distances (Tensor):         Tensor of shape (..., K). Data type is float.
+            neighbour_mask (Tensor):    Tensor of shape (..., K). Data type is bool.
 
         Returns:
-            mindspore.Tensor: values of cutoff function.
+            cutoff (Tensor):    Tensor of shape (..., K). Data type is float.
 
         """
 
@@ -232,11 +251,13 @@ class HardCutoff(Cutoff):
 
 @_cutoff_register('smooth')
 class SmoothCutoff(Cutoff):
-    r"""Class of smooth cutoff by Ebert, D. S. et al:
-        [ref] Ebert, D. S.; Musgrave, F. K.; Peachey, D.; Perlin, K.; Worley, S.
+    r"""Smooth cutoff network.
+
+    Reference:
+        Ebert, D. S.; Musgrave, F. K.; Peachey, D.; Perlin, K.; Worley, S.
         Texturing & Modeling: A Procedural Approach; Morgan Kaufmann: 2003
 
-    ..  math::
+    Math:
         r_min < r < r_max:
         f(r) = 1.0 -  6 * ( r / r_cutoff ) ^ 5
                    + 15 * ( r / r_cutoff ) ^ 4
@@ -253,8 +274,7 @@ class SmoothCutoff(Cutoff):
         r <= r_min: f(r) = 0
 
     Args:
-        d_max (float, optional): the maximum distance (cutoff radius).
-        d_min (float, optional): the minimum distance
+        cutoff (float): Cutoff distance.
 
     """
 
@@ -271,10 +291,11 @@ class SmoothCutoff(Cutoff):
         """Compute cutoff.
 
         Args:
-            distances (mindspore.Tensor or float): values of interatomic distances.
+            distances (Tensor):         Tensor of shape (..., K). Data type is float.
+            neighbour_mask (Tensor):    Tensor of shape (..., K). Data type is bool.
 
         Returns:
-            mindspore.Tensor or float: values of cutoff function.
+            cutoff (Tensor):    Tensor of shape (..., K). Data type is float.
 
         """
         dd = distances * self.inv_cutoff
@@ -297,16 +318,10 @@ class SmoothCutoff(Cutoff):
 
 @_cutoff_register('gaussian')
 class GaussianCutoff(Cutoff):
-    r"""Class of hard cutoff.
-
-    .. math::
-       f(r) = \begin{cases}
-        1 & r \leqslant r_\text{cutoff} \\
-        0 & r > r_\text{cutoff} \\
-        \end{cases}
+    r"""Gaussian-type cutoff network.
 
     Args:
-        cutoff (float): cutoff radius.
+        cutoff (float): Cutoff distance.
 
     """
 
@@ -349,18 +364,20 @@ _CUTOFF_BY_NAME = {cut.__name__: cut for cut in _CUTOFF_BY_KEY.values()}
 
 
 def get_cutoff(cutoff_fn: str, cutoff_dis: float) -> Cutoff:
+    """get cutoff network by name"""
     if cutoff_fn is None:
         return None
     if isinstance(cutoff_fn, Cutoff):
         return cutoff_fn
 
-    elif isinstance(cutoff_fn, str):
+    if isinstance(cutoff_fn, str):
         if cutoff_fn.lower() == 'none':
             return None
         if cutoff_fn.lower() in _CUTOFF_BY_KEY.keys():
             return _CUTOFF_BY_KEY[cutoff_fn.lower()](cutoff=cutoff_dis)
-        elif cutoff_fn in _CUTOFF_BY_NAME.keys():
+        if cutoff_fn in _CUTOFF_BY_NAME.keys():
             return _CUTOFF_BY_NAME[cutoff_fn](cutoff=cutoff_dis)
         raise ValueError(
             "The Cutoff corresponding to '{}' was not found.".format(cutoff_fn))
+
     raise TypeError("Unsupported Cutoff type '{}'.".format(type(cutoff_fn)))

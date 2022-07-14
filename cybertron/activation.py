@@ -99,6 +99,7 @@ _ACTIVATIONS_BY_KEY = {
     'swish': Swish,
 }
 
+#pylint: disable=protected-access
 _ACTIVATIONS_BY_KEY.update(activation._activation)
 
 _ACTIVATIONS_BY_NAME = {a.__name__: a for a in _ACTIVATIONS_BY_KEY.values()}

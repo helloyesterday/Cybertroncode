@@ -34,7 +34,7 @@ from mindspore.nn import Cell
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.common.parameter import Parameter
-from mindspore.common.initializer import initializer, Constant
+from mindspore.common.initializer import Initializer, initializer, Constant
 
 from .block import Dense, Residual
 from .cutoff import SmoothCutoff
@@ -53,30 +53,51 @@ __all__ = [
 
 
 class GraphNorm(Cell):
+    r"""Graph normalization
+
+    Args:
+        dim_feature (int):          Feature dimension
+
+        axis (int):                 Axis to normalize. Default: -2
+
+        alpha_init (Initializer):   Initializer for alpha. Default: 'one'
+
+        beta_init (Initializer):    Initializer for beta. Default: 'zero'
+
+        gamma_init (Initializer):   Initializer for alpha. Default: 'one'
+
+    """
 
     def __init__(self,
-                 dim_feature,
-                 node_axis=-2,
-                 alpha_init='one',
-                 beta_init='zero',
-                 gamma_init='one'
+                 dim_feature: int,
+                 axis: int = -2,
+                 alpha_init: Initializer = 'one',
+                 beta_init: Initializer = 'zero',
+                 gamma_init: Initializer = 'one',
                  ):
 
         super().__init__()
-        self.alpha = Parameter(initializer(
-            alpha_init, dim_feature), name="alpha")
-        self.beta = Parameter(initializer(
-            beta_init, dim_feature), name="beta")
-        self.gamma = Parameter(initializer(
-            gamma_init, dim_feature), name="gamma")
+        self.alpha = Parameter(initializer(alpha_init, dim_feature), name="alpha")
+        self.beta = Parameter(initializer(beta_init, dim_feature), name="beta")
+        self.gamma = Parameter(initializer(gamma_init, dim_feature), name="gamma")
 
-        self.axis = node_axis
+        self.axis = axis
 
         self.reduce_mean = P.ReduceMean(keep_dims=True)
 
         self.sqrt = P.Sqrt()
 
-    def construct(self, nodes):
+    def construct(self, nodes: Tensor):
+        """Compute graph normalization.
+
+        Args:
+            nodes (Tensor):     Tensor with shape (B, A, N, F). Data type is float.
+
+        Returns:
+            output (Tensor):    Tensor with shape (B, A, N, F). Data type is float.
+
+        """
+
         mu = self.reduce_mean(nodes, self.axis)
 
         nodes2 = nodes * nodes
@@ -92,8 +113,20 @@ class GraphNorm(Cell):
 
 
 class Aggregate(Cell):
+    r"""A network to aggregate Tensor
 
-    def __init__(self, axis, mean=False):
+    Args:
+
+        axis (int):     Axis to aggregate.
+
+        mean (bool):    Whether to average the Tensor. Default: False
+
+    """
+    def __init__(self,
+                 axis: int,
+                 mean: bool = False
+                 ):
+
         super().__init__()
         self.average = mean
         self.axis = axis
@@ -101,6 +134,16 @@ class Aggregate(Cell):
         self.maximum = P.Maximum()
 
     def construct(self, inputs: Tensor, mask: Tensor = None):
+        """To aggregate the representation of each nodes
+
+        Args:
+            inputs (Tensor):    Tensor with shape (B, A, N, F). Data type is float.
+            mask (Tensor):      Tensor with shape (B, A, N). Data type is bool.
+
+        Returns:
+            output (Tensor):    Tensor with shape (B, A, F). Data type is float.
+
+        """
         # mask input
         if mask is not None:
             inputs = inputs * F.expand_dims(mask, -1)
@@ -121,10 +164,20 @@ class Aggregate(Cell):
 
 
 class SmoothReciprocal(Cell):
+    r"""A smooth reciprocal function
+
+    Args:
+
+        dmax (float):           Maximum distance
+
+        cutoff_network (Cell):  Cutoff network. Default: None
+
+    """
     def __init__(self,
-                 dmax,
-                 cutoff_network=None
+                 dmax: float,
+                 cutoff_network: Cell = None,
                  ):
+
         super().__init__()
 
         if cutoff_network is None:
@@ -134,7 +187,17 @@ class SmoothReciprocal(Cell):
 
         self.sqrt = P.Sqrt()
 
-    def construct(self, rij, mask):
+    def construct(self, rij: Tensor, mask: Tensor):
+        """calculate smooth reciprocal of Tensor
+
+        Args:
+            rij (Tensor):   Tensor with shape (..., X, ...). Data type is float.
+            mask (Tensor):  Tensor with shape (..., X, ...). Data type is bool.
+
+        Returns:
+            output (Tensor):    Tensor with shape (..., X, ...). Data type is float.
+
+        """
         phi2rij, _ = self.cutoff_network(rij*2, mask)
 
         r_near = phi2rij * msnp.reciprocal(self.sqrt(rij * rij + 1.0))
@@ -148,19 +211,56 @@ class SmoothReciprocal(Cell):
 
 
 class SoftmaxWithMask(Cell):
-    def __init__(self, axis=-1):
+    r"""Softmax function with mask
+
+    Args:
+
+        axis (int): Axis of Tensor to do softmax. Default: -1
+
+    """
+    def __init__(self, axis: int = -1):
         super().__init__()
         self.softmax = P.Softmax(axis)
 
         self.large_neg = -5e4
 
-    def construct(self, x, mask):
+    def construct(self, x: Tensor, mask: Tensor):
+        """Compute softmax of Tensor with mask
+
+        Args:
+            x (Tensor):     Tensor with shape (..., X, ...). Data type is float.
+            mask (Tensor):  Tensor with shape (..., X, ...). Data type is bool.
+
+        Returns:
+            output (Tensor):    Tensor with shape (..., X, ...). Data type is float.
+
+        """
+
         xm = msnp.where(mask, x, self.large_neg)
         return self.softmax(xm)
 
 
 class PositionalEmbedding(Cell):
-    def __init__(self, dim, use_distances=True, use_bonds=False, use_public_layer_norm=True):
+    r"""Positional embedding to generate query, key and value for self-attention
+
+    Args:
+
+        dim (int):                      Last dimension of Tensor.
+
+        use_distances (bool):           Whether to use distance information. Default: True
+
+        use_bonds (bool):               Whether to use bond information. Default: False
+
+        use_public_layer_norm (bool):   Whether to share layer normalization network. Default: True
+
+    """
+    def __init__(self,
+                 dim: int,
+                 use_distances: bool = True,
+                 use_bonds: bool = False,
+                 use_public_layer_norm: bool = True
+                 ):
+
         super().__init__()
 
         if not (use_bonds or use_distances):
@@ -185,17 +285,27 @@ class PositionalEmbedding(Cell):
         self.mul = P.Mul()
         self.concat = P.Concat(-2)
 
-    def construct(self, xi, xij, g_ii=1, g_ij=1, b_ii=0, b_ij=0, t=0):
-        r"""Get query, key and query from atom types and positions
+    def construct(self,
+                  xi: Tensor,
+                  xij: Tensor,
+                  g_ii: Tensor = 1,
+                  g_ij: Tensor = 1,
+                  b_ii: Tensor = 0,
+                  b_ij: Tensor = 0,
+                  t: float = 0,
+                  ):
+        """Get query, key and query from atom types and positions
 
         Args:
-            xi   (Mindspore.Tensor [B, A, F]):
-            g_ii (Mindspore.Tensor [B, A, F]):
-            xij  (Mindspore.Tensor [B, A, N, F]):
-            g_ij (Mindspore.Tensor [B, A, N, F]):
-            t    (Mindspore.Tensor [F]):
+            xi (Tensor):    Tensor with shape (B, A, F). Data type is float.
+            xij (Tensor):   Tensor with shape (B, A, N, F]). Data type is float.
+            g_ii (Tensor):  Tensor with shape (B, A, 1, F). Data type is float.
+            g_ij (Tensor):  Tensor with shape (B, A, N, F). Data type is float.
+            b_ii (Tensor):  Tensor with shape (B, A, 1, F). Data type is float.
+            b_ij (Tensor):  Tensor with shape (B, A, N, F). Data type is float.
+            t (Tensor):     Tensor with shape (F). Data type is float.
 
-        Marks:
+        Symbols:
             B:  Batch size
             A:  Number of atoms
             N:  Number of neighbour atoms
@@ -203,9 +313,9 @@ class PositionalEmbedding(Cell):
             F:  Dimensions of feature space
 
         Returns:
-            query  (Mindspore.Tensor [B, A, 1, F]):
-            key    (Mindspore.Tensor [B, A, N', F]):
-            value  (Mindspore.Tensor [B, A, N', F]):
+            query (Tensor): Tensor with shape (B, A, 1, F). Data type is float.
+            key (Tensor):   Tensor with shape (B, A, N', F). Data type is float.
+            value (Tensor): Tensor with shape (B, A, N', F). Data type is float.
 
         """
 
@@ -258,22 +368,34 @@ class PositionalEmbedding(Cell):
 
 
 class MultiheadAttention(Cell):
-    r"""Compute multi-head attention.
+    r"""Multi-head attention.
 
     Args:
-        dim_feature (int): Diension of feature space (F)
-        n_heads     (int): Number of heads (h)
-        dim_tensor  (int): Dimension of input tensor (D)
 
-    Signs:
+        dim_feature (int):  Diension of feature space (F).
+
+        n_heads (int):      Number of heads (h). Default: 8
+
+        dim_tensor (int):   Dimension of input tensor (D). Default: 4
+
+    Symbols:
+
         X:  Dimension to be aggregated
+
         F:  Dimension of Feature space
+
         h:  Number of heads for multi-head attention
+
         f:  Dimensions per head (F = f * h)
 
     """
 
-    def __init__(self, dim_feature, n_heads=8, dim_tensor=4):
+    def __init__(self,
+                 dim_feature: int,
+                 n_heads: int = 8,
+                 dim_tensor: int = 4
+                 ):
+
         super().__init__()
 
         # D
@@ -318,17 +440,18 @@ class MultiheadAttention(Cell):
                   mask: Tensor = None,
                   cutoff: Tensor = None
                   ):
-        r"""Compute multi-head attention.
+        """Compute multi-head attention.
 
         Args:
-            query  (Mindspore.Tensor [..., 1, F] or [..., X, F]):
-            key    (Mindspore.Tensor [..., X, F]):
-            value  (Mindspore.Tensor [..., X, F]):
-            mask   (Mindspore.Tensor [..., X]):
-            cutoff (Mindspore.Tensor [..., X]):
+
+            query (Tensor):     Tensor with shape (..., X, F). Data type is float.
+            key (Tensor):       Tensor with shape (..., X, F). Data type is float.
+            value (Tensor):     Tensor with shape (..., X, F). Data type is float.
+            mask (Tensor):      Tensor with shape (..., X). Data type is bool.
+            cutoff (Tensor):    Tensor with shape (..., X). Data type is float.
 
         Returns:
-            Mindspore.Tensor [..., F]: multi-head attention output.
+            output (Tensor):    Tensor with shape (..., F). Data type is float.
 
         """
         #pylint: disable=invalid-name
@@ -420,19 +543,62 @@ class MultiheadAttention(Cell):
 
 
 class FeedForward(Cell):
-    def __init__(self, dim, activation, n_hidden=1):
+    r"""Feed forward network for transformer.
+
+    Args:
+
+        dim (int):          Last dimension of Tensor
+
+        activation (Cell):  Activation function.
+
+        n_hidden (int):     Number of hidden layers. Default: 1
+
+    """
+    def __init__(self,
+                 dim: int,
+                 activation: Cell,
+                 n_hidden: int = 1
+                 ):
+
         super().__init__()
 
         self.norm = nn.LayerNorm((dim,), -1, -1)
         self.residual = Residual(dim, activation=activation, n_hidden=n_hidden)
 
-    def construct(self, x):
+    def construct(self, x: Tensor):
+        """Compute feed forward network.
+
+        Args:
+
+            x (Tensor): Tensor with shape (B, A, F). Data type is float.
+
+        Returns:
+            y (Tensor): Tensor with shape (B, A, F). Data type is float.
+
+        """
+
         nx = self.norm(x)
         return self.residual(nx)
 
 
 class Pondering(Cell):
-    def __init__(self, n_in, n_hidden=0, bias_const=1.):
+    r"""Pondering network for adapetive compuation time.
+
+    Args:
+
+        n_in (int):         Dimension of input Tensor
+
+        n_hidden (int):     Number of hidden layers. Default: 0
+
+        bias_const (float): Initial value for bias. Default: 1
+
+    """
+    def __init__(self,
+                 n_in: int,
+                 n_hidden: int = 0,
+                 bias_const: float = 1.
+                 ):
+
         super().__init__()
 
         if n_hidden == 0:
@@ -443,31 +609,62 @@ class Pondering(Cell):
             for i in range(n_hidden):
                 nets.append(
                     nn.Dense(n_in, n_in, weight_init='xavier_uniform', activation='relu'))
-            nets.append(nn.Dense(n_in, 1, bias_init=Constant(
-                bias_const), activation='sigmoid'))
+            nets.append(nn.Dense(n_in, 1, bias_init=Constant(bias_const), activation='sigmoid'))
             self.dense = nn.SequentialCell(nets)
         else:
             raise ValueError("n_hidden cannot be negative!")
 
         self.squeeze = P.Squeeze(-1)
 
-    def construct(self, x):
+    def construct(self, x: Tensor):
+        """Calculate pondering network.
+
+        Args:
+
+            x (Tensor): Tensor with shape (B, A, X). Data type is float.
+
+        Returns:
+            y (Tensor): Tensor with shape (B, A, 1). Data type is float.
+
+        """
         y = self.dense(x)
         return self.squeeze(y)
 
-# Modified from:
-# https://github.com/andreamad8/Universal-Transformer-Pytorch/blob/master/models/UTransformer.py
-
-
 class ACTWeight(Cell):
-    def __init__(self, shape, threshold=0.9):
+    r"""Adapetive compuation time modified from:
+        https://github.com/andreamad8/Universal-Transformer-Pytorch/blob/master/models/UTransformer.py
+
+    Args:
+
+        n_in (int):         Dimension of input Tensor
+
+        n_hidden (int):     Number of hidden layers. Default: 0
+
+        bias_const (float): Initial value for bias. Default: 1
+
+    """
+    def __init__(self, threshold: float = 0.9):
+
         super().__init__()
         self.threshold = threshold
 
         self.zeros_like = P.ZerosLike()
         self.ones_like = P.OnesLike()
 
-    def construct(self, prob, halting_prob):
+    def construct(self, prob: Tensor, halting_prob: Tensor):
+        """Calculate Adapetive compuation time.
+
+        Args:
+
+            prob (Tensor):          Tensor with shape (B, A, 1). Data type is float.
+            halting_prob (Tensor):  Tensor with shape (B, A, 1). Data type is float.
+
+        Returns:
+            w (Tensor):     Tensor with shape (B, A, 1). Data type is float.
+            dp (Tensor):    Tensor with shape (B, A, 1). Data type is float.
+            dn (Tensor):    Tensor with shape (B, A, 1). Data type is float.
+
+        """
 
         # Mask for inputs which have not halted last cy
         running = F.cast(halting_prob < 1.0, ms.float32)

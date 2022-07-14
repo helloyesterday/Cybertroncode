@@ -275,9 +275,9 @@ class MolecularModel(Cell):
                 raise ValueError(
                     'The size of "'+name+'" must be 1 when "coupled_interaction" is "True"')
         else:
-            if size != self.n_interaction and size != 1:
+            if size  not in (self.n_interaction, 1):
                 raise ValueError('"The size of "'+name+'" ('+str(size) +
-                                    ') must be equal to "n_interaction" ('+str(self.n_interaction)+')!')
+                                 ') must be equal to "n_interaction" ('+str(self.n_interaction)+')!')
             tensor = msnp.broadcast_to(tensor, (self.n_interaction,))
         return tensor
 

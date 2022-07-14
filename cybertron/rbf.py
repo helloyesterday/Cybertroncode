@@ -26,7 +26,6 @@
 Radical basis functions (RBF)
 """
 
-import numpy as np
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore.nn import Cell
@@ -66,6 +65,28 @@ def _rbf_register(*aliases):
 
 
 class RadicalBasisFunctions(Cell):
+    r"""Network of radical basis functions.
+
+    Args:
+        r_max (Length):         Maximum distance. Defatul: 1 nm
+
+        r_min (Length):         Minimum distance. Default: 0 nm
+
+        sigma (float):          Simga. Default: 0
+
+        delta (float):          Space interval. Default: None
+
+        num_basis (int):        Number of basis functions. Defatul: None
+
+        rescale (bool):         Whether to rescale the output of RBF from -1 to 1. Default: False
+
+        clip_distance (bool):   Whether to clip the value of distance. Default: False
+
+        length_unit (str):      Unit for distance. Default: = 'nm',
+
+        hyper_param (dict):     Hyperparameter. Default: None
+
+    """
     def __init__(self,
                  r_max: Length = 1,
                  r_min: Length = 0,
@@ -119,11 +140,13 @@ class RadicalBasisFunctions(Cell):
         }
 
     def set_hyper_param(self):
+        """set hyperparameter"""
         set_hyper_parameter(self.hyper_param, 'name', self.cls_name)
         set_class_into_hyper_param(self.hyper_param, self.hyper_types, self)
         return self
 
     def check_basis(self, num_basis, delta):
+        """check basis functions"""
         if num_basis is None and delta is None:
             raise TypeError('"num_basis" and "delta" cannot both be "None".')
         if num_basis is not None and num_basis <= 0:
@@ -133,12 +156,14 @@ class RadicalBasisFunctions(Cell):
         return self
 
     def check_range(self):
+        """check range of distance"""
         if self.r_max <= self.r_min:
             raise ValueError('The argument "r_max" must be larger ' +
                              'than the argument "r_min" in RBF!')
         return self
 
     def set_rmax(self, r_max):
+        """set minimum distance"""
         self.r_max = self.get_length(r_max)
         self.check_range()
         self.r_range = self.r_max - self.r_min
@@ -146,6 +171,7 @@ class RadicalBasisFunctions(Cell):
         return self
 
     def set_rmin(self, r_min):
+        """set minimum distance"""
         self.r_min = self.get_length(r_min)
         self.check_range()
         self.r_range = self.r_max - self.r_min
@@ -153,6 +179,7 @@ class RadicalBasisFunctions(Cell):
         return self
 
     def set_range(self, r_min, r_max):
+        """set range of distance"""
         self.r_max = self.get_length(r_max)
         self.r_min = self.get_length(r_min)
         self.check_range()
@@ -162,16 +189,19 @@ class RadicalBasisFunctions(Cell):
         return self
 
     def set_sigma(self, sigma):
+        """set sigma"""
         self.sigma = sigma
         set_hyper_parameter(self.hyper_param, 'sigma', self.sigma)
         return self
 
     def set_basis(self, num_basis=None, delta=None):
+        """set number of basis function"""
         if num_basis is None and delta is None:
             raise TypeError('"num_basis" and "delta" cannot both be "None".')
         return self
 
     def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
+        """print the infomation of RBF"""
         ret = char * num_retraction
         gap = char * num_gap
         print(ret+gap+' Minimum distance: ' +
@@ -188,14 +218,16 @@ class RadicalBasisFunctions(Cell):
         return self
 
     def get_length(self, length, unit=None):
+        """get length value"""
         if isinstance(length, Length):
             if unit is None:
                 unit = self.units
             return length(unit)
-        else:
-            return Tensor(length, ms.float32)
+
+        return Tensor(length, ms.float32)
 
     def change_unit(self, unit):
+        """change unit"""
         scale = self.units.convert_length_to(unit)
         self.r_min *= scale
         self.r_max *= scale
@@ -209,9 +241,26 @@ class RadicalBasisFunctions(Cell):
 
 @_rbf_register('gaussian')
 class GaussianBasis(RadicalBasisFunctions):
-    r"""Smear layer using a set of Gaussian functions.
+    r"""Gaussian type RBF.
 
     Args:
+        r_max (Length):         Maximum distance. Defatul: 1 nm
+
+        r_min (Length):         Minimum distance. Default: 0 nm
+
+        sigma (float):          Simga. Default: 0.03 nm
+
+        delta (float):          Space interval. Default: 0.016 nm
+
+        num_basis (int):        Number of basis functions. Defatul: None
+
+        rescale (bool):         Whether to rescale the output of RBF from -1 to 1. Default: False
+
+        clip_distance (bool):   Whether to clip the value of distance. Default: False
+
+        length_unit (str):      Unit for distance. Default: = 'nm',
+
+        hyper_param (dict):     Hyperparameter. Default: None
 
     """
 
@@ -337,6 +386,30 @@ class GaussianBasis(RadicalBasisFunctions):
 
 @_rbf_register('log_gaussian')
 class LogGaussianBasis(RadicalBasisFunctions):
+    r"""Log Gaussian type RBF.
+
+    Args:
+        r_max (Length):         Maximum distance. Defatul: 1 nm
+
+        r_min (Length):         Minimum distance. Default: 0.04 nm
+
+        sigma (float):          Simga. Default: 0.3
+
+        delta (float):          Space interval. Default: 0.0512
+
+        num_basis (int):        Number of basis functions. Defatul: None
+
+        rescale (bool):         Whether to rescale the output of RBF from -1 to 1. Default: True
+
+        clip_distance (bool):   Whether to clip the value of distance. Default: False
+
+        length_unit (str):      Unit for distance. Default: = 'nm',
+
+        hyper_param (dict):     Hyperparameter. Default: None
+
+        r_ref (Length):         Reference distance. Default: 1 nm
+
+    """
     def __init__(self,
                  r_max: Length = Length(1, 'nm'),
                  r_min: Length = Length(0.04, 'nm'),
@@ -437,7 +510,7 @@ class LogGaussianBasis(RadicalBasisFunctions):
         self.r_ref = self.get_length(r_ref)
         self.inv_ref = msnp.reciprocal(self.r_ref)
         set_hyper_parameter(self.hyper_param, 'r_ref', self.r_ref)
-        return
+        return self
 
     def set_hyper_param(self):
         super().set_hyper_param()
@@ -506,6 +579,7 @@ def get_rbf(rbf: str = None,
             r_max=Length(1, 'nm'),
             length_unit='nm'
             ) -> RadicalBasisFunctions:
+    """get RBF by name"""
 
     if isinstance(rbf, RadicalBasisFunctions):
         return rbf
@@ -524,10 +598,10 @@ def get_rbf(rbf: str = None,
             return None
         if rbf.lower() in _RBF_BY_KEY.keys():
             return _RBF_BY_KEY[rbf.lower()](r_max=r_max, length_unit=length_unit, hyper_param=hyper_param)
-        elif rbf in _RBF_BY_NAME.keys():
+        if rbf in _RBF_BY_NAME.keys():
             return _RBF_BY_NAME[rbf](r_max=r_max, length_unit=length_unit, hyper_param=hyper_param)
-        else:
-            raise ValueError(
-                "The RBF corresponding to '{}' was not found.".format(rbf))
-    else:
-        raise TypeError("Unsupported RBF type '{}'.".format(type(rbf)))
+
+        raise ValueError(
+            "The RBF corresponding to '{}' was not found.".format(rbf))
+
+    raise TypeError("Unsupported RBF type '{}'.".format(type(rbf)))

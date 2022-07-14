@@ -26,7 +26,6 @@
 Interaction layers
 """
 
-import numpy as np
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import Tensor
@@ -58,6 +57,21 @@ __all__ = [
 
 
 class Interaction(Cell):
+    r"""Interaction layer network
+
+    Args:
+
+        dim_feature (int):          Feature dimension.
+
+        activation (Cell):          Activation function. Default: None
+
+        use_distance (bool):        Whether to use distance between atoms. Default: True
+
+        use_bond (bool):            Whether to use bond information. Default: False
+
+
+    """
+
     def __init__(self,
                  dim_feature: int,
                  activation: Cell = None,
@@ -76,6 +90,7 @@ class Interaction(Cell):
         self.gather_neighbours = func.gather_vectors
 
     def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
+        """print information of interaction layer"""
         ret = char * num_retraction
         gap = char * num_gap
         print(ret+gap+' Feature dimension: ' + str(self.dim_feature))
@@ -83,7 +98,8 @@ class Interaction(Cell):
         print('-'*80)
         return self
 
-    def _output_block(self, x):
+    def _output_block(self, x: Tensor) -> Tensor:
+        """output block network"""
         return x
 
     def construct(self,
@@ -100,13 +116,63 @@ class Interaction(Cell):
                   atom_mask: Tensor = None
                   ):
 
+        """Compute interaction layer.
+
+        Args:
+            x (Tensor):             Tensor of shape (B, A, F). Data type is float
+                                    Representation of each atom.
+            f_ij (Tensor):          Tensor of shape (B, A, N, F). Data type is float
+                                    Edge vector of distance.
+            b_ij (Tensor):          Tensor of shape (B, A, N, F). Data type is float
+                                    Edge vector of bond connection.
+            c_ij (Tensor):          Tensor of shape (B, A, N). Data type is float
+                                    Cutoff for distance.
+            neighbours (Tensor):    Tensor of shape (B, A, N). Data type is int
+                                    Neighbour index.
+            mask (Tensor):          Tensor of shape (B, A, N). Data type is bool
+                                    Mask of neighbour index.
+            e (Tensor):             Tensor of shape (B, A, F). Data type is float
+                                    Embdding vector for each atom
+            f_ii (Tensor):          Tensor of shape (B, A, 1, F). Data type is float
+                                    Edge vector of distance for atom itself.
+            b_ii (Tensor):          Tensor of shape (B, A, 1, F). Data type is float
+                                    Edge vector of bond connection for atom itself.
+            c_ii (Tensor):          Tensor of shape (B, A). Data type is float
+                                    Cutoff for atom itself.
+            atom_mask (Tensor):     Tensor of shape (B, A). Data type is bool
+                                    Mask for each atom
+
+        Returns:
+            y: (Tensor)             Tensor of shape (B, A, F). Data type is float
+
+        Symbols:
+
+            B:  Batch size.
+            A:  Number of atoms in system.
+            N:  Number of neighbour atoms.
+            D:  Dimension of position coordinates, usually is 3.
+            F:  Feature dimension of representation.
+
+        """
+
+        #pylint: disable=unused-argument
         return x
 
 
 class SchNetInteraction(Interaction):
-    r"""interaction for SchNet.
+    r"""Interaction layer of SchNet.
 
     Args:
+
+        dim_feature (int):          Feature dimension.
+
+        dim_filter (int):           Dimension of filter network.
+
+        dis_filter (Cell):          Filter network for distance
+
+        activation (Cell):          Activation function. Default: 'ssp'
+
+        normalize_filter (bool):    Whether to nomalize filter network. Default: False
 
     """
 
@@ -114,7 +180,7 @@ class SchNetInteraction(Interaction):
                  dim_feature: int,
                  dim_filter: int,
                  dis_filter: Cell,
-                 activation: Cell = None,
+                 activation: Cell = 'ssp',
                  normalize_filter: bool = False,
                  ):
 
@@ -129,8 +195,8 @@ class SchNetInteraction(Interaction):
 
         self.name = 'SchNet Interaction Layer'
         self.atomwise_bc = Dense(self.dim_feature, self.dim_filter)
-        self.atomwise_ac = MLP(self.dim_filter, self.dim_feature, [
-                               self.dim_feature, ], activation=self.activation, use_last_activation=False)
+        self.atomwise_ac = MLP(self.dim_filter, self.dim_feature, [self.dim_feature],
+                               activation=self.activation, use_last_activation=False)
 
         self.dis_filter = dis_filter
         self.agg = Aggregate(axis=-2, mean=normalize_filter)
@@ -158,6 +224,8 @@ class SchNetInteraction(Interaction):
                   atom_mask: Tensor = None
                   ):
 
+        #pylint: disable=invalid-name
+
         ax = self.atomwise_bc(x)
         x_ij = self.gather_neighbours(ax, neighbours)
 
@@ -175,7 +243,21 @@ class SchNetInteraction(Interaction):
 
 
 class PhysNetModule(Interaction):
+    r"""PhysNet Module (Interaction layer)
 
+    Args:
+
+        dim_feature (int):          Feature dimension.
+
+        dis_filter (Cell):          Filter network for distance
+
+        activation (Cell):          Activation function. Default: 'swish'
+
+        n_inter_residual (int):     Number of inter residual blocks. Default: 3
+
+        n_outer_residual (int):     Number of outer residual blocks. Default: 2
+
+    """
     def __init__(self,
                  dim_feature: int,
                  dis_filter: Cell = None,
@@ -200,17 +282,16 @@ class PhysNetModule(Interaction):
         self.dis_filter = dis_filter
 
         self.gating_vector = Parameter(initializer(
-            Normal(1.0), [self.dim_feature, ]), name="gating_vector")
+            Normal(1.0), [self.dim_feature]), name="gating_vector")
 
         self.n_inter_residual = func.get_integer(n_inter_residual)
         self.n_outer_residual = func.get_integer(n_outer_residual)
 
-        self.inter_residual = SeqPreActResidual(
-            self.dim_feature, activation=self.activation, n_res=self.n_inter_residual)
-        self.inter_dense = PreActDense(
-            self.dim_feature, self.dim_feature, activation=self.activation)
-        self.outer_residual = SeqPreActResidual(
-            self.dim_feature, activation=self.activation, n_res=self.n_outer_residual)
+        self.inter_residual = SeqPreActResidual(self.dim_feature, activation=self.activation,
+                                                n_res=self.n_inter_residual)
+        self.inter_dense = PreActDense(self.dim_feature, self.dim_feature, activation=self.activation)
+        self.outer_residual = SeqPreActResidual(self.dim_feature, activation=self.activation,
+                                                n_res=self.n_outer_residual)
 
         self.reducesum = P.ReduceSum()
 
@@ -227,11 +308,14 @@ class PhysNetModule(Interaction):
         return self
 
     def _attention_mask(self, f_ij, c_ij) -> Tensor:
+        """attention mask"""
         x = f_ij * F.expand_dims(c_ij, -1)
         return self.dis_filter(x)
 
     def _interaction_block(self, x, f_ij, c_ij, neighbours, mask) -> Tensor:
+        """interaction block"""
 
+        #pylint: disable=invalid-name
         xi = self.activation(x)
         xij = self.gather_neighbours(xi, neighbours)
 
@@ -275,6 +359,25 @@ class NeuralInteractionUnit(Interaction):
 
     Args:
 
+        dim_feature (int):          Feature dimension.
+
+        n_heads (int):              Number of head for multi-head attention. Default: 8
+
+        max_cycles (int):           Maximum cycles for adaptive compuation time (ACT). Default: 10
+
+        activation (Cell):          Activation function. Default: 'swish'
+
+        dis_filter (Cell):          Filter network for distance
+
+        bond_filter (Cell):         Filter network for bond connection
+
+        fixed_cycles (bool):        Whether to fixed number of cyles to do ACT. Default: False
+
+        use_feed_forward (bool):    Whether to use feed forward network. Default: False
+
+        act_threshold (float):      Threshold value for ACT. Default: 0.9
+
+
     """
 
     def __init__(self,
@@ -292,8 +395,8 @@ class NeuralInteractionUnit(Interaction):
         super().__init__(
             dim_feature=dim_feature,
             activation=activation,
-            use_distances=(False if dis_filter is None else True),
-            use_bonds=(False if bond_filter is None else True),
+            use_distances=(dis_filter is not None),
+            use_bonds=(bond_filter is not None),
         )
         if dim_feature % n_heads != 0:
             raise ValueError('The term "dim_feature" cannot be divisible ' +
@@ -361,16 +464,18 @@ class NeuralInteractionUnit(Interaction):
         print('-'*80)
         return self
 
-    def _encoder(self, 
-                 x: Tensor, 
-                 neighbours: Tensor, 
-                 g_ii: Tensor = 1, 
-                 g_ij: Tensor = 1, 
-                 b_ii: Tensor = 0, 
-                 b_ij: Tensor = 0, 
-                 t: Tensor = 0, 
-                 cutoff: Tensor = None, 
+    def _encoder(self,
+                 x: Tensor,
+                 neighbours: Tensor,
+                 g_ii: Tensor = 1,
+                 g_ij: Tensor = 1,
+                 b_ii: Tensor = 0,
+                 b_ij: Tensor = 0,
+                 t: Tensor = 0,
+                 cutoff: Tensor = None,
                  mask: Tensor = None) -> Tensor:
+
+        """encoder for transformer"""
 
         xij = self.gather_neighbours(x, neighbours)
         query, key, value = self.positional_embedding(
@@ -379,10 +484,12 @@ class NeuralInteractionUnit(Interaction):
             query, key, value, mask=mask, cutoff=cutoff)
         v = v.squeeze(-2)
 
+        y = x + v
+
         if self.use_feed_forward:
-            return self.feed_forward(x + v)
-        else:
-            return x + v
+            y = self.feed_forward(y)
+
+        return y
 
     def _get_time_signal(self, length, channels, min_timescale=1.0, max_timescale=1.0e4) -> Tensor:
         """

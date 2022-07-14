@@ -26,6 +26,7 @@
 Filter networks
 """
 
+from mindspore import Tensor
 from mindspore.nn import Cell
 
 from sponge.functions import get_integer
@@ -33,6 +34,19 @@ from sponge.functions import get_integer
 from .block import MLP, Dense, Residual
 
 class DenseFilter(Cell):
+    r"""Dense type filter network.
+
+    Args:
+
+        num_basis (int):    Number of basis functions.
+
+        dim_filter (int):   Dimension of output filter Tensor.
+
+        activation (Cell):  Activation function. Default: None
+
+        n_hidden (int):     Number of hidden layers. Default: 1
+
+    """
     def __init__(self,
                  num_basis: int,
                  dim_filter: int,
@@ -53,11 +67,24 @@ class DenseFilter(Cell):
             self.dense_layers = Dense(
                 self.num_basis, self.dim_filter, activation=activation)
 
-    def construct(self, x):
+    def construct(self, x: Tensor):
         return self.dense_layers(x)
 
 
 class ResFilter(Cell):
+    r"""Residual type filter network.
+
+    Args:
+
+        num_basis (int):    Number of basis functions.
+
+        dim_filter (int):   Dimension of output filter Tensor.
+
+        activation (Cell):  Activation function. Default: None
+
+        n_hidden (int):     Number of hidden layers. Default: 1
+
+    """
     def __init__(self,
                  num_basis: int,
                  dim_filter: int,
@@ -74,6 +101,6 @@ class ResFilter(Cell):
         self.residual = Residual(
             self.dim_filter, activation=activation, n_hidden=n_hidden)
 
-    def construct(self, x):
+    def construct(self, x: Tensor):
         lx = self.linear(x)
         return self.residual(lx)
