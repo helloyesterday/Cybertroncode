@@ -1,9 +1,11 @@
-# Copyright 2020-2022 Shenzhen Bay Laboratory & Peking University
+# Copyright 2020-2022 The AIMM team at Shenzhen Bay Laboratory & Peking University
+#
+# People: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yaqiang Zhou, Huiyang Zhang,
+#         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
+#
+# Contact: yangyi@szbl.ac.cn
 #
 # Tutorials for Cybertron
-#
-# Authors: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yi Qin Gao
-# Contact: yangyi@szbl.ac.cn
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,11 +31,12 @@ if __name__ == '__main__':
     from mindspore import context
     from mindspore import dataset as ds
     from mindspore.train import Model
+    from mindspore.train import load_checkpoint
 
     import sys
     sys.path.append('..')
 
-    from sponge.checkpoint import load_hyperparam, load_checkpoint
+    from sponge.data import load_hyperparam
     from cybertron.cybertron import Cybertron
     from cybertron.train import MAE
     from cybertron.train import WithLabelEvalCell
