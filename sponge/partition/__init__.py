@@ -14,4 +14,4 @@
 # ============================================================================
 """simulation md"""
 
-from .potential import *
+from .fullconnect import *

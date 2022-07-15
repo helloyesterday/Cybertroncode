@@ -1,10 +1,10 @@
-# ============================================================================
-# Copyright 2021 The AIMM team at Shenzhen Bay Laboratory & Peking University
+# Copyright 2021-2022 The AIMM Group at Shenzhen Bay Laboratory & Peking University
 #
-# People: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yaqiang Zhou, Huiyang Zhang,
-#         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
+# Developer: Yi Isaac Yang, Diqing Chen, Jun Zhang, Yijie Xia, Yupeng Huang
 #
-# This code is a part of Cybertron-Code package.
+# Contact: yangyi@szbl.ac.cn
+#
+# This code is a part of MindSponge.
 #
 # The Cybertron-Code is open-source software based on the AI-framework:
 # MindSpore (https://www.mindspore.cn/)
@@ -21,7 +21,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""utils"""
+"""
+Units
+"""
+
 import math
 
 # origin constant
@@ -31,6 +34,7 @@ GAS_CONSTANT = 8.31446261815324           # R unit=1/mol
 ELEMENTARY_CHARGE = 1.602176634e-19       # e unit=C
 VACCUM_PERMITTIVITY = 8.854187812813e-12  # \epsilon_0
 COULOMB_CONSTANT = 8.9875517923e9         # k = 1/(4*pi*\epsilon_0) unit=N*m^2/C^2
+STANDARD_ATMOSPHERE = 101325              # atm
 
 _LENGTH_UNITS = (
     'nm',
@@ -68,6 +72,7 @@ _ENERGY_UNITS = (
     'cal/mol',
     'ha',
     'ev',
+    'mev'
     'kbt0',
     'kbt300',
     'user',
@@ -81,6 +86,7 @@ _ENERGY_REF = {
     'cal/mol': 4.184e-3,
     'ha': 2625.5002,
     'ev': 96.48530749925793,
+    'mev': 0.09648530749925793,
     'kbt0': 2.271095464,
     'kbt300': 2.494338785,
     'user': None,
@@ -88,12 +94,13 @@ _ENERGY_REF = {
 }
 
 _ENERGY_NAME = {
-    'kj/mol': 'kJ/mol',
-    'j/mol': 'J/mol',
-    'kcal/mol': 'kcal/mol',
-    'cal/mol': 'cal/mol',
+    'kj/mol': 'kJ mol-1',
+    'j/mol': 'J mol-1',
+    'kcal/mol': 'kcal mol-1',
+    'cal/mol': 'cal mol-1',
     'ha': 'Hartree',
     'ev': 'eV',
+    'mev': 'meV',
     'kbt0': 'kBT(273.15K)',
     'kbt300': 'kBT(300K)',
     'user': 'User_Energy',
@@ -105,6 +112,8 @@ _BOLTZMANN_DEFAULT_REF = 8.31446261815324e-3  # for kJ/mol
 # Coulomb constant for simulation
 # N_A*e^2/(4*pi*\epsilon_0)*1e9nm[1m]*1e-3kJ[1J] unit=e^2*kJ/mol*nm
 _COULOMB_DEFAULT_REF = 138.93545764498226165718756672623
+# Pressure 1 Bar in kJ mol-1 nm^3
+_BAR_DEFAULT_REF = 16.6053906717384685
 
 class Length:
     """Length"""
@@ -407,8 +416,17 @@ def energy_convert(unit_in, unit_out):
     return  energy_in / energy_out
 
 class Units:
-    """Units"""
-    def __init__(self, length_unit: str = None, energy_unit: str = None):
+    r"""Unit class to record and convert the length and energy units.
+
+    Args:
+        length_unit (str):  Length unit. Default: None
+        energy_unit (str):  Energy unit. Default: None
+
+    """
+    def __init__(self,
+                 length_unit: str = None,
+                 energy_unit: str = None,
+                 ):
 
         self.__length_unit = get_length_unit(length_unit)
         self.__length_unit_name = get_length_unit_name(length_unit)
@@ -423,7 +441,9 @@ class Units:
             self.__boltzmann /= self.__energy_ref
         self.__coulomb = _COULOMB_DEFAULT_REF
         if self.__length_ref is not None and self.__energy_ref is not None:
-            self.__coulomb *= self.__energy_ref * self.__length_ref
+            self.__coulomb /= self.__energy_ref * self.__length_ref
+
+        self.time_unit = 'ps'
 
     def set_length_unit(self, unit=None):
         """set length unit"""
@@ -545,14 +565,34 @@ class Units:
         return self.__energy_unit_name
 
     @property
+    def volume_unit(self):
+        """velocity unit"""
+        return self.__length_unit + "^3"
+
+    @property
+    def volume_unit_name(self):
+        """velocity unit"""
+        return self.__length_unit + "+3"
+
+    @property
     def force_unit(self):
         """force unit"""
         return self.__energy_unit + '/' + self.__length_unit
 
     @property
+    def force_unit_name(self):
+        """name of force unit"""
+        return self.__energy_unit_name + ' ' + self.__length_unit_name + '-1'
+
+    @property
     def velocity_unit(self):
         """velocity unit"""
-        return self.__length_unit + '/ps'
+        return self.__length_unit + "/" + self.time_unit
+
+    @property
+    def velocity_unit_name(self):
+        """name of velocity unit"""
+        return self.__length_unit_name + ' ' + self.time_unit + '-1'
 
     @property
     def length_ref(self):
@@ -586,11 +626,10 @@ class Units:
         return self.__length_ref * self.__length_ref / self.__energy_ref
 
     @property
-    def velocity_ref(self):
-        """reference value of velocity"""
+    def pressure_ref(self):
         if self.__energy_ref is None or self.__length_ref is None:
             return None
-        return math.sqrt(self.__energy_ref / self.__length_ref / self.__length_ref)
+        return _BAR_DEFAULT_REF * self.__energy_ref / math.pow(self.__length_ref, 3)
 
 global_units = Units('nm', 'kj/mol')
 
