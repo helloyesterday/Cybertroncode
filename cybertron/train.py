@@ -30,26 +30,30 @@ import os
 from shutil import copyfile
 from collections import deque
 import numpy as np
+from numpy import ndarray
 import mindspore as ms
 import mindspore.numpy as msnp
-from mindspore import nn
+from mindspore import Model
 from mindspore import Tensor
+from mindspore import context
 from mindspore.nn import Cell
+from mindspore.nn import TrainOneStepCell
+from mindspore.nn.metrics import Metric
+from mindspore.nn.loss.loss import LossBase
+from mindspore.nn.learning_rate_schedule import LearningRateSchedule
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.ops import composite as C
-from mindspore.nn import TrainOneStepCell
+from mindspore.dataset import Dataset
+from mindspore.train import save_checkpoint
 from mindspore.train.callback import Callback, RunContext
 from mindspore.train.callback._callback import InternalCallbackParam
-from mindspore.nn.metrics import Metric
 from mindspore.train._utils import _make_directory
-from mindspore.nn.learning_rate_schedule import LearningRateSchedule
 from mindspore._checkparam import Validator as validator
-from mindspore import context
 
 from .cybertron import Cybertron
 
-from sponge.checkpoint import save_checkpoint
+# from sponge.checkpoint import save_checkpoint
 
 _cur_dir = os.getcwd()
 
@@ -67,12 +71,39 @@ __all__ = [
 
 
 class OutputScaleShift(Cell):
+    r"""A network to scale and shift the label of dataset or prediction.
+
+    Args:
+
+        scale (float):              Scale value. Default: 1
+
+        shift (float):              Shift value. Default: 0
+
+        type_ref (Tensor):          Tensor of shape (T, E). Data type is float
+                                    Reference values of label for each atom type. Default: None
+
+        atomwise_scaleshift (bool): Whether to do atomwise scale and shift. Default: None
+
+        axis (int):                 Axis to summation the reference value of molecule. Default: -2
+
+    Symbols:
+
+        B:  Batch size
+
+        A:  Number of atoms
+
+        T:  Number of total atom types
+
+        E:  Number of labels
+
+    """
+
     def __init__(self,
-                 scale=1,
-                 shift=0,
-                 type_ref=None,
-                 atomwise_scaleshift=None,
-                 axis=-2,
+                 scale: float = 1,
+                 shift: float = 0,
+                 type_ref: Tensor = None,
+                 atomwise_scaleshift: bool = None,
+                 axis: int = -2,
                  ):
 
         super().__init__()
@@ -103,29 +134,73 @@ class OutputScaleShift(Cell):
         self.keep_sum = P.ReduceSum(keep_dims=True)
 
     def construct(self, outputs: Tensor, num_atoms: Tensor, atom_types: Tensor = None):
+        """Scale and shift output.
+
+        Args:
+            outputs (Tensor):       Tensor with shape (B, E). Data type is float.
+            num_atoms (Tensor):     Tensor with shape (B, 1). Data type is int.
+            atom_types (Tensor):    Tensor with shape (B, A). Data type is float.
+                                    Default: None
+
+        Returns:
+            outputs (Tensor):       Tensor with shape (B,E). Data type is float.
+
+        """
         ref = 0
         if self.type_ref is not None:
+            # (B,A,E)
             ref = F.gather(self.type_ref, atom_types, 0)
+            # (B,E)
             ref = self.reduce_sum(ref, self.axis)
 
+        # (B,E) + (B,E)
         outputs = outputs * self.scale + ref
         if self.all_atomwsie:
+            # (B,E) + (B,1)
             return outputs + self.shift * num_atoms
         if self.all_graph:
+            # (B,E)
             return outputs + self.shift
-        
+
         atomwise_output = outputs + self.shift * num_atoms
         graph_output = outputs + self.shift
         return msnp.where(self.atomwise_scaleshift, atomwise_output, graph_output)
 
 
 class DatasetNormalization(Cell):
+    r"""A network to normalize the label of dataset or prediction.
+
+    Args:
+
+        scale (float):              Scale value. Default: 1
+
+        shift (float):              Shift value. Default: 0
+
+        type_ref (Tensor):          Tensor of shape (T, E). Data type is float
+                                    Reference values of label for each atom type. Default: None
+
+        atomwise_scaleshift (bool): Whether to do atomwise scale and shift. Default: None
+
+        axis (int):                 Axis to summation the reference value of molecule. Default: -2
+
+    Symbols:
+
+        B:  Batch size
+
+        A:  Number of atoms
+
+        T:  Number of total atom types
+
+        E:  Number of labels
+
+    """
+
     def __init__(self,
-                 scale=1,
-                 shift=0,
-                 type_ref=None,
-                 atomwise_scaleshift=None,
-                 axis=-2,
+                 scale: float = 1,
+                 shift: float = 0,
+                 type_ref: Tensor = None,
+                 atomwise_scaleshift: bool = None,
+                 axis: int = -2,
                  ):
 
         super().__init__()
@@ -155,7 +230,19 @@ class DatasetNormalization(Cell):
         self.reduce_sum = P.ReduceSum()
         self.keep_sum = P.ReduceSum(keep_dims=True)
 
-    def construct(self, label, num_atoms, atom_types=None):
+    def construct(self, label: Tensor, num_atoms: Tensor, atom_types: Tensor = None):
+        """Normalize outputs.
+
+        Args:
+            outputs (Tensor):       Tensor with shape (B, E). Data type is float.
+            num_atoms (Tensor):     Tensor with shape (B, 1). Data type is int.
+            atom_types (Tensor):    Tensor with shape (B, A). Data type is float.
+                                    Default: None
+
+        Returns:
+            outputs (Tensor):       Tensor with shape (B,E). Data type is float.
+
+        """
         ref = 0
         if self.type_ref is not None:
             ref = F.gather(self.type_ref, atom_types, 0)
@@ -172,13 +259,29 @@ class DatasetNormalization(Cell):
         return msnp.where(self.atomwise_scaleshift, atomwise_norm, graph_norm)
 
 
-class LossWithEnergyAndForces(nn.loss.loss.LossBase):
+class LossWithEnergyAndForces(LossBase):
+    r"""Loss function of the energy and force of molecule.
+
+    Args:
+
+        ratio_energy (float):   Ratio of energy in loss function. Default: 1
+
+        ratio_forces (float):   Ratio of forces in loss function. Default: 100
+
+        force_dis (float):      A average norm value of force, which used to scale the force.
+                                Default: 1
+
+        ratio_normlize (bool):  Whether to do normalize the ratio of energy and force. Default: True
+
+        reduction (str):        Method to reduction the output Tensor. Default: 'mean'
+
+    """
     def __init__(self,
-                 ratio_energy=1,
-                 ratio_forces=100,
-                 force_dis=1,
-                 ratio_normlize=True,
-                 reduction='mean',
+                 ratio_energy: float = 1,
+                 ratio_forces: float = 100,
+                 force_dis: float = 1,
+                 ratio_normlize: bool = True,
+                 reduction: str = 'mean',
                  ):
 
         super().__init__(reduction)
@@ -196,10 +299,47 @@ class LossWithEnergyAndForces(nn.loss.loss.LossBase):
         self.reduce_mean = P.ReduceMean()
         self.reduce_sum = P.ReduceSum()
 
-    def _calc_loss(self, diff):
+    def _calc_loss(self, diff: Tensor) -> Tensor:
+        """calculate loss function"""
         return diff
 
-    def construct(self, pred_energy, label_energy, pred_forces=None, label_forces=None, num_atoms=1, atom_mask=None):
+    def construct(self,
+                  pred_energy: Tensor,
+                  label_energy: Tensor,
+                  pred_forces: Tensor = None,
+                  label_forces: Tensor = None,
+                  num_atoms: Tensor = 1,
+                  atom_mask: Tensor = None
+                  ):
+        """calculate loss function
+
+        Args:
+            pred_energy (Tensor):   Tensor with shape (B, E). Data type is float.
+                                    Predicted energy.
+            label_energy (Tensor):  Tensor with shape (B, E). Data type is float.
+                                    Label energy.
+            pred_forces (Tensor):   Tensor with shape (B, A, D). Data type is float.
+                                    Predicted force.
+            label_forces (Tensor):  Tensor with shape (B, A, D). Data type is float.
+                                    Label energy.
+            num_atoms (Tensor):     Tensor with shape (B, 1). Data type is int.
+                                    Number of atoms in each molecule.
+                                    Default: 1
+            atom_mask (Tensor):     Tensor with shape (B, A). Data type is bool.
+                                    Mask of atoms in each molecule.
+                                    Default: None
+
+        Symbols:
+            B:  Batch size
+            A:  Number of atoms
+            D:  Dimension of position coordinate. Usually is 3.
+            E:  Number of labels
+
+        Returns:
+            loss (Tensor):  Tensor with shape (B, 1). Data type is float.
+                            Loss function.
+
+        """
 
         if pred_forces is None:
             loss = self._calc_loss(pred_energy - label_energy)
@@ -234,12 +374,28 @@ class LossWithEnergyAndForces(nn.loss.loss.LossBase):
 
 
 class MAELoss(LossWithEnergyAndForces):
+    r"""Mean-absolute-error-type Loss function for energy and force.
+
+    Args:
+
+        ratio_energy (float):   Ratio of energy in loss function. Default: 1
+
+        ratio_forces (float):   Ratio of forces in loss function. Default: 100
+
+        force_dis (float):      A average norm value of force, which used to scale the force.
+                                Default: 1
+
+        ratio_normlize (bool):  Whether to do normalize the ratio of energy and force. Default: True
+
+        reduction (str):        Method to reduction the output Tensor. Default: 'mean'
+
+    """
     def __init__(self,
-                 ratio_energy=1,
-                 ratio_forces=0,
-                 force_dis=1,
-                 ratio_normlize=True,
-                 reduction='mean',
+                 ratio_energy: float = 1,
+                 ratio_forces: float = 0,
+                 force_dis: float = 1,
+                 ratio_normlize: bool = True,
+                 reduction: str = 'mean',
                  ):
 
         super().__init__(
@@ -252,17 +408,33 @@ class MAELoss(LossWithEnergyAndForces):
 
         self.abs = P.Abs()
 
-    def _calc_loss(self, diff):
+    def _calc_loss(self, diff: Tensor) -> Tensor:
         return self.abs(diff)
 
 
 class MSELoss(LossWithEnergyAndForces):
+    r"""Mean-square-error-type Loss function for energy and force.
+
+    Args:
+
+        ratio_energy (float):   Ratio of energy in loss function. Default: 1
+
+        ratio_forces (float):   Ratio of forces in loss function. Default: 100
+
+        force_dis (float):      A average norm value of force, which used to scale the force.
+                                Default: 1
+
+        ratio_normlize (bool):  Whether to do normalize the ratio of energy and force. Default: True
+
+        reduction (str):        Method to reduction the output Tensor. Default: 'mean'
+
+    """
     def __init__(self,
-                 ratio_energy=1,
-                 ratio_forces=0,
-                 force_dis=1,
-                 ratio_normlize=True,
-                 reduction='mean',
+                 ratio_energy: float = 1,
+                 ratio_forces: float = 0,
+                 force_dis: float = 1,
+                 ratio_normlize: bool = True,
+                 reduction: str = 'mean',
                  ):
 
         super().__init__(
@@ -275,12 +447,25 @@ class MSELoss(LossWithEnergyAndForces):
 
         self.square = P.Square()
 
-    def _calc_loss(self, diff):
+    def _calc_loss(self, diff: Tensor) -> Tensor:
         return self.square(diff)
 
 
-class CrossEntropyLoss(nn.loss.loss.LossBase):
-    def __init__(self, reduction='mean', use_sigmoid=False):
+class CrossEntropyLoss(LossBase):
+    r"""Cross entropy Loss function for positive and negative samples.
+
+    Args:
+
+        reduction (str):    Method to reduction the output Tensor. Default: 'mean'
+
+        use_sigmoid (bool): Whether to use sigmoid function for output. Default: False
+
+    """
+    def __init__(self,
+                 reduction: str = 'mean',
+                 use_sigmoid: bool = False
+                 ):
+
         super().__init__(reduction)
 
         self.sigmoid = None
@@ -289,7 +474,17 @@ class CrossEntropyLoss(nn.loss.loss.LossBase):
 
         self.cross_entropy = P.BinaryCrossEntropy(reduction)
 
-    def construct(self, pos_pred, neg_pred):
+    def construct(self, pos_pred: Tensor, neg_pred: Tensor):
+        """calculate cross entropy loss function
+
+        Args:
+            pos_pred (Tensor):  Positive samples
+            neg_pred (Tensor):  Negative samples
+
+        Returns:
+            loss (Tensor):      Loss function with same shape of samples
+
+        """
         if self.sigmoid is not None:
             pos_pred = self.sigmoid(pos_pred)
             neg_pred = self.sigmoid(neg_pred)
@@ -301,12 +496,24 @@ class CrossEntropyLoss(nn.loss.loss.LossBase):
 
 
 class WithCell(Cell):
+    r"""Basic cell to combine  the network and the loss/evaluate function.
+
+    Args:
+
+        datatypes (str):        Data types of the inputs.
+
+        network (Cybertron):    Neural network of Cybertron
+
+        loss_fn (Cell):         Loss function.
+
+        fulltypes (str):        Full list of data types. Default: RZCDNnBbE'
+
+    """
     def __init__(self,
                  datatypes: str,
                  network: Cybertron,
                  loss_fn: Cell,
                  fulltypes: str = 'RZCDNnBbE',
-                 cell_name: str = '',
                  ):
 
         super().__init__(auto_prefix=False)
@@ -362,6 +569,17 @@ class WithCell(Cell):
 
 
 class WithForceLossCell(WithCell):
+    r"""Cell to combine the network and the loss function with force.
+
+    Args:
+
+        datatypes (str):        Data types of the inputs.
+
+        network (Cybertron):    Neural network of Cybertron
+
+        loss_fn (Cell):         Loss function.
+
+    """
     def __init__(self,
                  datatypes: str,
                  network: Cybertron,
@@ -385,6 +603,15 @@ class WithForceLossCell(WithCell):
         self.grad_op = C.GradOperation()
 
     def construct(self, *inputs):
+        """calculate loss function
+
+        Args:
+            *input: Tuple of Tensor
+
+        Returns:
+            loss (Tensor):  Tensor of shape (B, 1). Data type is float.
+
+        """
         inputs = inputs + (None,)
 
         positions = inputs[self.R]
@@ -437,11 +664,21 @@ class WithForceLossCell(WithCell):
 
 
 class WithLabelLossCell(WithCell):
+    r"""Cell to combine the network and the loss function with label.
+
+    Args:
+
+        datatypes (str):        Data types of the inputs.
+
+        network (Cybertron):    Neural network of Cybertron
+
+        loss_fn (Cell):         Loss function.
+
+    """
     def __init__(self,
                  datatypes: str,
                  network: Cybertron,
                  loss_fn: Cell,
-                 # with_penalty=False,
                  ):
 
         super().__init__(
@@ -450,10 +687,17 @@ class WithLabelLossCell(WithCell):
             loss_fn=loss_fn,
             fulltypes='RZCDNnBbE'
         )
-        # self.with_penalty = with_penalty
 
     def construct(self, *inputs):
+        """calculate loss function
 
+        Args:
+            *input: Tuple of Tensor
+
+        Returns:
+            loss (Tensor):  Tensor of shape (B, 1). Data type is float.
+
+        """
         inputs = inputs + (None,)
 
         positions = inputs[self.R]
@@ -488,6 +732,32 @@ class WithLabelLossCell(WithCell):
 
 
 class WithEvalCell(WithCell):
+    r"""Basic cell to combine the network and the evaluate function.
+
+    Args:
+
+        datatypes (str):            Data types of the inputs.
+
+        network (Cybertron):        Neural network of Cybertron
+
+        loss_fn (Cell):             Loss function.
+
+        scale (float):              Scale value. Default: 1
+
+        shift (float):              Shift value. Default: 0
+
+        type_ref (Tensor):          Tensor of shape (T, E). Data type is float
+                                    Reference values of label for each atom type. Default: None
+
+        atomwise_scaleshift (bool): Whether to do atomwise scale and shift. Default: None
+
+        eval_data_is_normed (bool): Whether the evaluate dataset is normalized. Default: False
+
+        add_cast_fp32 (bool):       Whether cast the dataset to 32-bit. Default: False
+
+        fulltypes (str):            Full list of data types. Default: RZCDNnBbE'
+
+    """
     def __init__(self,
                  datatypes: str,
                  network: Cybertron,
@@ -496,9 +766,9 @@ class WithEvalCell(WithCell):
                  shift: float = None,
                  type_ref: Tensor = None,
                  atomwise_scaleshift: Tensor = None,
-                 eval_data_is_normed=True,
-                 add_cast_fp32=False,
-                 fulltypes='RZCDNnBbE'
+                 eval_data_is_normed: bool = True,
+                 add_cast_fp32: bool = False,
+                 fulltypes: str = 'RZCDNnBbE'
                  ):
 
         super().__init__(
@@ -587,6 +857,30 @@ class WithEvalCell(WithCell):
 
 
 class WithLabelEvalCell(WithEvalCell):
+    r"""Cell to combine the network and the evaluate function with label.
+
+    Args:
+
+        datatypes (str):            Data types of the inputs.
+
+        network (Cybertron):        Neural network of Cybertron
+
+        loss_fn (Cell):             Loss function.
+
+        scale (float):              Scale value. Default: 1
+
+        shift (float):              Shift value. Default: 0
+
+        type_ref (Tensor):          Tensor of shape (T, E). Data type is float
+                                    Reference values of label for each atom type. Default: None
+
+        atomwise_scaleshift (bool): Whether to do atomwise scale and shift. Default: None
+
+        eval_data_is_normed (bool): Whether the evaluate dataset is normalized. Default: False
+
+        add_cast_fp32 (bool):       Whether cast the dataset to 32-bit. Default: False
+
+    """
     def __init__(self,
                  datatypes: str,
                  network: Cybertron,
@@ -595,8 +889,8 @@ class WithLabelEvalCell(WithEvalCell):
                  shift: float = None,
                  type_ref: Tensor = None,
                  atomwise_scaleshift: Tensor = None,
-                 eval_data_is_normed=True,
-                 add_cast_fp32=False,
+                 eval_data_is_normed: bool = True,
+                 add_cast_fp32: bool = False,
                  ):
 
         super().__init__(
@@ -613,6 +907,22 @@ class WithLabelEvalCell(WithEvalCell):
         )
 
     def construct(self, *inputs):
+        """calculate evaluate data
+
+        Args:
+            *input: Tuple of Tensor
+
+        Returns:
+            loss (Tensor):      Tensor of shape (B, 1). Data type is float.
+                                Loss function of evaluate data.
+            output (Tensor):    Tensor of shape (B, 1). Data type is float.
+                                Predicted results of network.
+            label (Tensor):     Tensor of shape (B, 1). Data type is float.
+                                Label of evaluate data.
+            num_atoms (Tensor): Tensor of shape (B, 1). Data type is int.
+                                Number of atoms in each molecule.
+
+        """
         inputs = inputs + (None,)
 
         positions = inputs[self.R]
@@ -663,6 +973,30 @@ class WithLabelEvalCell(WithEvalCell):
 
 
 class WithForceEvalCell(WithEvalCell):
+    r"""Cell to combine the network and the evaluate function with force.
+
+    Args:
+
+        datatypes (str):            Data types of the inputs.
+
+        network (Cybertron):        Neural network of Cybertron
+
+        loss_fn (Cell):             Loss function.
+
+        scale (float):              Scale value. Default: 1
+
+        shift (float):              Shift value. Default: 0
+
+        type_ref (Tensor):          Tensor of shape (T, E). Data type is float
+                                    Reference values of label for each atom type. Default: None
+
+        atomwise_scaleshift (bool): Whether to do atomwise scale and shift. Default: None
+
+        eval_data_is_normed (bool): Whether the evaluate dataset is normalized. Default: False
+
+        add_cast_fp32 (bool):       Whether cast the dataset to 32-bit. Default: False
+
+    """
     def __init__(self,
                  datatypes,
                  network: Cybertron,
@@ -687,6 +1021,7 @@ class WithForceEvalCell(WithEvalCell):
             add_cast_fp32=add_cast_fp32,
             fulltypes='RZCDNnBbFE',
         )
+        #pylint: disable=invalid-name
 
         self.F = self.datatypes.find('F')  # force
 
@@ -697,6 +1032,22 @@ class WithForceEvalCell(WithEvalCell):
         self.grad_op = C.GradOperation()
 
     def construct(self, *inputs):
+        """calculate evaluate data
+
+        Args:
+            *input: Tuple of Tensor
+
+        Returns:
+            loss (Tensor):      Tensor of shape (B, 1). Data type is float.
+                                Loss function of evaluate data.
+            output (Tensor):    Tensor of shape (B, 1). Data type is float.
+                                Predicted results of network.
+            label (Tensor):     Tensor of shape (B, 1). Data type is float.
+                                Label of evaluate data.
+            num_atoms (Tensor): Tensor of shape (B, 1). Data type is int.
+                                Number of atoms in each molecule.
+
+        """
         inputs = inputs + (None,)
 
         positions = inputs[self.R]
@@ -770,6 +1121,15 @@ class WithForceEvalCell(WithEvalCell):
 
 
 class WithAdversarialLossCell(Cell):
+    r"""Adversarial network.
+
+    Args:
+
+        network (Cell): Neural network.
+
+        loss_fn (Cell): Loss function.
+
+    """
     def __init__(self,
                  network: Cell,
                  loss_fn: Cell,
@@ -779,7 +1139,17 @@ class WithAdversarialLossCell(Cell):
         self._network = network
         self._loss_fn = loss_fn
 
-    def construct(self, pos_samples, neg_samples):
+    def construct(self, pos_samples: Tensor, neg_samples: Tensor):
+        """calculate the loss function of adversarial network
+
+        Args:
+            pos_pred (Tensor):  Positive samples
+            neg_pred (Tensor):  Negative samples
+
+        Returns:
+            loss (Tensor):      Loss function with same shape of samples
+
+        """
         pos_pred = self._network(pos_samples)
         neg_pred = self._network(neg_samples)
         return self._loss_fn(pos_pred, neg_pred)
@@ -790,15 +1160,38 @@ class WithAdversarialLossCell(Cell):
 
 
 class TrainMonitor(Callback):
+    r"""A callback to show and record the information during training process.
+
+    Args:
+
+        model (Model):              Mindspore model.
+
+        file_name (str):            Name of the file to record the training information.
+
+        directory (str):            Name of output directory. Default: None
+
+        per_epoch (int):            The epoch interval for outputting training information. Default: 1
+
+        per_step (int):             The step interval for outputting training information. Default: 0
+
+        avg_steps (int):            Number of step for the moving average of loss function.
+                                    If 0 is given, the loss will be averaged over all previous steps.
+                                    Default: 0
+
+        eval_dataset (Dataset):     Evaluate dataset. Default: None
+
+        best_ckpt_metrics (str):    Reference metric to record the best parameters. Default: None
+
+    """
     def __init__(self,
-                 model,
-                 name,
-                 directory=None,
-                 per_epoch=1,
-                 per_step=0,
-                 avg_steps=0,
-                 eval_dataset=None,
-                 best_ckpt_metrics=None
+                 model: Model,
+                 file_name: str,
+                 directory: str = None,
+                 per_epoch: int = 1,
+                 per_step: int = 0,
+                 avg_steps: int = 0,
+                 eval_dataset: Dataset = None,
+                 best_ckpt_metrics: str = None,
                  ):
 
         super().__init__()
@@ -830,9 +1223,9 @@ class TrainMonitor(Callback):
         else:
             self._directory = _cur_dir
 
-        self._filename = name + '-info.data'
-        self._ckptfile = name + '-best'
-        self._ckptdata = name + '-ckpt.data'
+        self._filename = file_name + '-info.data'
+        self._ckptfile = file_name + '-best'
+        self._ckptdata = file_name + '-ckpt.data'
 
         self.num_ckpt = 1
         self.best_value = 5e4
@@ -851,13 +1244,14 @@ class TrainMonitor(Callback):
                 if len(lines) > 1:
                     os.remove(filename)
 
-    def begin(self, run_context):
+    def begin(self, run_context: RunContext):
         """
         Called once before the network executing.
 
         Args:
             run_context (RunContext): Include some information of the model.
         """
+        #pylint: disable=protected-access
         cb_params: InternalCallbackParam = run_context.original_args()
         train_network: TrainOneStepCell = cb_params.train_network
         cells = train_network._cells
@@ -865,6 +1259,7 @@ class TrainMonitor(Callback):
             self.hyper_param = cells['network'].hyper_param
 
     def _write_ckpt_file(self, filename: str, info: str, network: TrainOneStepCell):
+        """write checkpoint (.ckpt) file"""
         ckptfile = os.path.join(self._directory, filename + '.ckpt')
         ckptbck = os.path.join(self._directory, filename + '.bck.ckpt')
         ckptdata = os.path.join(self._directory, self._ckptdata)
@@ -876,7 +1271,8 @@ class TrainMonitor(Callback):
         with open(ckptdata, "a") as f:
             f.write(info + os.linesep)
 
-    def _output_data(self, cb_params):
+    def _output_data(self, cb_params: InternalCallbackParam):
+        """output data"""
         cur_epoch = cb_params.cur_epoch_num
 
         opt = cb_params.optimizer
@@ -931,7 +1327,7 @@ class TrainMonitor(Callback):
                 info += ': '
                 info += str(v)
 
-                if isinstance(v, np.ndarray) and v.size > 1:
+                if isinstance(v, ndarray) and v.size > 1:
                     for i in range(v.size):
                         title += (' ' + k + str(i))
                         outdata += '{:>15e}'.format(v[i])
@@ -940,30 +1336,8 @@ class TrainMonitor(Callback):
                     outdata += '{:>15e}'.format(v)
 
             if self.best_ckpt_metrics in eval_metrics.keys():
-                vnow = eval_metrics[self.best_ckpt_metrics]
-                if type(vnow) is np.ndarray and len(vnow) > 1:
-                    output_ckpt = vnow < self.best_value
-                    num_best = np.count_nonzero(output_ckpt)
-                    if num_best > 0:
-                        self._write_ckpt_file(
-                            self._ckptfile, info, cb_params.train_network)
-                        source_ckpt = os.path.join(
-                            self._directory, self._ckptfile + '.ckpt')
-                        for i in range(len(vnow)):
-                            if output_ckpt[i]:
-                                dest_ckpt = os.path.join(
-                                    self._directory, self._ckptfile + '-' + str(i) + '.ckpt')
-                                bck_ckpt = os.path.join(
-                                    self._directory, self._ckptfile + '-' + str(i) + '.ckpt.bck')
-                                if os.path.exists(dest_ckpt):
-                                    os.rename(dest_ckpt, bck_ckpt)
-                                copyfile(source_ckpt, dest_ckpt)
-                        self.best_value = np.minimum(vnow, self.best_value)
-                else:
-                    if vnow < self.best_value:
-                        self._write_ckpt_file(
-                            self._ckptfile, info, cb_params.train_network)
-                        self.best_value = vnow
+                best_value = eval_metrics[self.best_ckpt_metrics]
+                self._write_best_ckpt(best_value, info, cb_params.train_network)
 
         print(info, flush=True)
         filename = os.path.join(self._directory, self._filename)
@@ -974,7 +1348,35 @@ class TrainMonitor(Callback):
         with open(filename, "a") as f:
             f.write(outdata + os.linesep)
 
+    def _write_best_ckpt(self, best_value: ndarray, info: str, network: Cell):
+        """write the best parameter of checkpoint file"""
+        if isinstance(best_value, ndarray) and len(best_value) > 1:
+            output_ckpt = best_value < self.best_value
+            num_best = np.count_nonzero(output_ckpt)
+            if num_best > 0:
+                self._write_ckpt_file(
+                    self._ckptfile, info, network)
+                source_ckpt = os.path.join(
+                    self._directory, self._ckptfile + '.ckpt')
+                for i in range(len(best_value)):
+                    if output_ckpt[i]:
+                        dest_ckpt = os.path.join(
+                            self._directory, self._ckptfile + '-' + str(i) + '.ckpt')
+                        bck_ckpt = os.path.join(
+                            self._directory, self._ckptfile + '-' + str(i) + '.ckpt.bck')
+                        if os.path.exists(dest_ckpt):
+                            os.rename(dest_ckpt, bck_ckpt)
+                        copyfile(source_ckpt, dest_ckpt)
+                self.best_value = np.minimum(best_value, self.best_value)
+        else:
+            if best_value < self.best_value:
+                self._write_ckpt_file(
+                    self._ckptfile, info, network)
+                self.best_value = best_value
+        return self
+
     def step_end(self, run_context: RunContext):
+        """step end"""
         cb_params: InternalCallbackParam = run_context.original_args()
         loss = cb_params.net_outputs
 
@@ -999,7 +1401,7 @@ class TrainMonitor(Callback):
         if self._per_step > 0 and cb_params.cur_step_num % self._per_step == 0:
             self._output_data(cb_params)
 
-    def epoch_end(self, run_context):
+    def epoch_end(self, run_context: RunContext):
         cb_params = run_context.original_args()
         cur_epoch = cb_params.cur_epoch_num
 
@@ -1008,7 +1410,20 @@ class TrainMonitor(Callback):
 
 
 class MaxError(Metric):
-    def __init__(self, indexes=(1, 2), reduce_all_dims=True):
+    r"""Metric to calcaulte the max error.
+
+    Args:
+
+        indexes (tuple):        Indexes for label and predicted data. Default: (1, 2)
+
+        reduce_all_dims (bool): Whether to summation the data of all atoms in molecule. Default: True
+
+    """
+    def __init__(self,
+                 indexes: tuple = (1, 2),
+                 reduce_all_dims: bool = True
+                 ):
+
         super().__init__()
         self.clear()
         self._indexes = indexes
@@ -1033,11 +1448,25 @@ class MaxError(Metric):
 
 
 class Error(Metric):
+    r"""Metric to calcaulte the error.
+
+    Args:
+
+        indexes (tuple):            Indexes for label and predicted data. Default: (1, 2)
+
+        reduce_all_dims (bool):     Whether to summation the data of all atoms in molecule. Default: True
+
+        averaged_by_atoms (bool):   Whether to averaged the data by the number of atoms in molecule.
+                                    Default: True
+
+        atom_aggregate (str):       The way to aggregate the data of each atom. Default: 'mean'
+
+    """
     def __init__(self,
-                 indexes=(1, 2),
-                 reduce_all_dims=True,
-                 averaged_by_atoms=False,
-                 atom_aggregate='mean',
+                 indexes: tuple = (1, 2),
+                 reduce_all_dims: bool = True,
+                 averaged_by_atoms: bool = False,
+                 atom_aggregate: str = 'mean',
                  ):
 
         super().__init__()
@@ -1072,10 +1501,12 @@ class Error(Metric):
         self._error_sum = 0
         self._samples_num = 0
 
-    def _calc_error(self, y, y_pred):
+    def _calc_error(self, y: ndarray, y_pred: ndarray) -> ndarray:
+        """calculate error"""
         return y.reshape(y_pred.shape) - y_pred
 
     def update(self, *inputs):
+        """update metric"""
         y_pred = self._convert_data(inputs[self._indexes[0]])
         y = self._convert_data(inputs[self._indexes[1]])
 
@@ -1102,20 +1533,32 @@ class Error(Metric):
         self._error_sum += np.sum(error, axis=self.axis)
         self._samples_num += tot
 
-    def eval(self):
+    def eval(self) -> float:
         if self._samples_num == 0:
             raise RuntimeError('Total samples num must not be 0.')
         return self._error_sum / self._samples_num
 
-# mean absolute error
-
 
 class MAE(Error):
+    r"""Metric to calcaulte the mean absolute error.
+
+    Args:
+
+        indexes (tuple):            Indexes for label and predicted data. Default: (1, 2)
+
+        reduce_all_dims (bool):     Whether to summation the data of all atoms in molecule. Default: True
+
+        averaged_by_atoms (bool):   Whether to averaged the data by the number of atoms in molecule.
+                                    Default: True
+
+        atom_aggregate (str):       The way to aggregate the data of each atom. Default: 'mean'
+
+    """
     def __init__(self,
-                 indexes=(1, 2),
-                 reduce_all_dims=True,
-                 averaged_by_atoms=False,
-                 atom_aggregate='mean',
+                 indexes: tuple = (1, 2),
+                 reduce_all_dims: bool = True,
+                 averaged_by_atoms: bool = False,
+                 atom_aggregate: str = 'mean',
                  ):
 
         super().__init__(
@@ -1125,18 +1568,29 @@ class MAE(Error):
             atom_aggregate=atom_aggregate,
         )
 
-    def _calc_error(self, y, y_pred):
+    def _calc_error(self, y: ndarray, y_pred: ndarray) -> ndarray:
         return np.abs(y.reshape(y_pred.shape) - y_pred)
 
-# mean square error
-
-
 class MSE(Error):
+    r"""Metric to calcaulte the mean square error.
+
+    Args:
+
+        indexes (tuple):            Indexes for label and predicted data. Default: (1, 2)
+
+        reduce_all_dims (bool):     Whether to summation the data of all atoms in molecule. Default: True
+
+        averaged_by_atoms (bool):   Whether to averaged the data by the number of atoms in molecule.
+                                    Default: True
+
+        atom_aggregate (str):       The way to aggregate the data of each atom. Default: 'mean'
+
+    """
     def __init__(self,
-                 indexes=(1, 2),
-                 reduce_all_dims=True,
-                 averaged_by_atoms=False,
-                 atom_aggregate='mean',
+                 indexes: tuple = (1, 2),
+                 reduce_all_dims: bool = True,
+                 averaged_by_atoms: bool = False,
+                 atom_aggregate: str = 'mean',
                  ):
 
         super().__init__(
@@ -1146,18 +1600,30 @@ class MSE(Error):
             atom_aggregate=atom_aggregate,
         )
 
-    def _calc_error(self, y, y_pred):
+    def _calc_error(self, y: ndarray, y_pred: ndarray) -> ndarray:
         return np.square(y.reshape(y_pred.shape) - y_pred)
-
-# mean norm error
 
 
 class MNE(Error):
+    r"""Metric to calcaulte the mean norm error.
+
+    Args:
+
+        indexes (tuple):            Indexes for label and predicted data. Default: (1, 2)
+
+        reduce_all_dims (bool):     Whether to summation the data of all atoms in molecule. Default: True
+
+        averaged_by_atoms (bool):   Whether to averaged the data by the number of atoms in molecule.
+                                    Default: True
+
+        atom_aggregate (str):       The way to aggregate the data of each atom. Default: 'mean'
+
+    """
     def __init__(self,
-                 indexes=(1, 2),
-                 reduce_all_dims=True,
-                 averaged_by_atoms=False,
-                 atom_aggregate='mean',
+                 indexes: tuple = (1, 2),
+                 reduce_all_dims: bool = True,
+                 averaged_by_atoms: bool = False,
+                 atom_aggregate: str = 'mean',
                  ):
 
         super().__init__(
@@ -1167,19 +1633,30 @@ class MNE(Error):
             atom_aggregate=atom_aggregate,
         )
 
-    def _calc_error(self, y, y_pred):
+    def _calc_error(self, y: ndarray, y_pred: ndarray) -> ndarray:
         diff = y.reshape(y_pred.shape) - y_pred
         return np.linalg.norm(diff, axis=-1)
 
-# root mean square error
-
-
 class RMSE(Error):
+    r"""Metric to calcaulte the root mean square error.
+
+    Args:
+
+        indexes (tuple):            Indexes for label and predicted data. Default: (1, 2)
+
+        reduce_all_dims (bool):     Whether to summation the data of all atoms in molecule. Default: True
+
+        averaged_by_atoms (bool):   Whether to averaged the data by the number of atoms in molecule.
+                                    Default: True
+
+        atom_aggregate (str):       The way to aggregate the data of each atom. Default: 'mean'
+
+    """
     def __init__(self,
-                 indexes=(1, 2),
-                 reduce_all_dims=True,
-                 averaged_by_atoms=False,
-                 atom_aggregate='mean',
+                 indexes: tuple = (1, 2),
+                 reduce_all_dims: bool = True,
+                 averaged_by_atoms: bool = False,
+                 atom_aggregate: str = 'mean',
                  ):
 
         super().__init__(
@@ -1189,7 +1666,7 @@ class RMSE(Error):
             atom_aggregate=atom_aggregate,
         )
 
-    def _calc_error(self, y, y_pred):
+    def _calc_error(self, y: ndarray, y_pred: ndarray) -> ndarray:
         return np.square(y.reshape(y_pred.shape) - y_pred)
 
     def eval(self):
@@ -1199,7 +1676,14 @@ class RMSE(Error):
 
 
 class MLoss(Metric):
-    def __init__(self, index=0):
+    r"""Metric to calcaulte the loss function.
+
+    Args:
+
+        indexes (int):            Index for loss function. Default: 0
+
+    """
+    def __init__(self, index: int = 0):
         super().__init__()
         self.clear()
         self._index = index
@@ -1209,7 +1693,7 @@ class MLoss(Metric):
         self._total_num = 0
 
     def update(self, *inputs):
-
+        """update metric"""
         loss = self._convert_data(inputs[self._index])
 
         if loss.ndim == 0:
@@ -1230,7 +1714,23 @@ class MLoss(Metric):
 
 
 class TransformerLR(LearningRateSchedule):
-    def __init__(self, learning_rate=1.0, warmup_steps=4000, dimension=1):
+    r"""A transformer type dynamic learning rate schedule.
+
+    Args:
+
+        learning_rate (float):  Reference learning rate. Default: 1.0
+
+        warmup_steps (int):     Warm up steps. Default: 4000
+
+        dimension (int):        Dimension of output Tensor. Default: 1
+
+    """
+    def __init__(self,
+                 learning_rate: float = 1.0,
+                 warmup_steps: int = 4000,
+                 dimension: int = 1,
+                 ):
+
         super().__init__()
         if not isinstance(learning_rate, float):
             raise TypeError("learning_rate must be float.")
@@ -1249,7 +1749,16 @@ class TransformerLR(LearningRateSchedule):
 
         self.min = P.Minimum()
 
-    def construct(self, global_step):
+    def construct(self, global_step: int):
+        """Calculate the learning rate at current step.
+
+        Args:
+            global_step (int):  Global training step.
+
+        Returns:
+            lr (Tensor):   Current learning rate.
+
+        """
         step_num = F.cast(global_step, ms.float32)
         warmup_scale = self.pow(self.warmup_steps, -1.5)
         dim_scale = self.pow(self.dimension, -0.5)
