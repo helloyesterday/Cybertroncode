@@ -35,10 +35,11 @@ from mindspore.ops import functional as F
 from mindspore.ops import operations as P
 from mindspore.common.initializer import Normal
 
-from sponge.functions import get_integer
-from sponge.hyperparam import set_class_into_hyper_param, set_hyper_parameter
-from sponge.hyperparam import get_hyper_string, get_hyper_parameter, get_class_parameters
-from sponge.units import Units, global_units, Length
+from sponge.function import get_integer
+from sponge.data import set_class_into_hyper_param, set_hyper_parameter
+from sponge.data import get_hyper_string, get_hyper_parameter, get_class_parameters
+from sponge import Units, global_units
+from sponge.data import global_units, Length
 
 from .block import Residual, Dense
 from .interaction import SchNetInteraction

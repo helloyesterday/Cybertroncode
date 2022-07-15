@@ -29,8 +29,8 @@ Dataset Pre-processor
 from operator import itemgetter
 import numpy as np
 from numpy import ndarray
-from sponge.units import Units
 
+from sponge import Units
 
 class DatasetProcessor:
     r"""A dataset pre-processor

@@ -29,7 +29,7 @@ Filter networks
 from mindspore import Tensor
 from mindspore.nn import Cell
 
-from sponge.functions import get_integer
+from sponge.function import get_integer
 
 from .block import MLP, Dense, Residual
 

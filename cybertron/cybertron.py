@@ -35,14 +35,15 @@ from mindspore.ops import functional as F
 from mindspore.ops import operations as P
 from mindspore.train._utils import _make_directory
 
-import sponge.checkpoint as checkpoint
-from sponge.functions import get_integer
-from sponge.hyperparam import get_class_parameters
-from sponge.hyperparam import get_hyper_parameter, get_hyper_string
-from sponge.hyperparam import set_class_into_hyper_param
+from mindspore.train import save_checkpoint
+
+from sponge import Units, global_units
+from sponge.function import get_integer
+from sponge.data import get_class_parameters
+from sponge.data import get_hyper_parameter, get_hyper_string
+from sponge.data import set_class_into_hyper_param
 from sponge.colvar import IndexDistances
-from sponge.units import Units, global_units
-from sponge.neighbours import FullConnectNeighbours
+from sponge.partition import FullConnectNeighbours
 from sponge.potential import PotentialCell
 
 from .readout import Readout, get_readout
@@ -77,7 +78,7 @@ class Cybertron(Cell):
 
         length_unit (str):      Unit of position coordinate. Default: None
 
-        energy_unit (str):      Unit of ouput energy. Default: None.
+        energy_unit (str):      Unit of output energy. Default: None.
 
         hyper_param (dict):     Hyperparameters of Cybertron. Default: None.
 
@@ -343,7 +344,7 @@ class Cybertron(Cell):
         return F.stack(atomwise_scaleshift)
 
     def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
-        """print the infomation of Cybertron"""
+        """print the information of Cybertron"""
         ret = char * num_retraction
         gap = char * num_gap
         print("================================================================================")
@@ -498,8 +499,7 @@ class Cybertron(Cell):
         ckpt_file = os.path.join(directory, ckpt_file_name)
         if os.path.exists(ckpt_file):
             os.remove(ckpt_file)
-        checkpoint.save_checkpoint(
-            self, ckpt_file, append_dict=self.hyper_param)
+        save_checkpoint(self, ckpt_file, append_dict=self.hyper_param)
         return self
 
     def construct(self,
@@ -583,6 +583,44 @@ class Cybertron(Cell):
         return self.readout(x, xlist, atom_types, atom_mask, num_atoms) * self.output_unit_scale
 
 class CybertronFF(PotentialCell):
+    """Cybertron as potential for MindSPONGE.
+
+    Args:
+
+        model (Cell):           Deep molecular model. Default: None
+
+        readout (Cell):         Readout function. Default: 'atomwise'
+
+        num_atoms (int):        Maximum number of atoms in system. Default: None.
+
+        atom_types (Tensor):    Tensor of shape (B, A). Data type is int.
+                                Index of atom types.
+                                Default: None,
+
+        bond_types (Tensor):    Tensor of shape (B, A, N). Data type is int.
+                                Index of bond types. Default: None.
+
+        use_pbc (bool):         Whether to use periodic boundary condition. Default: None
+
+        length_unit (str):      Unit of position coordinate. Default: None
+
+        energy_unit (str):      Unit of output energy. Default: None.
+
+        hyper_param (dict):     Hyperparameters of Cybertron. Default: None.
+
+    Symbols:
+
+        B:  Number of simulation walker.
+
+        A:  Number of atoms in system.
+
+        N:  Number of neighbour atoms.
+
+        D:  Dimension of position coordinates, usually is 3.
+
+        O:  Output dimension of the predicted properties.
+
+    """
     def __init__(self,
                  model: MolecularModel = None,
                  readout: Readout = 'atomwise',
@@ -652,7 +690,7 @@ class CybertronFF(PotentialCell):
             raise ValueError('The output dimension of readout in CybertronFF must be 1 but got: '+
                              str(self.readout.dim_output))
         self.dim_output = self.readout.dim_output
-        
+
         self.atomwise_scaleshift = self.readout.atomwise_scaleshift
         self.output_unit_scale = self.get_output_unit_scale()
 
@@ -730,7 +768,7 @@ class CybertronFF(PotentialCell):
         return self
 
     def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
-        """print the infomation of CybertronFF"""
+        """print the information of CybertronFF"""
         ret = char * num_retraction
         gap = char * num_gap
         print("================================================================================")
@@ -789,10 +827,9 @@ class CybertronFF(PotentialCell):
         ckpt_file = os.path.join(directory, ckpt_file_name)
         if os.path.exists(ckpt_file):
             os.remove(ckpt_file)
-        checkpoint.save_checkpoint(
-            self, ckpt_file, append_dict=self.hyper_param)
+        save_checkpoint(self, ckpt_file, append_dict=self.hyper_param)
         return self
-    
+
     def construct(self,
                   coordinates: Tensor,
                   neighbour_vectors: Tensor,
@@ -804,7 +841,7 @@ class CybertronFF(PotentialCell):
 
         x, xlist = self.model(neighbour_distances, self.atom_types, self.atom_mask,
                               neighbour_index, neighbour_mask)
-        
+
         energy = self.readout(x, xlist, self.atom_types, self.atom_mask, self.num_atoms)
 
         return energy * self.output_unit_scale

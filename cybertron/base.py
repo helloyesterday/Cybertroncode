@@ -582,7 +582,7 @@ class FeedForward(Cell):
 
 
 class Pondering(Cell):
-    r"""Pondering network for adapetive compuation time.
+    r"""Pondering network for adapetive computation time.
 
     Args:
 
@@ -631,7 +631,7 @@ class Pondering(Cell):
         return self.squeeze(y)
 
 class ACTWeight(Cell):
-    r"""Adapetive compuation time modified from:
+    r"""Adapetive computation time modified from:
         https://github.com/andreamad8/Universal-Transformer-Pytorch/blob/master/models/UTransformer.py
 
     Args:
@@ -652,7 +652,7 @@ class ACTWeight(Cell):
         self.ones_like = P.OnesLike()
 
     def construct(self, prob: Tensor, halting_prob: Tensor):
-        """Calculate Adapetive compuation time.
+        """Calculate Adapetive computation time.
 
         Args:
 

@@ -34,11 +34,12 @@ from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.ops import composite as C
 
-from sponge.functions import get_integer
-from sponge.hyperparam import get_hyper_string, get_hyper_parameter
-from sponge.hyperparam import set_hyper_parameter
-from sponge.hyperparam import set_class_into_hyper_param
-from sponge.units import Units, Length
+from sponge import Units, Length
+from sponge import Units, Length
+from sponge.data import get_hyper_string, get_hyper_parameter
+from sponge.data import set_hyper_parameter
+from sponge.data import set_class_into_hyper_param
+from sponge.function import get_integer
 
 __all__ = [
     "GaussianBasis",
@@ -201,7 +202,7 @@ class RadicalBasisFunctions(Cell):
         return self
 
     def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
-        """print the infomation of RBF"""
+        """print the information of RBF"""
         ret = char * num_retraction
         gap = char * num_gap
         print(ret+gap+' Minimum distance: ' +

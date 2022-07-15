@@ -36,7 +36,7 @@ from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
 
-import sponge.functions as func
+import sponge.function as func
 
 from .block import Dense, MLP
 from .block import PreActDense
@@ -363,7 +363,7 @@ class NeuralInteractionUnit(Interaction):
 
         n_heads (int):              Number of head for multi-head attention. Default: 8
 
-        max_cycles (int):           Maximum cycles for adaptive compuation time (ACT). Default: 10
+        max_cycles (int):           Maximum cycles for adaptive computation time (ACT). Default: 10
 
         activation (Cell):          Activation function. Default: 'swish'
 

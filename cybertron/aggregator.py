@@ -35,7 +35,7 @@ from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
 
-from sponge.functions import get_integer
+from sponge.function import get_integer
 
 from .block import MLP, Dense
 from .base import SoftmaxWithMask
@@ -95,13 +95,13 @@ def _interaction_aggregator_register(*aliases):
 
 
 class Aggregator(nn.Cell):
-    r"""Network to aggreate the outputs of each atoms.
+    r"""Network to aggregate the outputs of each atoms.
 
     Args:
 
         dim (int):  Feature dimension.
 
-        axis (int): Axis to aggreate. Default: -2
+        axis (int): Axis to aggregate. Default: -2
 
     Symbols:
 
@@ -148,7 +148,7 @@ class Aggregator(nn.Cell):
 
 
 class InteractionAggregator(nn.Cell):
-    r"""Network to aggreate the representation of each interaction layer.
+    r"""Network to aggregate the representation of each interaction layer.
 
     Args:
 
@@ -156,7 +156,7 @@ class InteractionAggregator(nn.Cell):
 
         num_agg (int):      Number of interaction layer to be aggregate. Default: None
 
-        n_hidden (int):     Number of hidden layers. Dafault: 0
+        n_hidden (int):     Number of hidden layers. Default: 0
 
         activation (Cell):  Activation function. Default: None
 
@@ -212,7 +212,7 @@ class TensorSummation(Aggregator):
 
         dim (int):  Feature dimension. Default: None
 
-        axis (int): Axis to aggreate. Default: -2
+        axis (int): Axis to aggregate. Default: -2
 
     Symbols:
 
@@ -273,7 +273,7 @@ class TensorMean(Aggregator):
 
         dim (int):  Feature dimension. Default: None
 
-        axis (int): Axis to aggreate. Default: -2
+        axis (int): Axis to aggregate. Default: -2
 
     Symbols:
 
@@ -341,7 +341,7 @@ class SoftmaxGeneralizedAggregator(Aggregator):
 
         dim (int):  Feature dimension.
 
-        axis (int): Axis to aggreate. Default: -2
+        axis (int): Axis to aggregate. Default: -2
 
     Symbols:
 
@@ -421,7 +421,7 @@ class PowermeanGeneralizedAggregator(Aggregator):
 
         dim (int):  Feature dimension.
 
-        axis (int): Axis to aggreate. Default: -2
+        axis (int): Axis to aggregate. Default: -2
 
     Symbols:
 
@@ -491,7 +491,7 @@ class TransformerAggregator(Aggregator):
 
         dim (int):  Feature dimension.
 
-        axis (int): Axis to aggreate. Default: -2
+        axis (int): Axis to aggregate. Default: -2
 
     Symbols:
 
@@ -576,7 +576,7 @@ class InteractionSummation(InteractionAggregator):
 
         num_agg (int):      Number of interaction layer to be aggregate. Default: None
 
-        n_hidden (int):     Number of hidden layers. Dafault: 0
+        n_hidden (int):     Number of hidden layers. Default: 0
 
         activation (Cell):  Activation function. Default: None
 
@@ -627,7 +627,7 @@ class InteractionMean(InteractionAggregator):
 
         num_agg (int):      Number of interaction layer to be aggregate. Default: None
 
-        n_hidden (int):     Number of hidden layers. Dafault: 0
+        n_hidden (int):     Number of hidden layers. Default: 0
 
         activation (Cell):  Activation function. Default: None
 
@@ -680,7 +680,7 @@ class LinearTransformation(InteractionAggregator):
 
         num_agg (int):      Number of interaction layer to be aggregate. Default: None
 
-        n_hidden (int):     Number of hidden layers. Dafault: 0
+        n_hidden (int):     Number of hidden layers. Default: 0
 
         activation (Cell):  Activation function. Default: None
 
@@ -738,7 +738,7 @@ class MultipleChannelRepresentation(InteractionAggregator):
 
         num_agg (int):      Number of interaction layer to be aggregate. Default: None
 
-        n_hidden (int):     Number of hidden layers. Dafault: 0
+        n_hidden (int):     Number of hidden layers. Default: 0
 
         activation (Cell):  Activation function. Default: None
 
