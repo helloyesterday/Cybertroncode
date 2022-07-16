@@ -29,10 +29,9 @@ from mindspore import ops
 from mindspore.nn import Cell
 from mindspore.ops import functional as F
 
-from ..data.units import Units, global_units
 from ..function.functions import gather_vectors
 from ..function.operations import GetVector
-
+from ..function.units import Units, global_units
 
 class PotentialCell(Cell):
     r"""Basic cell for potential energy

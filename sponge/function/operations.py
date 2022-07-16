@@ -34,7 +34,7 @@ from mindspore import Tensor
 from mindspore.nn import Cell
 
 from . import functions as func
-from ..data.units import Units, global_units
+from .units import Units, global_units
 
 
 class GetVector(Cell):

@@ -30,9 +30,9 @@ from mindspore.ops import functional as F
 from mindspore.nn import Cell
 from mindspore.common import Tensor
 
-from ..data.units import Units, global_units
 from ..function import functions as func
 from ..function.operations import GetVector
+from ..function.units import Units, global_units
 
 class Colvar(Cell):
     r"""Base class for collective variables.
