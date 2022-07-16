@@ -24,4 +24,3 @@
 """Data"""
 
 from .hyperparam import *
-from .units import *

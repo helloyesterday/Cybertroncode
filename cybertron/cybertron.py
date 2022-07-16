@@ -37,7 +37,7 @@ from mindspore.train._utils import _make_directory
 
 from mindspore.train import save_checkpoint
 
-from sponge import Units, global_units
+from sponge.function import Units, global_units
 from sponge.function import get_integer
 from sponge.data import get_class_parameters
 from sponge.data import get_hyper_parameter, get_hyper_string

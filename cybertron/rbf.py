@@ -34,12 +34,11 @@ from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.ops import composite as C
 
-from sponge import Units, Length
-from sponge import Units, Length
 from sponge.data import get_hyper_string, get_hyper_parameter
 from sponge.data import set_hyper_parameter
 from sponge.data import set_class_into_hyper_param
 from sponge.function import get_integer
+from sponge.function import Units, Length
 
 __all__ = [
     "GaussianBasis",

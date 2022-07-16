@@ -30,7 +30,7 @@ from operator import itemgetter
 import numpy as np
 from numpy import ndarray
 
-from sponge import Units
+from sponge.function import Units
 
 class DatasetProcessor:
     r"""A dataset pre-processor

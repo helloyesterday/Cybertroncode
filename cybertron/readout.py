@@ -33,9 +33,9 @@ from mindspore.nn import Cell
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 
-from sponge import Units
 from sponge.data import get_class_parameters, get_hyper_string, get_hyper_parameter
 from sponge.data import set_class_into_hyper_param, set_hyper_parameter
+from sponge.function import Units
 from sponge.function import get_integer
 
 from .activation import get_activation
