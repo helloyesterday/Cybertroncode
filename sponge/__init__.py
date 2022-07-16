@@ -15,4 +15,6 @@
 """MindSPONGE"""
 
 from .potential import *
-from .data.units import *
+
+from .function.units import global_units, set_global_units
+from .function.units import set_global_length_unit, set_global_energy_unit
