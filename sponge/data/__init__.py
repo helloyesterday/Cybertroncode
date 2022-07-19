@@ -1,6 +1,6 @@
 # Copyright 2021 The AIMM Group at Shenzhen Bay Laboratory & Peking University
 #
-# Developer: Yi Isaac Yang, Diqing Chen, Yijie Xia, Jun Zhang
+# Developer: Yi Isaac Yang, Dechin Chen, Yijie Xia, Jun Zhang
 #
 # Email: yangyi@szbl.ac.cn
 #

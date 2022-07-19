@@ -1,7 +1,7 @@
 # ============================================================================
 # Copyright 2021 The AIMM team at Shenzhen Bay Laboratory & Peking University
 #
-# People: Yi Isaac Yang, Jun Zhang, Diqing Chen, Yaqiang Zhou, Huiyang Zhang,
+# People: Yi Isaac Yang, Jun Zhang, Dechin Chen, Yaqiang Zhou, Huiyang Zhang,
 #         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
 #
 # This code is a part of Cybertron-Code package.
