@@ -23,21 +23,21 @@
 Tutorial 01: Quick introduction of Cybertron
 """
 
+import sys
+import time
+import numpy as np
+from mindspore import nn
+from mindspore import context
+from mindspore import dataset as ds
+from mindspore.train import Model
+from mindspore.train.callback import LossMonitor
+from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
+
 if __name__ == '__main__':
 
-    import time
-    import numpy as np
-    from mindspore import nn
-    from mindspore import context
-    from mindspore import dataset as ds
-    from mindspore.train.callback import LossMonitor
-    from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
-    from mindspore.train import Model
-
-    import sys
     sys.path.append('..')
 
-    from cybertron.cybertron import Cybertron
+    from cybertron import Cybertron
     from cybertron.train import WithLabelLossCell
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")

@@ -26,10 +26,10 @@ Tutorial 00: The preprocessing of dataset
              ethanol_dft.npz: http://gofile.me/6Utp7/hbQBofAFM
 """
 
-if __name__ == '__main__':
+import sys
+import numpy as np
 
-    import sys
-    import numpy as np
+if __name__ == '__main__':
 
     sys.path.append('..')
 

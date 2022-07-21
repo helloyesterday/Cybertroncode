@@ -23,22 +23,22 @@
 Tutorial 03: Use normalized dataset and validation dataset
 """
 
+import sys
+import time
+import numpy as np
+from mindspore import nn
+from mindspore import context
+from mindspore import dataset as ds
+from mindspore.train import Model
+from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
+
 if __name__ == '__main__':
 
-    import time
-    import numpy as np
-    from mindspore import nn
-    from mindspore import context
-    from mindspore import dataset as ds
-    from mindspore.train import Model
-    from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
-
-    import sys
     sys.path.append('..')
 
-    from cybertron.cybertron import Cybertron
-    from cybertron.model import MolCT
-    from cybertron.readout import AtomwiseReadout
+    from cybertron import Cybertron
+    from cybertron import MolCT
+    from cybertron import AtomwiseReadout
     from cybertron.train import TrainMonitor, MAE, MLoss
     from cybertron.train import WithLabelLossCell, WithLabelEvalCell
 

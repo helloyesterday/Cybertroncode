@@ -23,19 +23,19 @@
 Tutorial 08: Read hyperparameters for networ trained with force
 """
 
+import sys
+import numpy as np
+from mindspore import context
+from mindspore import dataset as ds
+from mindspore.train import Model
+from mindspore.train import load_checkpoint
+
 if __name__ == '__main__':
 
-    import numpy as np
-    from mindspore import dataset as ds
-    from mindspore.train import Model
-    from mindspore import context
-    from mindspore.train import load_checkpoint
-
-    import sys
     sys.path.append('..')
 
     from sponge.data import load_hyperparam
-    from cybertron.cybertron import Cybertron
+    from cybertron import Cybertron
     from cybertron.train import MAE, RMSE
     from cybertron.train import WithForceEvalCell
 
