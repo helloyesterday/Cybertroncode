@@ -1,8 +1,9 @@
-# ============================================================================
-# Copyright 2021 The AIMM team at Shenzhen Bay Laboratory & Peking University
+# Copyright 2020-2022 The AIMM team at Shenzhen Bay Laboratory & Peking University
 #
 # People: Yi Isaac Yang, Jun Zhang, Dechin Chen, Yaqiang Zhou, Huiyang Zhang,
 #         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
+#
+# Contact: yangyi@szbl.ac.cn
 #
 # This code is a part of Cybertron-Code package.
 #
@@ -22,12 +23,9 @@
 # limitations under the License.
 # ============================================================================
 """
-Cybertron: An architecture to perform deep molecular model for molecular modeling.
+Cybertron
 """
 
 from .cybertron import *
-from .interaction import *
 from .model import *
 from .readout import *
-from .train import *
-from .dataset import *
