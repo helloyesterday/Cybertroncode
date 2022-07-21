@@ -831,22 +831,25 @@ class CybertronFF(PotentialCell):
         return self
 
     def construct(self,
-                  coordinates: Tensor,
+                  coordinate: Tensor,
                   neighbour_index: Tensor = None,
                   neighbour_mask: Tensor = None,
-                  neighbour_distances: Tensor = None,
+                  neighbour_coord: Tensor = None,
+                  neighbour_distance: Tensor = None,
                   pbc_box: Tensor = None
                   ):
         r"""Calculate potential energy.
 
         Args:
-            coordinates (Tensor):           Tensor of shape (B, A, D). Data type is float.
+            coordinate (Tensor):           Tensor of shape (B, A, D). Data type is float.
                                             Position coordinate of atoms in system.
             neighbour_index (Tensor):       Tensor of shape (B, A, N). Data type is int.
                                             Index of neighbour atoms. Default: None
             neighbour_mask (Tensor):        Tensor of shape (B, A, N). Data type is bool.
                                             Mask for neighbour atoms. Default: None
-            neighbour_distances (Tensor):   Tensor of shape (B, A, N). Data type is float.
+            neighbour_coord (Tensor):       Tensor of shape (B, A, N, D). Data type is bool.
+                                            Position coorindates of neighbour atoms.
+            neighbour_distance (Tensor):   Tensor of shape (B, A, N). Data type is float.
                                             Distance between neighbours atoms. Default: None
             pbc_box (Tensor):               Tensor of shape (B, D). Data type is float.
                                             Tensor of PBC box. Default: None
@@ -862,7 +865,7 @@ class CybertronFF(PotentialCell):
 
         """
 
-        x, xlist = self.model(neighbour_distances, self.atom_types, self.atom_mask,
+        x, xlist = self.model(neighbour_distance, self.atom_types, self.atom_mask,
                               neighbour_index, neighbour_mask)
 
         energy = self.readout(x, xlist, self.atom_types, self.atom_mask, self.num_atoms)
