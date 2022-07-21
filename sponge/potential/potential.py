@@ -1,12 +1,16 @@
-# Copyright 2021-2022 The AIMM Group at Shenzhen Bay Laboratory & Peking University
+# Copyright 2021-2022 @ Shenzhen Bay Laboratory &
+#                       Peking University &
+#                       Huawei Technologies Co., Ltd
 #
-# Developer: Yi Isaac Yang, Dechin Chen, Yijie Xia, Jun Zhang
+# Developer: Yi Isaac Yang, Dechin Chen, Jun Zhang, Yijie Xia,
+#            Jialiang Yu, Ningxi Ni
 #
 # Email: yangyi@szbl.ac.cn
 #
-# This code is a part of MindSponge.
+# This code is a part of MindSPONGE:
+# MindSpore Simulation Package tOwards Next Generation molecular modelling.
 #
-# The Cybertron-Code is open-source software based on the AI-framework:
+# MindSPONGE is open-source software based on the AI-framework:
 # MindSpore (https://www.mindspore.cn/)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -74,6 +78,8 @@ class PotentialCell(Cell):
                     'The type of units must be "Unit" but get type: '+str(type(units)))
             self.units = units
 
+        self.output_dim = 1
+
         self.cutoff = None
         if cutoff is not None:
             self.cutoff = Tensor(cutoff, ms.float32)
@@ -126,10 +132,11 @@ class PotentialCell(Cell):
         return self
 
     def construct(self,
-                  coordinates: Tensor,
+                  coordinate: Tensor,
                   neighbour_index: Tensor = None,
                   neighbour_mask: Tensor = None,
-                  neighbour_distances: Tensor = None,
+                  neighbour_coord: Tensor = None,
+                  neighbour_distance: Tensor = None,
                   pbc_box: Tensor = None
                   ):
         r"""Calculate potential energy.
@@ -141,6 +148,8 @@ class PotentialCell(Cell):
                                             Index of neighbour atoms. Default: None
             neighbour_mask (Tensor):        Tensor of shape (B, A, N). Data type is bool.
                                             Mask for neighbour atoms. Default: None
+            neighbour_coord (Tensor):       Tensor of shape (B, A, N, D). Data type is bool.
+                                            Position coorindates of neighbour atoms.
             neighbour_distances (Tensor):   Tensor of shape (B, A, N). Data type is float.
                                             Distance between neighbours atoms. Default: None
             pbc_box (Tensor):               Tensor of shape (B, D). Data type is float.
@@ -156,5 +165,6 @@ class PotentialCell(Cell):
             D:  Dimension of the simulation system. Usually is 3.
 
         """
+        #pylint: disable=invalid-name
 
         raise NotImplementedError
