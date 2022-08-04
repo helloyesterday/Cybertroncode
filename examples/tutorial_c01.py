@@ -20,7 +20,7 @@
 # limitations under the License.
 # ============================================================================
 """
-Tutorial 01: Quick introduction of Cybertron
+Cybertron tutorial 01: Quick introduction of Cybertron
 """
 
 import sys
@@ -81,7 +81,7 @@ if __name__ == '__main__':
 
     monitor_cb = LossMonitor(16)
 
-    outdir = 'Tutorial_01'
+    outdir = 'Tutorial_C01'
     params_name = outdir + '_' + net.model_name
     config_ck = CheckpointConfig(
         save_checkpoint_steps=32, keep_checkpoint_max=64, append_info=[net.hyper_param])

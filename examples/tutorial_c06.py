@@ -20,7 +20,7 @@
 # limitations under the License.
 # ============================================================================
 """
-Tutorial 09: MolCT with ACT
+Cybertron tutorial 06: Multi-task with multiple readouts (example 2)
 """
 
 import sys
@@ -40,88 +40,93 @@ if __name__ == '__main__':
 
     from cybertron import Cybertron
     from cybertron import MolCT
-    from cybertron import AtomwiseReadout
-    from cybertron.train import MAE, RMSE, MLoss, MSELoss
-    from cybertron.train import WithForceLossCell, WithForceEvalCell
+    from cybertron.train import MAE, MLoss
+    from cybertron.train import WithLabelLossCell, WithLabelEvalCell
     from cybertron.train import TrainMonitor
     from cybertron.train import TransformerLR
 
+    seed = 1111
+    ms.set_seed(seed)
+
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    sys_name = 'dataset_ethanol_normed_'
-
-    train_file = sys_name + 'trainset_1024.npz'
-    valid_file = sys_name + 'validset_128.npz'
+    data_name = sys.path[0] + '/dataset_qm9_normed_'
+    train_file = data_name + 'trainset_1024.npz'
+    valid_file = data_name + 'validset_128.npz'
 
     train_data = np.load(train_file)
     valid_data = np.load(valid_file)
 
-    atom_types = Tensor(train_data['Z'], ms.int32)
-    scale = train_data['scale']
-    shift = train_data['shift']
+    # diplole,polarizability,HOMO,LUMO,gap,R2,zpve,capacity
+    idx = [0, 1, 2, 3, 4, 5, 6, 11]
+
+    num_atom = int(train_data['num_atoms'])
+    scale = Tensor(train_data['scale'][idx], ms.float32)
+    shift = Tensor(train_data['shift'][idx], ms.float32)
+    ref = Tensor(train_data['type_ref'][:, idx], ms.float32)
 
     mod = MolCT(
         cutoff=1,
         n_interaction=3,
         dim_feature=128,
         n_heads=8,
-        max_cycles=10,
+        activation='swish',
+        max_cycles=1,
         length_unit='nm',
     )
 
-    readout = AtomwiseReadout(mod, dim_output=1)
-    net = Cybertron(mod, readout=readout,
-                    atom_types=atom_types, length_unit='nm')
+    net = Cybertron(mod, readout='graph', dim_output=[1, 1, 3, 1, 1, 1],
+                    num_atoms=num_atom, length_unit='nm')
 
     net.print_info()
 
     tot_params = 0
-    for i, param in enumerate(net.trainable_params()):
+    for i, param in enumerate(net.get_parameters()):
         tot_params += param.size
         print(i, param.name, param.shape)
     print('Total parameters: ', tot_params)
 
     n_epoch = 8
     repeat_time = 1
-    batch_size = 32
+    batch_size = 16
 
     ds_train = ds.NumpySlicesDataset(
-        {'R': train_data['R'], 'F': train_data['F'], 'E': train_data['E']}, shuffle=True)
-    ds_train = ds_train.batch(batch_size)
+        {'R': train_data['R'], 'Z': train_data['Z'], 'E': train_data['E'][:, idx]}, shuffle=True)
+    ds_train = ds_train.batch(batch_size, drop_remainder=True)
     ds_train = ds_train.repeat(repeat_time)
 
     ds_valid = ds.NumpySlicesDataset(
-        {'R': valid_data['R'], 'F': valid_data['F'], 'E': valid_data['E']}, shuffle=False)
+        {'R': valid_data['R'], 'Z': valid_data['Z'], 'E': valid_data['E'][:, idx]}, shuffle=False)
     ds_valid = ds_valid.batch(128)
     ds_valid = ds_valid.repeat(1)
 
-    force_dis = train_data['avg_force_dis']
-    loss_fn = MSELoss(ratio_energy=1, ratio_forces=100, force_dis=force_dis)
-    loss_network = WithForceLossCell('RFE', net, loss_fn)
-    eval_network = WithForceEvalCell(
-        'RFE', net, loss_fn, scale=scale, shift=shift)
+    loss_network = WithLabelLossCell('RZE', net, nn.MAELoss())
+    eval_network = WithLabelEvalCell(
+        'RZE', net, nn.MAELoss(), scale=scale, shift=shift, type_ref=ref)
 
     lr = TransformerLR(learning_rate=1., warmup_steps=4000, dimension=128)
     optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
 
-    outdir = 'Tutorial_09'
+    outdir = 'Tutorial_C06'
     outname = outdir + '_' + net.model_name
 
-    energy_mae = 'EnergyMAE'
-    forces_mae = 'ForcesMAE'
-    forces_rmse = 'ForcesRMSE'
-    eval_loss = 'EvalLoss'
-    model = Model(loss_network, eval_network=eval_network, optimizer=optim,
-                  metrics={eval_loss: MLoss(), energy_mae: MAE([1, 2]), forces_mae: MAE([3, 4]),
-                           forces_rmse: RMSE([3, 4], atom_aggregate='sum')})
+    eval_mae = 'EvalMAE'
+    atom_mae = 'AtomMAE'
+    eval_loss = 'Evalloss'
+    model = Model(loss_network, optimizer=optim, eval_network=eval_network,
+                  metrics={eval_mae: MAE([1, 2], reduce_all_dims=False),
+                           atom_mae: MAE([1, 2, 3], reduce_all_dims=False, averaged_by_atoms=True),
+                           eval_loss: MLoss(0)},)
 
-    record_cb = TrainMonitor(model, outname, per_epoch=1, avg_steps=32,
-                             directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=forces_rmse)
+    record_cb = TrainMonitor(model, outname, per_step=32, avg_steps=32,
+                             directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
 
     config_ck = CheckpointConfig(
         save_checkpoint_steps=32, keep_checkpoint_max=64, append_info=[net.hyper_param])
     ckpoint_cb = ModelCheckpoint(
         prefix=outname, directory=outdir, config=config_ck)
+
+    np.set_printoptions(linewidth=200)
 
     print("Start training ...")
     beg_time = time.time()

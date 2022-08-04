@@ -20,7 +20,7 @@
 # limitations under the License.
 # ============================================================================
 """
-Tutorial 02: Setup for model and readout
+Cybertron tutorial 03: Use normalized dataset and validation dataset
 """
 
 import sys
@@ -30,7 +30,6 @@ from mindspore import nn
 from mindspore import context
 from mindspore import dataset as ds
 from mindspore.train import Model
-from mindspore.train.callback import LossMonitor
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
 if __name__ == '__main__':
@@ -40,13 +39,17 @@ if __name__ == '__main__':
     from cybertron import Cybertron
     from cybertron import MolCT
     from cybertron import AtomwiseReadout
-    from cybertron.train import WithLabelLossCell
+    from cybertron.train import TrainMonitor, MAE, MLoss
+    from cybertron.train import WithLabelLossCell, WithLabelEvalCell
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    train_file = sys.path[0] + '/dataset_qm9_origin_trainset_1024.npz'
+    data_name = sys.path[0] + '/dataset_qm9_normed_'
+    train_file = data_name + 'trainset_1024.npz'
+    valid_file = data_name + 'validset_128.npz'
 
     train_data = np.load(train_file)
+    valid_data = np.load(valid_file)
 
     idx = [7]  # U0
 
@@ -60,20 +63,24 @@ if __name__ == '__main__':
         n_interaction=3,
         dim_feature=128,
         n_heads=8,
-        fixed_cycles=False,
         activation='swish',
-        max_cycles=10,
+        max_cycles=1,
         length_unit='nm',
     )
 
-    readout = AtomwiseReadout(
-        mod, dim_output=1, scale=scale, shift=shift, type_ref=ref, energy_unit='kj/mol')
-
-    # net = Cybertron(model='schnet', readout='graph',
-    #                 dim_output=1, num_atoms=num_atom, length_unit='nm')
-    # net.set_scaleshift(scale, shift)
+    # readout = AtomwiseReadout(
+    #     mod, dim_output=1, scale=scale, shift=shift, type_ref=ref, energy_unit='kj/mol')
+    readout = AtomwiseReadout(mod, dim_output=1)
     net = Cybertron(model=mod, readout=readout, dim_output=1,
-                    num_atoms=num_atom, length_unit='nm', energy_unit='kj/mol')
+                    num_atoms=num_atom, length_unit='nm')
+
+    # lr = 1e-3
+    lr = nn.ExponentialDecayLR(
+        learning_rate=1e-3, decay_rate=0.96, decay_steps=4, is_stair=True)
+    optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
+
+    outdir = 'Tutorial_C03'
+    outname = outdir + '_' + net.model_name
 
     net.print_info()
 
@@ -91,26 +98,35 @@ if __name__ == '__main__':
         {'R': train_data['R'], 'Z': train_data['Z'], 'E': train_data['E'][:, idx]}, shuffle=True)
     ds_train = ds_train.batch(batch_size, drop_remainder=True)
     ds_train = ds_train.repeat(repeat_time)
+
+    ds_valid = ds.NumpySlicesDataset(
+        {'R': valid_data['R'], 'Z': valid_data['Z'], 'E': valid_data['E'][:, idx]}, shuffle=False)
+    ds_valid = ds_valid.batch(128)
+    ds_valid = ds_valid.repeat(1)
+
     loss_network = WithLabelLossCell('RZE', net, nn.MAELoss())
+    # eval_network = WithLabelEvalCell('RZE', net, nn.MAELoss())
+    eval_network = WithLabelEvalCell(
+        'RZE', net, nn.MAELoss(), scale=scale, shift=shift, type_ref=ref)
 
-    lr = 1e-3
-    optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
+    eval_mae = 'EvalMAE'
+    atom_mae = 'AtomMAE'
+    eval_loss = 'Evalloss'
+    model = Model(loss_network, optimizer=optim, eval_network=eval_network, metrics={
+        eval_mae: MAE([1, 2]), atom_mae: MAE([1, 2, 3], averaged_by_atoms=True), eval_loss: MLoss(0)})
 
-    model = Model(loss_network, optimizer=optim)
+    record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=16,
+                             directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
 
-    monitor_cb = LossMonitor(16)
-
-    outdir = 'Tutorial_02'
-    params_name = outdir + '_' + net.model_name
     config_ck = CheckpointConfig(
         save_checkpoint_steps=32, keep_checkpoint_max=64, append_info=[net.hyper_param])
     ckpoint_cb = ModelCheckpoint(
-        prefix=params_name, directory=outdir, config=config_ck)
+        prefix=outname, directory=outdir, config=config_ck)
 
     print("Start training ...")
     beg_time = time.time()
     model.train(n_epoch, ds_train, callbacks=[
-                monitor_cb, ckpoint_cb], dataset_sink_mode=False)
+                record_cb, ckpoint_cb], dataset_sink_mode=False)
     end_time = time.time()
     used_time = end_time - beg_time
     m, s = divmod(used_time, 60)

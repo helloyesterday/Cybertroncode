@@ -20,13 +20,11 @@
 # limitations under the License.
 # ============================================================================
 """
-Tutorial 04: Read parameters and hyperparameters from checkpoint file
-             and to use test dataset with scale and shift.
+Cybertron tutorial 08: Read hyperparameters for networ trained with force
 """
 
 import sys
 import numpy as np
-from mindspore import nn
 from mindspore import context
 from mindspore import dataset as ds
 from mindspore.train import Model
@@ -38,40 +36,40 @@ if __name__ == '__main__':
 
     from mindsponge.data import load_hyperparam
     from cybertron import Cybertron
-    from cybertron.train import MAE
-    from cybertron.train import WithLabelEvalCell
+    from cybertron.train import MAE, RMSE
+    from cybertron.train import WithForceEvalCell
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    ckpt_file = 'Tutorial_03/Tutorial_03_MolCT-best.ckpt'
+    ckpt_file = 'Tutorial_C07/Tutorial_C07_MolCT-best.ckpt'
     hyper_param = load_hyperparam(ckpt_file)
 
     net = Cybertron(hyper_param=hyper_param)
     load_checkpoint(ckpt_file, net)
 
-    idx = [7]  # U0
-
-    test_file = sys.path[0] + '/dataset_qm9_origin_testset_1024.npz'
+    test_file = sys.path[0] + '/dataset_ethanol_origin_testset_1024.npz'
     test_data = np.load(test_file)
 
-    scale = test_data['scale'][idx]
-    shift = test_data['shift'][idx]
-    ref = test_data['type_ref'][:, idx]
+    scale = test_data['scale']
+    shift = test_data['shift']
 
-    net.set_scaleshift(scale=scale, shift=shift, type_ref=ref, unit='kj/mol')
+    net.set_scaleshift(scale=scale, shift=shift, unit='kj/mol')
+
     net.print_info()
 
     ds_test = ds.NumpySlicesDataset(
-        {'R': test_data['R'], 'Z': test_data['Z'], 'E': test_data['E'][:, idx]}, shuffle=False)
+        {'R': test_data['R'], 'F': test_data['F'], 'E': test_data['E']}, shuffle=False)
     ds_test = ds_test.batch(1024)
     ds_test = ds_test.repeat(1)
 
-    eval_network = WithLabelEvalCell('RZE', net, nn.MAELoss())
+    eval_network = WithForceEvalCell('RFE', net)
 
-    eval_mae = 'EvalMAE'
-    atom_mae = 'AtomMAE'
-    model = Model(net, eval_network=eval_network, metrics=
-                  {eval_mae: MAE([1, 2]), atom_mae: MAE([1, 2, 3], averaged_by_atoms=True)})
+    energy_mae = 'EnergyMAE'
+    forces_mae = 'ForcesMAE'
+    forces_rmse = 'ForcesRMSE'
+    model = Model(net, eval_network=eval_network,
+                  metrics={energy_mae: MAE([1, 2]), forces_mae: MAE([3, 4]),
+                           forces_rmse: RMSE([3, 4], atom_aggregate='sum')})
 
     print('Test dataset:')
     eval_metrics = model.eval(ds_test, dataset_sink_mode=False)
@@ -83,7 +81,7 @@ if __name__ == '__main__':
         info += ', '
     print(info)
 
-    outdir = 'Tutorial_04'
+    outdir = 'Tutorial_C08'
     scaled_ckpt = outdir + '_' + net.model_name + '.ckpt'
     net.save_checkpoint(scaled_ckpt, outdir)
 
