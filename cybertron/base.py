@@ -1,13 +1,10 @@
-# Copyright 2020-2022 The AIMM team at Shenzhen Bay Laboratory & Peking University
+# Copyright 2021-2022 @ Shenzhen Bay Laboratory &
+#                       Peking University &
+#                       Huawei Technologies Co., Ltd
 #
-# People: Yi Isaac Yang, Jun Zhang, Dechin Chen, Yaqiang Zhou, Huiyang Zhang,
-#         Yupeng Huang, Yijie Xia, Yao-Kun Lei, Lijiang Yang, Yi Qin Gao
+# This code is a part of Cybertron package.
 #
-# Contact: yangyi@szbl.ac.cn
-#
-# This code is a part of Cybertron-Code package.
-#
-# The Cybertron-Code is open-source software based on the AI-framework:
+# The Cybertron is open-source software based on the AI-framework:
 # MindSpore (https://www.mindspore.cn/)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
