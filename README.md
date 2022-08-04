@@ -28,6 +28,14 @@ Cybertron：基于MindSpore的深度分子模型通用架构
 
 本程序基于华为全场景人工智能框架MindSpore开发，使用前请先安装MindSpore：<https://mindspore.cn/>
 
+Cybertron依赖了分子动力学模拟软件MindSPONGE的部分功能，为保证正确使用请安装MindSPONGE：
+
+MindSPONGE可在以下两个仓库获得：
+
+1. MindSPONGE主仓：<https://gitee.com/helloyesterday/mindsponge>
+
+2. MindScience主仓: <https://gitee.com/mindspore/mindscience>
+
 ## 使用说明
 
 根目录下的cybertron_tutorial_CN.pdf文件为程序说明，examples目录内为使用案例：

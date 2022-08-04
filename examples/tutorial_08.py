@@ -34,7 +34,7 @@ if __name__ == '__main__':
 
     sys.path.append('..')
 
-    from sponge.data import load_hyperparam
+    from mindsponge.data import load_hyperparam
     from cybertron import Cybertron
     from cybertron.train import MAE, RMSE
     from cybertron.train import WithForceEvalCell

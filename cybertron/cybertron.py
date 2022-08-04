@@ -37,14 +37,14 @@ from mindspore.train._utils import _make_directory
 
 from mindspore.train import save_checkpoint
 
-from sponge.function import Units, global_units
-from sponge.function import get_integer
-from sponge.data import get_class_parameters
-from sponge.data import get_hyper_parameter, get_hyper_string
-from sponge.data import set_class_into_hyper_param
-from sponge.colvar import IndexDistances
-from sponge.partition import FullConnectNeighbours
-from sponge.potential import PotentialCell
+from mindsponge.function import Units, global_units
+from mindsponge.function import get_integer
+from mindsponge.data import get_class_parameters
+from mindsponge.data import get_hyper_parameter, get_hyper_string
+from mindsponge.data import set_class_into_hyper_param
+from mindsponge.colvar import IndexDistances
+from mindsponge.partition import FullConnectNeighbours
+from mindsponge.potential import PotentialCell
 
 from .readout import Readout, get_readout
 from .model import MolecularModel, get_molecular_model
@@ -583,7 +583,7 @@ class Cybertron(Cell):
         return self.readout(x, xlist, atom_types, atom_mask, num_atoms) * self.output_unit_scale
 
 class CybertronFF(PotentialCell):
-    """Cybertron as potential for MindSPONGE.
+    """Cybertron as potential for Mindmindsponge.
 
     Args:
 

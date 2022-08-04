@@ -53,8 +53,6 @@ from mindspore._checkparam import Validator as validator
 
 from .cybertron import Cybertron
 
-# from sponge.checkpoint import save_checkpoint
-
 _cur_dir = os.getcwd()
 
 __all__ = [

@@ -36,7 +36,7 @@ from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
 
-import sponge.function as func
+import mindsponge.function as func
 
 from .block import Dense, MLP
 from .block import PreActDense

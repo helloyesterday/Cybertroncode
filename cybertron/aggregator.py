@@ -35,7 +35,7 @@ from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
 
-from sponge.function import get_integer
+from mindsponge.function import get_integer
 
 from .block import MLP, Dense
 from .base import SoftmaxWithMask

@@ -31,7 +31,7 @@ from mindspore import Tensor
 from mindspore.nn import Cell
 from mindspore.common.initializer import Initializer
 
-from sponge.function import get_integer
+from mindsponge.function import get_integer
 
 from .activation import get_activation
 
