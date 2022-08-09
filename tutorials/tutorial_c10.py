@@ -97,7 +97,7 @@ if __name__ == '__main__':
         energy_unit='kcal/mol',
     )
 
-    param_file = 'tutorial_c10.ckpt'
+    param_file = 'checkpoint_c10.ckpt'
     load_checkpoint(param_file, net=potential)
 
     opt = DynamicUpdater(
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     md = Sponge(system, potential, opt)
     print(md.energy())
 
-    cb_h5md = WriteH5MD(system, 'tutorial_c10.h5md', save_freq=10)
+    cb_h5md = WriteH5MD(system, 'Tutorial_C10.h5md', save_freq=10)
     cb_sim = RunInfo(10)
 
     beg_time = time.time()
