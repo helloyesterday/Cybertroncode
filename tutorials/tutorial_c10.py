@@ -39,13 +39,11 @@ if __name__ == '__main__':
 
     from mindsponge import Molecule
     from mindsponge import Sponge
+    from mindsponge import set_global_units
     from mindsponge.callback import RunInfo, WriteH5MD
     from mindsponge.control import LeapFrog
     from mindsponge.control import Langevin
     from mindsponge.optimizer import DynamicUpdater
-
-    from mindsponge import set_global_units
-
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
