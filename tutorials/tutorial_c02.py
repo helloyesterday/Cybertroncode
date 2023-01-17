@@ -1,4 +1,4 @@
-# Copyright 2021-2022 @ Shenzhen Bay Laboratory &
+# Copyright 2021-2023 @ Shenzhen Bay Laboratory &
 #                       Peking University &
 #                       Huawei Technologies Co., Ltd
 #
@@ -64,6 +64,7 @@ if __name__ == '__main__':
         activation='swish',
         max_cycles=10,
         length_unit='nm',
+        coupled_interaction=True,
     )
 
     readout = AtomwiseReadout(
