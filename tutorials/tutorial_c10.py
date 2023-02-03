@@ -43,7 +43,7 @@ if __name__ == '__main__':
     from mindsponge.callback import RunInfo, WriteH5MD
     from mindsponge.control import LeapFrog
     from mindsponge.control import Langevin
-    from mindsponge.optimizer import DynamicUpdater
+    from mindsponge.optimizer import UpdaterMD
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     param_file = 'checkpoint_c10.ckpt'
     load_checkpoint(param_file, net=potential)
 
-    opt = DynamicUpdater(
+    opt = UpdaterMD(
         system,
         integrator=LeapFrog(system),
         thermostat=Langevin(system, 300),
@@ -105,7 +105,7 @@ if __name__ == '__main__':
     )
 
     md = Sponge(system, potential, opt)
-    print(md.energy())
+    print(md.calc_energy())
 
     cb_h5md = WriteH5MD(system, 'Tutorial_C10.h5md', save_freq=100)
     cb_sim = RunInfo(100)

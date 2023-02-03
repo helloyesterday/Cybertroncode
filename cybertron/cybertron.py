@@ -34,7 +34,7 @@ from mindspore.train._utils import _make_directory
 
 from mindspore.train import save_checkpoint
 
-from mindsponge.function import Units, global_units
+from mindsponge.function import Units, GLOBAL_UNITS
 from mindsponge.function import get_integer
 from mindsponge.data import get_class_parameters
 from mindsponge.data import get_hyper_parameter, get_hyper_string
@@ -131,7 +131,7 @@ class Cybertron(Cell):
                 hyper_param, 'hyperparam.energy_unit')
 
         if length_unit is None and energy_unit is None:
-            self.units = global_units
+            self.units = GLOBAL_UNITS
         else:
             self.units = Units(length_unit, energy_unit)
 
