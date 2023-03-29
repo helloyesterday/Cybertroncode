@@ -256,7 +256,7 @@ class Cybertron(Cell):
         self.get_distance = IndexDistances(
             use_pbc=self.use_pbc,
             large_dis=cutoff*10,
-            keep_dims=False
+            keepdims=False
         )
 
         self.hyper_param = dict()
@@ -713,8 +713,6 @@ class CybertronFF(PotentialCell):
         if pbc_box is not None:
             # (1,D)
             self.pbc_box = Tensor(pbc_box, ms.float32).reshape(1, -1)
-
-        self.cutoff = self.model.cutoff
 
         self.hyper_param = dict()
         self.hyper_types = {
