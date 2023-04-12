@@ -574,6 +574,7 @@ _RBF_BY_NAME = {rbf.__name__: rbf for rbf in _RBF_BY_KEY.values()}
 
 def get_rbf(rbf: str = None,
             r_max=Length(1, 'nm'),
+            num_basis: int = None,
             length_unit='nm'
             ) -> RadicalBasisFunctions:
     """get RBF by name"""
@@ -594,9 +595,15 @@ def get_rbf(rbf: str = None,
         if rbf.lower() == 'none':
             return None
         if rbf.lower() in _RBF_BY_KEY.keys():
-            return _RBF_BY_KEY[rbf.lower()](r_max=r_max, length_unit=length_unit, hyper_param=hyper_param)
+            return _RBF_BY_KEY[rbf.lower()](r_max=r_max,
+                                            num_basis=num_basis,
+                                            length_unit=length_unit,
+                                            hyper_param=hyper_param)
         if rbf in _RBF_BY_NAME.keys():
-            return _RBF_BY_NAME[rbf](r_max=r_max, length_unit=length_unit, hyper_param=hyper_param)
+            return _RBF_BY_NAME[rbf](r_max=r_max,
+                                     num_basis=num_basis,
+                                     length_unit=length_unit,
+                                     hyper_param=hyper_param)
 
         raise ValueError(
             "The RBF corresponding to '{}' was not found.".format(rbf))

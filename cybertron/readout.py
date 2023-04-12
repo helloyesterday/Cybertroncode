@@ -23,6 +23,7 @@
 Readout functions
 """
 
+from mindspore.numpy import count_nonzero
 import mindspore as ms
 from mindspore import nn
 from mindspore import Tensor
@@ -260,28 +261,40 @@ class Readout(nn.Cell):
         print('-'*80)
 
     def construct(self,
-                  x: Tensor,
-                  xlist: list = None,
-                  atoms_types: Tensor = None,
+                  node_rep: Tensor,
+                  edge_rep: Tensor,
+                  node_emb: Tensor = None,
+                  edge_emb: Tensor = None,
+                  atom_types: Tensor = None,
                   atom_mask: Tensor = None,
-                  num_atoms: Tensor = None
+                  distances: Tensor = None,
+                  neighbours: Tensor = None,
+                  neighbour_mask: Tensor = None,
                   ):
         r"""Compute readout network.
 
         Args:
-            x (Tensor):             Tensor of shape (B, A, F). Data type is float.
-                                    Representation of atoms.
-            xlist (list):           List of atom representations.
-                                    Default: None
-            atoms_types (Tensor):   Tensor of shape (B, A). Data type is int.
-                                    Index of atom types. Default: None
-            atom_mask (Tensor):     Tensor of shape (B, A). Data type is bool
-                                    Mask for atom types
-            num_atoms (Tensor):     Tensor of shape (B, A). Data type is int
-                                    Number of atoms for each batch.
+            node_rep (Tensor): Tensor of shape (B, A, F). Data type is float.
+                Atomic (node) representation vector.
+            edge_rep (Tensor): Tensor of shape (B, A, N, F). Data type is float.
+                Edge representation vector.
+            node_emb (Tensor): Tensor of shape (B, A, F). Data type is float.
+                Atomic (node) embedding vector.
+            edge_emb (Tensor): Tensor of shape (B, A, F). Data type is float.
+                Edge embedding vector.
+            atom_types (Tensor): Tensor of shape (B, A). Data type is int.
+                Index of atom types. Default: None
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool
+                Mask for atom types
+            distances (Tensor): Tensor of shape (B, A, N). Data type is float.
+                Distances between atoms
+            neighbours (Tensor): Tensor of shape (B, A, N). Data type is int.
+                Indices of other near neighbour atoms around a atom
+            neighbour_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
+                Mask for neighbours
 
         Returns:
-            y: (Tensor):    Tensor of shape (B, A, Y). Data type is float
+            output: (Tensor):    Tensor of shape (B, A, Y). Data type is float
 
         Symbols:
 
@@ -375,28 +388,40 @@ class AtomwiseReadout(Readout):
         self.set_hyper_param()
 
     def construct(self,
-                  x: Tensor,
-                  xlist: list = None,
-                  atoms_types: Tensor = None,
+                  node_rep: Tensor,
+                  edge_rep: Tensor,
+                  node_emb: Tensor = None,
+                  edge_emb: Tensor = None,
+                  atom_types: Tensor = None,
                   atom_mask: Tensor = None,
-                  num_atoms: Tensor = None
+                  distances: Tensor = None,
+                  neighbours: Tensor = None,
+                  neighbour_mask: Tensor = None,
                   ):
-        r"""Compute atomwise readout network.
+        r"""Compute readout network.
 
         Args:
-            x (Tensor):             Tensor of shape (B, A, F). Data type is float.
-                                    Representation of atoms.
-            xlist (list):           List of atom representations.
-                                    Default: None
-            atoms_types (Tensor):   Tensor of shape (B, A). Data type is int.
-                                    Index of atom types. Default: None
-            atom_mask (Tensor):     Tensor of shape (B, A). Data type is bool
-                                    Mask for atom types
-            num_atoms (Tensor):     Tensor of shape (B, A). Data type is int
-                                    Number of atoms for each batch.
+            node_rep (Tensor): Tensor of shape (B, A, F). Data type is float.
+                Atomic (node) representation vector.
+            edge_rep (Tensor): Tensor of shape (B, A, N, F). Data type is float.
+                Edge representation vector.
+            node_emb (Tensor): Tensor of shape (B, A, F). Data type is float.
+                Atomic (node) embedding vector.
+            edge_emb (Tensor): Tensor of shape (B, A, F). Data type is float.
+                Edge embedding vector.
+            atom_types (Tensor): Tensor of shape (B, A). Data type is int.
+                Index of atom types. Default: None
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool
+                Mask for atom types
+            distances (Tensor): Tensor of shape (B, A, N). Data type is float.
+                Distances between atoms
+            neighbours (Tensor): Tensor of shape (B, A, N). Data type is int.
+                Indices of other near neighbour atoms around a atom
+            neighbour_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
+                Mask for neighbours
 
         Returns:
-            y: (Tensor):    Tensor of shape (B, A, Y). Data type is float
+            output: (Tensor):    Tensor of shape (B, A, Y). Data type is float
 
         Symbols:
 
@@ -406,7 +431,7 @@ class AtomwiseReadout(Readout):
             Y:  Output dimension.
 
         """
-        y = x
+        y = node_rep
         if self.decoder is not None:
             y = self.decoder(y)
 
@@ -414,13 +439,14 @@ class AtomwiseReadout(Readout):
             if self.atomwise_scaleshift:
                 y = y * self.scale + self.shift
                 if self.type_ref is not None:
-                    y += F.gather(self.type_ref, atoms_types, 0)
-                y = self.aggregator(y, atom_mask, num_atoms)
+                    y += F.gather(self.type_ref, atom_types, 0)
+                y = self.aggregator(y, atom_mask)
             else:
-                y = self.aggregator(y, atom_mask, num_atoms) / num_atoms
+                num_atoms = count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
+                y = self.aggregator(y, atom_mask) / num_atoms
                 y = y * self.scale + self.shift
                 if self.type_ref is not None:
-                    ref = F.gather(self.type_ref, atoms_types, 0)
+                    ref = F.gather(self.type_ref, atom_types, 0)
                     y += self.reduce_sum(ref, self.axis)
 
         return y
@@ -510,28 +536,40 @@ class GraphReadout(Readout):
         self.set_hyper_param()
 
     def construct(self,
-                  x: Tensor,
-                  xlist: list = None,
-                  atoms_types: Tensor = None,
+                  node_rep: Tensor,
+                  edge_rep: Tensor,
+                  node_emb: Tensor = None,
+                  edge_emb: Tensor = None,
+                  atom_types: Tensor = None,
                   atom_mask: Tensor = None,
-                  num_atoms: Tensor = None
+                  distances: Tensor = None,
+                  neighbours: Tensor = None,
+                  neighbour_mask: Tensor = None,
                   ):
-        r"""Compute graph readout network.
+        r"""Compute readout network.
 
         Args:
-            x (Tensor):             Tensor of shape (B, A, F). Data type is float.
-                                    Representation of atoms.
-            xlist (list):           List of atom representations.
-                                    Default: None
-            atoms_types (Tensor):   Tensor of shape (B, A). Data type is int.
-                                    Index of atom types. Default: None
-            atom_mask (Tensor):     Tensor of shape (B, A). Data type is bool
-                                    Mask for atom types
-            num_atoms (Tensor):     Tensor of shape (B, A). Data type is int
-                                    Number of atoms for each batch.
+            node_rep (Tensor): Tensor of shape (B, A, F). Data type is float.
+                Atomic (node) representation vector.
+            edge_rep (Tensor): Tensor of shape (B, A, N, F). Data type is float.
+                Edge representation vector.
+            node_emb (Tensor): Tensor of shape (B, A, F). Data type is float.
+                Atomic (node) embedding vector.
+            edge_emb (Tensor): Tensor of shape (B, A, F). Data type is float.
+                Edge embedding vector.
+            atom_types (Tensor): Tensor of shape (B, A). Data type is int.
+                Index of atom types. Default: None
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool
+                Mask for atom types
+            distances (Tensor): Tensor of shape (B, A, N). Data type is float.
+                Distances between atoms
+            neighbours (Tensor): Tensor of shape (B, A, N). Data type is int.
+                Indices of other near neighbour atoms around a atom
+            neighbour_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
+                Mask for neighbours
 
         Returns:
-            y: (Tensor):    Tensor of shape (B, A, Y). Data type is float
+            output: (Tensor):    Tensor of shape (B, A, Y). Data type is float
 
         Symbols:
 
@@ -542,7 +580,12 @@ class GraphReadout(Readout):
 
         """
 
-        y = self.aggregator(x, atom_mask, num_atoms)
+        if atom_mask is None:
+            num_atoms = node_rep.shape[-2]
+        else:
+            num_atoms = count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
+
+        y = self.aggregator(node_rep, atom_mask, num_atoms)
 
         if self.decoder is not None:
             y = self.decoder(y)
@@ -552,7 +595,7 @@ class GraphReadout(Readout):
             y *= num_atoms
 
         if self.type_ref is not None:
-            ref = F.gather(self.type_ref, atoms_types, 0)
+            ref = F.gather(self.type_ref, atom_types, 0)
             y += self.reduce_sum(ref, self.axis)
 
         return y

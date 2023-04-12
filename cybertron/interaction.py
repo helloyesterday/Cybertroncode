@@ -153,7 +153,7 @@ class Interaction(Cell):
         """
 
         #pylint: disable=unused-argument
-        return x
+        return x, f_ij
 
 
 class SchNetInteraction(Interaction):
@@ -236,7 +236,7 @@ class SchNetInteraction(Interaction):
 
         x_new = x + v
 
-        return x_new
+        return x_new, f_ij
 
 
 class PhysNetModule(Interaction):
@@ -348,7 +348,7 @@ class PhysNetModule(Interaction):
         x1 = self._interaction_block(x, f_ij, c_ij, neighbours, mask)
         xnew = self.outer_residual(x1)
 
-        return xnew
+        return xnew, f_ij
 
 
 class NeuralInteractionUnit(Interaction):
@@ -587,4 +587,4 @@ class NeuralInteractionUnit(Interaction):
             x0 = self._encoder(x, neighbours, g_ii, g_ij,
                                b_ii, b_ij, t, cutoff, mask)
 
-        return x0
+        return x0, f_ij

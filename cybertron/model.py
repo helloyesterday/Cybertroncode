@@ -93,8 +93,6 @@ class MolecularModel(Cell):
 
         public_bond_filter (bool):  Whether to use public (shared) filter for bond. Default: False
 
-        num_atom_types (int):       Maximum number of atomic types. Default: 64
-
         num_bond_types (int):       Maximum number of bond types. Default: 16
 
         length_unit (bool):         Unit of position coordinates. Default: 'nm'
@@ -131,7 +129,6 @@ class MolecularModel(Cell):
                  use_graph_norm: bool = False,
                  public_dis_filter: bool = False,
                  public_bond_filter: bool = False,
-                 num_atom_types: int = 64,
                  num_bond_types: int = 16,
                  length_unit: bool = 'nm',
                  hyper_param: dict = None,
@@ -142,7 +139,6 @@ class MolecularModel(Cell):
         self.network_name = 'MolecularModel'
 
         if hyper_param is not None:
-            num_atom_types = get_hyper_parameter(hyper_param, 'num_atom_types')
             num_bond_types = get_hyper_parameter(hyper_param, 'num_bond_types')
             dim_feature = get_hyper_parameter(hyper_param, 'dim_feature')
             n_interaction = get_hyper_parameter(hyper_param, 'n_interaction')
@@ -168,7 +164,6 @@ class MolecularModel(Cell):
             self.units = Units(length_unit)
         self.length_unit = self.units.length_unit
 
-        self.num_atom_types = get_integer(num_atom_types)
         self.num_bond_types = get_integer(num_bond_types)
         self.dim_feature = get_integer(dim_feature)
         self.n_interaction = get_integer(n_interaction)
@@ -186,13 +181,11 @@ class MolecularModel(Cell):
         self.cutoff = None
         self.cutoff_fn = None
         self.rbf = None
-        self.atom_embedding = None
+
         if self.use_distance.any():
-            self.atom_embedding = nn.Embedding(
-                self.num_atom_types, self.dim_feature, use_one_hot=True, embedding_table=Normal(1.0))
             self.cutoff = self.get_length(cutoff)
             self.cutoff_fn = get_cutoff(cutoff_fn, self.cutoff)
-            self.rbf = get_rbf(rbf, self.cutoff, length_unit=self.length_unit)
+            self.rbf = get_rbf(rbf, r_max=self.cutoff, length_unit=self.length_unit)
 
         self.r_self_ex = None
         if self.r_self is not None:
@@ -232,7 +225,6 @@ class MolecularModel(Cell):
 
         self.hyper_param = dict()
         self.hyper_types = {
-            'num_atom_types': 'int',
             'num_bond_types': 'int',
             'dim_feature': 'int',
             'n_interaction': 'int',
@@ -286,7 +278,6 @@ class MolecularModel(Cell):
         print(ret+' Deep molecular model: ', self.network_name)
         print('-'*80)
         print(ret+gap+' Length unit: ' + self.units.length_unit_name)
-        print(ret+gap+' Atom embedding size: ' + str(self.num_atom_types))
         print(ret+gap+' Cutoff distance: ' +
               str(self.cutoff) + ' ' + self.length_unit)
         print(ret+gap+' Radical basis function (RBF): ' + str(self.rbf.cls_name))
@@ -348,8 +339,8 @@ class MolecularModel(Cell):
         return rbf
 
     def construct(self,
-                  r_ij: Tensor = 1,
-                  atom_types: Tensor = None,
+                  atom_embedding: Tensor,
+                  distances: Tensor = 1,
                   atom_mask: Tensor = None,
                   neighbours: Tensor = None,
                   neighbour_mask: Tensor = None,
@@ -359,9 +350,11 @@ class MolecularModel(Cell):
         """Compute the representation of atoms.
 
         Args:
-            r_ij (Tensor):              Tensor of shape (B, A, N). Data type is float
+
+            atom_embedding (Tensor):    Tensor of shape (B, A, F). Data type is float
+                                        Atom embedding.
+            distances (Tensor):         Tensor of shape (B, A, N). Data type is float
                                         Distances between atoms.
-            atom_types (Tensor):        Tensor of shape (B, A). Data type is int
                                         Atomic number.
             atom_mask (Tensor):         Tensor of shape (B, A). Data type is bool
                                         Mask of atomic number
@@ -383,22 +376,14 @@ class MolecularModel(Cell):
 
         """
 
-        bsize = r_ij.shape[0] if self.calc_distance else bonds.shape[0]
-
         # (B,A) -> (B,A,1)
         atom_mask = F.expand_dims(atom_mask, -1)
 
-        e = self.atom_embedding(atom_types)
-        if atom_types.shape[0] != bsize:
-            e = msnp.broadcast_to(e, (bsize,)+e.shape[1:])
-            atom_mask = msnp.broadcast_to(
-                atom_mask, (bsize,)+atom_mask.shape[1:])
-
         if self.calc_distance:
-            nbatch = r_ij.shape[0]
-            natoms = r_ij.shape[1]
+            nbatch = distances.shape[0]
+            natoms = distances.shape[1]
 
-            f_ij = self._get_rbf(r_ij)
+            f_ij = self._get_rbf(distances)
             f_ii = 0 if self.r_self is None else self._get_rbf(self.r_self_ex)
         else:
             f_ii = 1
@@ -420,21 +405,19 @@ class MolecularModel(Cell):
 
         # apply cutoff
         c_ij, mask = self._calc_cutoffs(
-            r_ij, neighbour_mask, atom_mask, bond_mask)
+            distances, neighbour_mask, atom_mask, bond_mask)
         c_ii = None if self.r_self is None else self._get_self_cutoff(
             atom_mask)
 
         # continuous-filter convolution interaction block followed by Dense layer
-        x = e
+        x = atom_embedding
         n_interaction = len(self.interactions)
-        xlist = []
         for i in range(n_interaction):
-            x = self.interactions[i](
-                x, f_ij, b_ij, c_ij, neighbours, mask, e, f_ii, b_ii, c_ii, atom_mask)
+            x, f_ij = self.interactions[i](
+                x, f_ij, b_ij, c_ij, neighbours, mask, atom_embedding, f_ii, b_ii, c_ii, atom_mask)
             if self.use_graph_norm:
                 x = self.graph_norm[i](x)
-            xlist.append(x)
-        return x, xlist
+        return x, f_ij
 
 
 class SchNet(MolecularModel):
@@ -470,8 +453,6 @@ class SchNet(MolecularModel):
 
         public_dis_filter (bool):   Whether to use public (shared) filter for distance. Default: False
 
-        num_atom_types (int):       Maximum number of atomic types. Default: 64
-
         length_unit (bool):         Unit of position coordinates. Default: 'nm'
 
         hyper_param (dict):         Hyperparameter for molecular model. Default: None
@@ -504,7 +485,6 @@ class SchNet(MolecularModel):
                  coupled_interaction: bool = False,
                  use_graph_norm: bool = False,
                  public_dis_filter: bool = False,
-                 num_atom_types: int = 64,
                  length_unit: str = 'nm',
                  hyper_param: dict = None,
                  ):
@@ -522,7 +502,6 @@ class SchNet(MolecularModel):
             use_bond=False,
             use_graph_norm=use_graph_norm,
             public_dis_filter=public_dis_filter,
-            num_atom_types=num_atom_types,
             length_unit=length_unit,
             hyper_param=hyper_param,
         )
@@ -618,8 +597,6 @@ class PhysNet(MolecularModel):
 
         public_dis_filter (bool):   Whether to use public (shared) filter for distance. Default: False
 
-        num_atom_types (int):       Maximum number of atomic types. Default: 64
-
         n_inter_residual (int):     Number of blocks in the inside pre-activation residual block. Default: 3
 
         n_outer_residual (int):     Number of blocks in the outside pre-activation residual block. Default: 2
@@ -654,7 +631,6 @@ class PhysNet(MolecularModel):
                  coupled_interaction: bool = False,
                  use_graph_norm: bool = False,
                  public_dis_filter: bool = False,
-                 num_atom_types: int = 64,
                  n_inter_residual: int = 3,
                  n_outer_residual: int = 2,
                  length_unit: str = 'nm',
@@ -674,7 +650,6 @@ class PhysNet(MolecularModel):
             use_bond=False,
             use_graph_norm=use_graph_norm,
             public_dis_filter=public_dis_filter,
-            num_atom_types=num_atom_types,
             length_unit=length_unit,
             hyper_param=hyper_param,
         )
@@ -785,8 +760,6 @@ class MolCT(MolecularModel):
 
         public_bond_filter (bool):  Whether to use public (shared) filter for bond. Default: False
 
-        num_atom_types (int):       Maximum number of atomic types. Default: 64
-
         num_bond_types (int):       Maximum number of bond types. Default: 16
 
         act_threshold (float):      Threshold of adapative computation time. Default: 0.9
@@ -831,7 +804,6 @@ class MolCT(MolecularModel):
                  use_bond: bool = False,
                  public_dis_filter: bool = True,
                  public_bond_filter: bool = True,
-                 num_atom_types: int = 64,
                  num_bond_types: int = 16,
                  act_threshold: float = 0.9,
                  fixed_cycles: bool = False,
@@ -854,7 +826,6 @@ class MolCT(MolecularModel):
             public_dis_filter=public_dis_filter,
             public_bond_filter=public_bond_filter,
             use_graph_norm=False,
-            num_atom_types=num_atom_types,
             num_bond_types=num_bond_types,
             length_unit=length_unit,
             hyper_param=hyper_param,

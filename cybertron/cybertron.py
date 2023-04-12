@@ -26,10 +26,12 @@ Main program of Cybertron
 import os
 import mindspore as ms
 import mindspore.numpy as msnp
+from mindspore.nn import Embedding
 from mindspore import Tensor
 from mindspore.nn import Cell, CellList
 from mindspore.ops import functional as F
 from mindspore.ops import operations as P
+from mindspore.common.initializer import Normal
 from mindspore.train._utils import _make_directory
 
 from mindspore.train import save_checkpoint
@@ -68,6 +70,8 @@ class Cybertron(Cell):
         bond_types (Tensor):    Tensor of shape (B, A, N). Data type is int.
                                 Index of bond types. Default: None.
 
+        num_atom_types (int):   Maximum number of atomic types. Default: 64
+
         pbc_box (Tensor):       Tensor of shape (B, D).
                                 Box size of periodic boundary condition. Default: None
 
@@ -100,6 +104,7 @@ class Cybertron(Cell):
                  num_atoms: int = None,
                  atom_types: Tensor = None,
                  bond_types: Tensor = None,
+                 num_atom_types: int = 64,
                  pbc_box: Tensor = None,
                  use_pbc: bool = None,
                  length_unit: str = None,
@@ -123,6 +128,7 @@ class Cybertron(Cell):
                 hyper_param, 'hyperparam.atom_types')
             bond_types = get_hyper_parameter(
                 hyper_param, 'hyperparam.bond_types')
+            num_atom_types = get_hyper_parameter(hyper_param, 'num_atom_types')
             pbc_box = get_hyper_parameter(hyper_param, 'hyperparam.pbc_box')
             use_pbc = get_hyper_parameter(hyper_param, 'hyperparam.use_pbc')
             length_unit = get_hyper_string(
@@ -150,6 +156,11 @@ class Cybertron(Cell):
         self.num_output = self.dim_output.size
         if self.num_output == 1:
             self.dim_output = get_integer(self.dim_output)
+
+        self.num_atom_types = get_integer(num_atom_types)
+        print(self.num_atom_types)
+        self.atom_embedding = Embedding(
+            self.num_atom_types, self.dim_feature, use_one_hot=True, embedding_table=Normal(1.0))
 
         if readout is None:
             self.num_readout = 0
@@ -268,6 +279,7 @@ class Cybertron(Cell):
             'num_atoms': 'int',
             'atom_types': 'int',
             'bond_types': 'int',
+            'num_atom_types': 'int',
             'pbc_box': 'bool',
             'use_pbc': 'bool',
             'length_unit': 'str',
@@ -350,6 +362,7 @@ class Cybertron(Cell):
         print('-'*80)
         print(ret+' Length unit: ' + self.units.length_unit_name)
         print(ret+' Input unit scale: ' + str(self.input_unit_scale))
+        print(ret+' Atom embedding size: ' + str(self.num_atom_types))
         if self.atom_types is not None:
             print(ret+' Using fixed atom type index:')
             for i, atom in enumerate(self.atom_types[0]):
@@ -539,15 +552,13 @@ class Cybertron(Cell):
         if self.atom_types is None:
             # (1,A)
             atom_mask = atom_types > 0
-            num_atoms = F.cast(atom_mask, ms.int32)
-            num_atoms = msnp.sum(num_atoms, -1, keepdims=True)
         else:
             # (1,A)
             atom_types = self.atom_types
-            num_atoms = self.num_atoms
             atom_mask = self.atom_mask
 
         if self.calc_distance:
+            bsize = positions.shape[0]
             if distances is None:
                 if neighbours is None:
                     if self.atom_types is None:
@@ -560,24 +571,51 @@ class Cybertron(Cell):
                 distances = self.get_distance(
                     positions, neighbours, neighbour_mask, pbc_box) * self.input_unit_scale
         else:
+            bsize = bonds.shape[0]
             distances = 1
             neighbour_mask = bond_mask
 
-        x, xlist = self.model(distances, atom_types, atom_mask,
-                              neighbours, neighbour_mask, bonds, bond_mask)
+        node_emb = self.atom_embedding(atom_types)
+        if atom_types.shape[0] != bsize:
+            node_emb = msnp.broadcast_to(node_emb, (bsize,)+node_emb.shape[1:])
+            atom_mask = msnp.broadcast_to(
+                atom_mask, (bsize,)+atom_mask.shape[1:])
+
+        node_rep, edge_rep = self.model(atom_embedding=node_emb,
+                                        distances=distances,
+                                        atom_mask=atom_mask,
+                                        neighbours=neighbours,
+                                        neighbour_mask=neighbour_mask,
+                                        bonds=bonds,
+                                        bond_mask=bond_mask)
 
         if self.readout is None:
-            return x
+            return node_rep, node_rep
 
         if self.multi_readouts:
             ytuple = ()
             for i in range(self.num_readout):
-                yi = self.readout[i](x, xlist, atom_types,
-                                     atom_mask, num_atoms)
+                yi = self.readout[i](node_rep=node_rep,
+                                     edge_rep=edge_rep,
+                                     node_emb=node_emb,
+                                     atom_types=atom_types,
+                                     atom_mask=atom_mask,
+                                     distances=distances,
+                                     neighbours=neighbours,
+                                     neighbour_mask=neighbour_mask,
+                                     )
                 ytuple = ytuple + (yi,)
             return self.concat(ytuple) * self.output_unit_scale
 
-        return self.readout(x, xlist, atom_types, atom_mask, num_atoms) * self.output_unit_scale
+        return self.readout(node_rep=node_rep,
+                            edge_rep=edge_rep,
+                            node_emb=node_emb,
+                            atom_types=atom_types,
+                            atom_mask=atom_mask,
+                            distances=distances,
+                            neighbours=neighbours,
+                            neighbour_mask=neighbour_mask,
+                            ) * self.output_unit_scale
 
 class CybertronFF(PotentialCell):
     """Cybertron as potential for Mindmindsponge.
