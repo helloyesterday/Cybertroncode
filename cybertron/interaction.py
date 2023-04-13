@@ -23,6 +23,8 @@
 Interaction layers
 """
 
+from typing import Union
+
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import Tensor
@@ -44,6 +46,7 @@ from .base import MultiheadAttention
 from .base import Pondering, ACTWeight
 from .base import FeedForward
 from .activation import get_activation
+from .filter import Filter, get_filter
 
 __all__ = [
     "Interaction",
@@ -71,20 +74,32 @@ class Interaction(Cell):
 
     def __init__(self,
                  dim_feature: int,
+                 dim_input: int = None,
+                 filter_net: Union[Filter, str] = None,
+                 filter_layer: int = 1,
                  activation: Cell = None,
-                 use_distances: bool = True,
-                 use_bonds: bool = False,
                  ):
         super().__init__()
 
         self.reg_key = 'interaction'
         self.name = 'Interaction'
         self.dim_feature = func.get_integer(dim_feature)
+        self.dim_input = func.get_integer(dim_input)
+        if self.dim_input is None:
+            self.dim_input = self.dim_feature
         self.activation = get_activation(activation)
-        self.use_bonds = use_bonds
-        self.use_distances = use_distances
+
+        filter_layer = func.get_integer(filter_layer)
+
+        self.filter_net = get_filter(filter_net, self.dim_input,
+                                     self.dim_feature, self.activation, filter_layer)
 
         self.gather_neighbours = func.gather_vector
+
+    def set_filter(self, filter_net: Union[Filter, str], filter_layer: int = 1):
+        self.filter_net = get_filter(filter_net, self.dim_input,
+                                     self.dim_feature, self.activation, filter_layer)
+        return self
 
     def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
         """print information of interaction layer"""
@@ -100,17 +115,14 @@ class Interaction(Cell):
         return x
 
     def construct(self,
-                  x: Tensor,
-                  f_ij: Tensor,
-                  b_ij: Tensor,
-                  c_ij: Tensor,
-                  neighbours: Tensor,
-                  mask: Tensor = None,
-                  e: Tensor = None,
-                  f_ii: Tensor = None,
-                  b_ii: Tensor = None,
-                  c_ii: Tensor = None,
-                  atom_mask: Tensor = None
+                  node_vec: Tensor,
+                  node_emb: Tensor,
+                  neigh_list: Tensor,
+                  edge_vec: Tensor,
+                  edge_mask: Tensor = None,
+                  edge_cutoff: Tensor = None,
+                  edge_self: Tensor = None,
+                  **kwargs
                   ):
 
         """Compute interaction layer.
@@ -120,7 +132,7 @@ class Interaction(Cell):
                                     Representation of each atom.
             f_ij (Tensor):          Tensor of shape (B, A, N, F). Data type is float
                                     Edge vector of distance.
-            b_ij (Tensor):          Tensor of shape (B, A, N, F). Data type is float
+            bond_vec (Tensor):          Tensor of shape (B, A, N, F). Data type is float
                                     Edge vector of bond connection.
             c_ij (Tensor):          Tensor of shape (B, A, N). Data type is float
                                     Cutoff for distance.
@@ -128,13 +140,13 @@ class Interaction(Cell):
                                     Neighbour index.
             mask (Tensor):          Tensor of shape (B, A, N). Data type is bool
                                     Mask of neighbour index.
-            e (Tensor):             Tensor of shape (B, A, F). Data type is float
+            node_emb (Tensor):             Tensor of shape (B, A, F). Data type is float
                                     Embdding vector for each atom
-            f_ii (Tensor):          Tensor of shape (B, A, 1, F). Data type is float
+            edge_self (Tensor):          Tensor of shape (B, A, 1, F). Data type is float
                                     Edge vector of distance for atom itself.
-            b_ii (Tensor):          Tensor of shape (B, A, 1, F). Data type is float
+            bond_self (Tensor):          Tensor of shape (B, A, 1, F). Data type is float
                                     Edge vector of bond connection for atom itself.
-            c_ii (Tensor):          Tensor of shape (B, A). Data type is float
+            cutoff_self (Tensor):          Tensor of shape (B, A). Data type is float
                                     Cutoff for atom itself.
             atom_mask (Tensor):     Tensor of shape (B, A). Data type is bool
                                     Mask for each atom
@@ -153,7 +165,7 @@ class Interaction(Cell):
         """
 
         #pylint: disable=unused-argument
-        return x, f_ij
+        return node_vec, edge_vec
 
 
 class SchNetInteraction(Interaction):
@@ -165,7 +177,7 @@ class SchNetInteraction(Interaction):
 
         dim_filter (int):           Dimension of filter network.
 
-        dis_filter (Cell):          Filter network for distance
+        filter_net (Cell):          Filter network for distance
 
         activation (Cell):          Activation function. Default: 'ssp'
 
@@ -175,27 +187,27 @@ class SchNetInteraction(Interaction):
 
     def __init__(self,
                  dim_feature: int,
-                 dim_filter: int,
-                 dis_filter: Cell,
+                 dim_input: int = None,
+                 filter_net: Union[Filter, str] = 'dense',
+                 filter_layer: int = 1,
                  activation: Cell = 'ssp',
                  normalize_filter: bool = False,
                  ):
 
         super().__init__(
             dim_feature=dim_feature,
+            dim_input=dim_input,
+            filter_net=filter_net,
+            filter_layer=filter_layer,
             activation=activation,
-            use_distances=True,
-            use_bonds=False,
         )
 
-        self.dim_filter = func.get_integer(dim_filter)
-
         self.name = 'SchNet Interaction Layer'
-        self.atomwise_bc = Dense(self.dim_feature, self.dim_filter)
-        self.atomwise_ac = MLP(self.dim_filter, self.dim_feature, [self.dim_feature],
+
+        self.atomwise_bc = Dense(self.dim_feature, self.dim_input)
+        self.atomwise_ac = MLP(self.dim_input, self.dim_feature, [self.dim_feature],
                                activation=self.activation, use_last_activation=False)
 
-        self.dis_filter = dis_filter
         self.agg = Aggregate(axis=-2, mean=normalize_filter)
 
     def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
@@ -208,35 +220,34 @@ class SchNetInteraction(Interaction):
         return self
 
     def construct(self,
-                  x: Tensor,
-                  f_ij: Tensor,
-                  b_ij: Tensor,
-                  c_ij: Tensor,
-                  neighbours: Tensor,
-                  mask: Tensor = None,
-                  e: Tensor = None,
-                  f_ii: Tensor = None,
-                  b_ii: Tensor = None,
-                  c_ii: Tensor = None,
-                  atom_mask: Tensor = None
+                  node_vec: Tensor,
+                  node_emb: Tensor,
+                  neigh_list: Tensor,
+                  edge_vec: Tensor,
+                  edge_mask: Tensor = None,
+                  edge_cutoff: Tensor = None,
+                  edge_self: Tensor = None,
+                  **kwargs
                   ):
 
-        #pylint: disable=invalid-name
+        ax = self.atomwise_bc(node_vec)
+        x_ij = self.gather_neighbours(ax, neigh_list)
 
-        ax = self.atomwise_bc(x)
-        x_ij = self.gather_neighbours(ax, neighbours)
+        g_ij = edge_vec
+        if self.filter_net is not None:
+            g_ij = self.filter_net(edge_vec)
 
         # CFconv: pass expanded interactomic distances through filter block
-        W_ij = self.dis_filter(f_ij) * F.expand_dims(c_ij, -1)
-        y = x_ij * W_ij
+        w_ij = g_ij * F.expand_dims(edge_cutoff, -1)
+        y = x_ij * w_ij
 
         # atom-wise multiplication, aggregating and Dense layer
-        y = self.agg(y, mask)
+        y = self.agg(y, edge_mask)
         v = self.atomwise_ac(y)
 
-        x_new = x + v
+        node_new = node_vec + v
 
-        return x_new, f_ij
+        return node_new, edge_vec
 
 
 class PhysNetModule(Interaction):
@@ -246,7 +257,7 @@ class PhysNetModule(Interaction):
 
         dim_feature (int):          Feature dimension.
 
-        dis_filter (Cell):          Filter network for distance
+        filter_net (Cell):          Filter network for distance
 
         activation (Cell):          Activation function. Default: 'swish'
 
@@ -257,17 +268,20 @@ class PhysNetModule(Interaction):
     """
     def __init__(self,
                  dim_feature: int,
-                 dis_filter: Cell = None,
-                 activation: Cell = 'swish',
+                 dim_input: int = None,
+                 filter_net: Union[Filter, str] = 'dense',
+                 filter_layer: int = 0,
                  n_inter_residual: int = 3,
                  n_outer_residual: int = 2,
+                 activation: Cell = 'swish',
                  ):
 
         super().__init__(
             dim_feature=dim_feature,
+            dim_input=dim_input,
+            filter_net=filter_net,
+            filter_layer=filter_layer,
             activation=activation,
-            use_distances=True,
-            use_bonds=False,
         )
 
         self.name = 'PhysNet Module Layer'
@@ -276,7 +290,6 @@ class PhysNetModule(Interaction):
             self.dim_feature, self.dim_feature, activation=self.activation)
         self.xij_dense = Dense(
             self.dim_feature, self.dim_feature, activation=self.activation)
-        self.dis_filter = dis_filter
 
         self.gating_vector = Parameter(initializer(
             Normal(1.0), [self.dim_feature]), name="gating_vector")
@@ -291,6 +304,9 @@ class PhysNetModule(Interaction):
                                                 n_res=self.n_outer_residual)
 
         self.reducesum = P.ReduceSum()
+
+    def set_filter(self, filter_net: Union[Filter, str], filter_layer: int = 0):
+        return super().set_filter(filter_net, filter_layer)
 
     def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
         ret = char * num_retraction
@@ -307,7 +323,10 @@ class PhysNetModule(Interaction):
     def _attention_mask(self, f_ij, c_ij) -> Tensor:
         """attention mask"""
         x = f_ij * F.expand_dims(c_ij, -1)
-        return self.dis_filter(x)
+
+        if self.filter_net is None:
+            return x
+        return self.filter_net(x)
 
     def _interaction_block(self, x, f_ij, c_ij, neighbours, mask) -> Tensor:
         """interaction block"""
@@ -332,23 +351,20 @@ class PhysNetModule(Interaction):
         return ux + v1
 
     def construct(self,
-                  x: Tensor,
-                  f_ij: Tensor,
-                  b_ij: Tensor,
-                  c_ij: Tensor,
-                  neighbours: Tensor,
-                  mask: Tensor = None,
-                  e: Tensor = None,
-                  f_ii: Tensor = None,
-                  b_ii: Tensor = None,
-                  c_ii: Tensor = None,
-                  atom_mask: Tensor = None
+                  node_vec: Tensor,
+                  node_emb: Tensor,
+                  neigh_list: Tensor,
+                  edge_vec: Tensor,
+                  edge_mask: Tensor = None,
+                  edge_cutoff: Tensor = None,
+                  edge_self: Tensor = None,
+                  **kwargs
                   ):
 
-        x1 = self._interaction_block(x, f_ij, c_ij, neighbours, mask)
-        xnew = self.outer_residual(x1)
+        x1 = self._interaction_block(node_vec, edge_vec, edge_cutoff, neigh_list, edge_mask)
+        node_new = self.outer_residual(x1)
 
-        return xnew, f_ij
+        return node_new, edge_vec
 
 
 class NeuralInteractionUnit(Interaction):
@@ -364,9 +380,7 @@ class NeuralInteractionUnit(Interaction):
 
         activation (Cell):          Activation function. Default: 'swish'
 
-        dis_filter (Cell):          Filter network for distance
-
-        bond_filter (Cell):         Filter network for bond connection
+        filter_net (Cell):          Filter network for edge vector. Default: None
 
         fixed_cycles (bool):        Whether to fixed number of cyles to do ACT. Default: False
 
@@ -379,11 +393,12 @@ class NeuralInteractionUnit(Interaction):
 
     def __init__(self,
                  dim_feature: int,
+                 dim_input: int = None,
+                 filter_net: Union[Filter, str] = 'residual',
+                 filter_layer: int = 1,
                  n_heads: int = 8,
                  max_cycles: int = 10,
                  activation: Cell = 'swish',
-                 dis_filter: Cell = None,
-                 bond_filter: Cell = None,
                  fixed_cycles: bool = False,
                  use_feed_forward: bool = False,
                  act_threshold: float = 0.9,
@@ -391,10 +406,12 @@ class NeuralInteractionUnit(Interaction):
 
         super().__init__(
             dim_feature=dim_feature,
+            dim_input=dim_input,
+            filter_net=filter_net,
+            filter_layer=filter_layer,
             activation=activation,
-            use_distances=(dis_filter is not None),
-            use_bonds=(bond_filter is not None),
         )
+
         if dim_feature % n_heads != 0:
             raise ValueError('The term "dim_feature" cannot be divisible ' +
                              'by the term "n_heads" in AirNetIneteraction! ')
@@ -412,11 +429,7 @@ class NeuralInteractionUnit(Interaction):
             self.time_embedding = self._get_time_signal(
                 self.max_cycles, self.dim_feature)
 
-        self.dis_filter = dis_filter
-        self.bond_filter = bond_filter
-
-        self.positional_embedding = PositionalEmbedding(
-            self.dim_feature, self.use_distances, self.use_bonds)
+        self.positional_embedding = PositionalEmbedding(self.dim_feature)
         self.multi_head_attention = MultiheadAttention(
             self.dim_feature, self.n_heads, dim_tensor=4)
 
@@ -445,10 +458,8 @@ class NeuralInteractionUnit(Interaction):
         gap = char * num_gap
         print(ret+gap+' Feature dimension: ' + str(self.dim_feature))
         print(ret+gap+' Activation function: ' + self.activation.cls_name)
-        print(ret+gap+' Encoding distance: ' +
-              ("No" if self.dis_filter is None else "Yes"))
-        print(ret+gap+' Encoding bond: ' +
-              "No" if self.bond_filter is None else "Yes")
+        print(ret+gap+' Use filter network for edge vector: ' +
+              ("No" if self.filter_net is None else "Yes"))
         print(ret+gap+' Number of heads in multi-haed attention: '+str(self.n_heads))
         print(ret+gap+' Use feed forward network: ' +
               ('Yes' if self.use_feed_forward else 'No'))
@@ -461,32 +472,114 @@ class NeuralInteractionUnit(Interaction):
         print('-'*80)
         return self
 
+    def construct(self,
+                  node_vec: Tensor,
+                  node_emb: Tensor,
+                  neigh_list: Tensor,
+                  edge_vec: Tensor,
+                  edge_mask: Tensor = None,
+                  edge_cutoff: Tensor = None,
+                  edge_self: Tensor = None,
+                  **kwargs
+                  ):
+
+        edge_vec0 = edge_vec
+        if self.filter_net is not None:
+            edge_self = self.filter_net(edge_self)
+            edge_vec = self.filter_net(edge_vec)
+
+        if self.do_act:
+            xx = node_vec
+            node_new = self.zeros_like(node_vec)
+
+            halting_prob = self.zeros((node_vec.shape[0], node_vec.shape[1]), ms.float32)
+            n_updates = self.zeros((node_vec.shape[0], node_vec.shape[1]), ms.float32)
+
+            broad_zeros = self.zeros_like(node_emb)
+
+            if self.fixed_cycles:
+                for cycle in range(self.max_cycles):
+                    time_signal = self.time_embedding[cycle]
+                    vt = broad_zeros + time_signal
+
+                    xp = self.concat((xx, node_emb, vt))
+                    p = self.pondering(xp)
+                    w, dp, dn = self.act_weight(p, halting_prob)
+                    halting_prob = halting_prob + dp
+                    n_updates = n_updates + dn
+
+                    xx = self._encoder(node_vec=xx,
+                                       neigh_list=neigh_list,
+                                       edge_vec=edge_vec,
+                                       edge_mask=edge_mask,
+                                       edge_cutoff=edge_cutoff,
+                                       edge_self=edge_self,
+                                       time_signal=time_signal)
+
+                    cycle = cycle + 1
+
+                    node_new = xx * w + node_new * (1.0 - w)
+            else:
+                cycle = self.zeros((), ms.int32)
+                while((halting_prob < self.act_threshold).any() and (cycle < self.max_cycles)):
+                    time_signal = self.time_embedding[cycle]
+                    vt = broad_zeros + time_signal
+                    xp = self.concat((xx, node_emb, vt))
+                    p = self.pondering(xp)
+                    w, dp, dn = self.act_weight(p, halting_prob)
+                    halting_prob = halting_prob + dp
+                    n_updates = n_updates + dn
+
+                    xx = self._encoder(node_vec=xx,
+                                       neigh_list=neigh_list,
+                                       edge_vec=edge_vec,
+                                       edge_mask=edge_mask,
+                                       edge_cutoff=edge_cutoff,
+                                       edge_self=edge_self,
+                                       time_signal=time_signal
+                                       )
+
+                    cycle = cycle + 1
+
+                    node_new = xx * w + node_new * (1.0 - w)
+        else:
+            time_signal = self.time_embedding[0]
+            node_new = self._encoder(node_vec=xx,
+                                     neigh_list=neigh_list,
+                                     edge_vec=edge_vec,
+                                     edge_mask=edge_mask,
+                                     edge_cutoff=edge_cutoff,
+                                     edge_self=edge_self,
+                                     time_signal=time_signal)
+
+        return node_new, edge_vec0
+
     def _encoder(self,
-                 x: Tensor,
-                 neighbours: Tensor,
-                 g_ii: Tensor = 1,
-                 g_ij: Tensor = 1,
-                 b_ii: Tensor = 0,
-                 b_ij: Tensor = 0,
-                 t: Tensor = 0,
-                 cutoff: Tensor = None,
-                 mask: Tensor = None) -> Tensor:
+                 node_vec: Tensor,
+                 neigh_list: Tensor,
+                 edge_vec: Tensor = 1,
+                 edge_mask: Tensor = None,
+                 edge_cutoff: Tensor = None,
+                 edge_self: Tensor = 1,
+                 time_signal: Tensor = 0,
+                 ) -> Tensor:
 
         """encoder for transformer"""
 
-        xij = self.gather_neighbours(x, neighbours)
+        # (B, A, N, F) <- (B, A, F)
+        node_mat = self.gather_neighbours(node_vec, neigh_list)
         query, key, value = self.positional_embedding(
-            x, xij, g_ii, g_ij, b_ii, b_ij, t)
-        v = self.multi_head_attention(
-            query, key, value, mask=mask, cutoff=cutoff)
-        v = v.squeeze(-2)
+            node_vec, node_mat, edge_self, edge_vec, time_signal)
+        dv = self.multi_head_attention(
+            query, key, value, mask=edge_mask, cutoff=edge_cutoff)
+        dv = F.squeeze(dv, -2)
 
-        y = x + v
+        node_new = node_vec + dv
 
         if self.use_feed_forward:
-            y = self.feed_forward(y)
+            node_new = self.feed_forward(node_new)
 
-        return y
+        return node_new
 
     def _get_time_signal(self, length, channels, min_timescale=1.0, max_timescale=1.0e4) -> Tensor:
         """
@@ -510,81 +603,3 @@ class NeuralInteractionUnit(Interaction):
                           'constant', constant_values=[0.0, 0.0])
 
         return signal
-
-    def construct(self,
-                  x: Tensor,
-                  f_ij: Tensor,
-                  b_ij: Tensor,
-                  c_ij: Tensor,
-                  neighbours: Tensor,
-                  mask: Tensor = None,
-                  e: Tensor = None,
-                  f_ii: Tensor = None,
-                  b_ii: Tensor = None,
-                  c_ii: Tensor = None,
-                  atom_mask: Tensor = None
-                  ):
-
-        if self.dis_filter is not None:
-            g_ii = self.dis_filter(f_ii)
-            g_ij = self.dis_filter(f_ij)
-        else:
-            g_ii = f_ii
-            g_ij = f_ij
-
-        if self.bond_filter is not None:
-            b_ii = self.bond_filter(b_ii)
-            b_ij = self.bond_filter(b_ij)
-
-        cutoff = self.concat((c_ii, c_ij))
-        mask = self.concat((atom_mask, mask))
-
-        if self.do_act:
-            xx = x
-            x0 = self.zeros_like(x)
-
-            halting_prob = self.zeros((x.shape[0], x.shape[1]), ms.float32)
-            n_updates = self.zeros((x.shape[0], x.shape[1]), ms.float32)
-
-            broad_zeros = self.zeros_like(e)
-
-            if self.fixed_cycles:
-                for cycle in range(self.max_cycles):
-                    t = self.time_embedding[cycle]
-                    vt = broad_zeros + t
-
-                    xp = self.concat((xx, e, vt))
-                    p = self.pondering(xp)
-                    w, dp, dn = self.act_weight(p, halting_prob)
-                    halting_prob = halting_prob + dp
-                    n_updates = n_updates + dn
-
-                    xx = self._encoder(xx, neighbours, g_ii,
-                                       g_ij, b_ii, b_ij, t, cutoff, mask)
-
-                    cycle = cycle + 1
-
-                    x0 = xx * w + x0 * (1.0 - w)
-            else:
-                cycle = self.zeros((), ms.int32)
-                while((halting_prob < self.act_threshold).any() and (cycle < self.max_cycles)):
-                    t = self.time_embedding[cycle]
-                    vt = broad_zeros + t
-                    xp = self.concat((xx, e, vt))
-                    p = self.pondering(xp)
-                    w, dp, dn = self.act_weight(p, halting_prob)
-                    halting_prob = halting_prob + dp
-                    n_updates = n_updates + dn
-
-                    xx = self._encoder(xx, neighbours, g_ii,
-                                       g_ij, b_ii, b_ij, t, cutoff, mask)
-
-                    cycle = cycle + 1
-
-                    x0 = xx * w + x0 * (1.0 - w)
-        else:
-            t = self.time_embedding[0]
-            x0 = self._encoder(x, neighbours, g_ii, g_ij,
-                               b_ii, b_ij, t, cutoff, mask)
-
-        return x0, f_ij

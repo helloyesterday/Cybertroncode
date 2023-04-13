@@ -253,19 +253,10 @@ class PositionalEmbedding(Cell):
     """
     def __init__(self,
                  dim: int,
-                 use_distances: bool = True,
-                 use_bonds: bool = False,
                  use_public_layer_norm: bool = True
                  ):
 
         super().__init__()
-
-        if not (use_bonds or use_distances):
-            raise ValueError(
-                '"use_bonds" and "use_distances" cannot be both "False" when initializing "PositionalEmbedding"!')
-
-        self.use_distances = use_distances
-        self.use_bonds = use_bonds
 
         if use_public_layer_norm:
             self.norm = nn.LayerNorm((dim,), -1, -1)
@@ -287,20 +278,18 @@ class PositionalEmbedding(Cell):
                   xij: Tensor,
                   g_ii: Tensor = 1,
                   g_ij: Tensor = 1,
-                  b_ii: Tensor = 0,
-                  b_ij: Tensor = 0,
                   t: float = 0,
                   ):
         """Get query, key and query from atom types and positions
 
         Args:
-            xi (Tensor):    Tensor with shape (B, A, F). Data type is float.
-            xij (Tensor):   Tensor with shape (B, A, N, F]). Data type is float.
-            g_ii (Tensor):  Tensor with shape (B, A, 1, F). Data type is float.
-            g_ij (Tensor):  Tensor with shape (B, A, N, F). Data type is float.
-            b_ii (Tensor):  Tensor with shape (B, A, 1, F). Data type is float.
-            b_ij (Tensor):  Tensor with shape (B, A, N, F). Data type is float.
-            t (Tensor):     Tensor with shape (F). Data type is float.
+            xi (Tensor):    Tensor with shape `(B, A, F)`. Data type is float.
+            xij (Tensor):   Tensor with shape `(B, A, N, F])`. Data type is float.
+            g_ii (Tensor):  Tensor with shape `(B, A, 1, F)` or `(1, F)`. Data type is float.
+            g_ij (Tensor):  Tensor with shape `(B, A, N, F)`. Data type is float.
+            b_ii (Tensor):  Tensor with shape `(B, A, 1, F)`. Data type is float.
+            b_ij (Tensor):  Tensor with shape `(B, A, N, F)`. Data type is float.
+            t (Tensor):     Tensor with shape `(F,)`. Data type is float.
 
         Symbols:
             B:  Batch size
@@ -315,10 +304,6 @@ class PositionalEmbedding(Cell):
             value (Tensor): Tensor with shape (B, A, N', F). Data type is float.
 
         """
-
-        if self.use_bonds:
-            xi += b_ii
-            xij += b_ij
 
         # e_ii = self.x_norm(xi + t)
         # e_ij = self.x_norm(xij + t)

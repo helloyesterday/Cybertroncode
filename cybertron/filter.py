@@ -27,17 +27,36 @@ from mindspore import Tensor
 from mindspore.nn import Cell
 
 from mindsponge.function import get_integer
+from mindsponge.data import get_hyper_string
 
 from .block import MLP, Dense, Residual
 
-class DenseFilter(Cell):
-    r"""Dense type filter network.
+_FILTER_BY_KEY = dict()
+
+
+def _filter_register(*aliases):
+    """Return the alias register."""
+    def alias_reg(cls):
+        name = cls.__name__
+        name = name.lower()
+        if name not in _FILTER_BY_KEY:
+            _FILTER_BY_KEY[name] = cls
+
+        for alias in aliases:
+            if alias not in _FILTER_BY_KEY:
+                _FILTER_BY_KEY[alias] = cls
+        return cls
+    return alias_reg
+
+
+class Filter(Cell):
+    r"""Base class for filter network.
 
     Args:
 
-        num_basis (int):    Number of basis functions.
+        dim_in (int):    Number of basis functions.
 
-        dim_filter (int):   Dimension of output filter Tensor.
+        dim_out (int):   Dimension of output filter Tensor.
 
         activation (Cell):  Activation function. Default: None
 
@@ -45,37 +64,73 @@ class DenseFilter(Cell):
 
     """
     def __init__(self,
-                 num_basis: int,
-                 dim_filter: int,
-                 activation: Cell,
+                 dim_in: int,
+                 dim_out: int,
+                 activation: Cell = None,
                  n_hidden: int = 1,
                  ):
 
         super().__init__()
 
-        self.num_basis = get_integer(num_basis)
-        self.dim_filter = get_integer(dim_filter)
+        self.dim_in = get_integer(dim_in)
+        self.dim_out = get_integer(dim_out)
+        self.activation = activation
+        self.n_hidden = get_integer(n_hidden)
+
+    def construct(self, x: Tensor):
+        return x
+
+
+@_filter_register('dense')
+class DenseFilter(Filter):
+    r"""Dense type filter network.
+
+    Args:
+
+        dim_in (int):    Number of basis functions.
+
+        dim_out (int):   Dimension of output filter Tensor.
+
+        activation (Cell):  Activation function. Default: None
+
+        n_hidden (int):     Number of hidden layers. Default: 1
+
+    """
+    def __init__(self,
+                 dim_in: int,
+                 dim_out: int,
+                 activation: Cell,
+                 n_hidden: int = 1,
+                 ):
+
+        super().__init__(
+            dim_in=dim_in,
+            dim_out=dim_out,
+            activation=activation,
+            n_hidden=n_hidden,
+        )
 
         if n_hidden > 0:
-            hidden_layers = [self.dim_filter for _ in range(n_hidden)]
+            hidden_layers = [self.dim_out for _ in range(n_hidden)]
             self.dense_layers = MLP(
-                self.num_basis, self.dim_filter, hidden_layers, activation=activation)
+                self.dim_in, self.dim_out, hidden_layers, activation=self.activation)
         else:
             self.dense_layers = Dense(
-                self.num_basis, self.dim_filter, activation=activation)
+                self.dim_in, self.dim_out, activation=self.activation)
 
     def construct(self, x: Tensor):
         return self.dense_layers(x)
 
 
-class ResFilter(Cell):
+@_filter_register('residual')
+class ResFilter(Filter):
     r"""Residual type filter network.
 
     Args:
 
-        num_basis (int):    Number of basis functions.
+        dim_in (int):    Number of basis functions.
 
-        dim_filter (int):   Dimension of output filter Tensor.
+        dim_out (int):   Dimension of output filter Tensor.
 
         activation (Cell):  Activation function. Default: None
 
@@ -83,21 +138,66 @@ class ResFilter(Cell):
 
     """
     def __init__(self,
-                 num_basis: int,
-                 dim_filter: int,
+                 dim_in: int,
+                 dim_out: int,
                  activation: Cell,
                  n_hidden: int = 1,
                  ):
+        super().__init__(
+            dim_in=dim_in,
+            dim_out=dim_out,
+            activation=activation,
+            n_hidden=n_hidden,
+        )
 
-        super().__init__()
-
-        self.num_basis = get_integer(num_basis)
-        self.dim_filter = get_integer(dim_filter)
-
-        self.linear = Dense(self.num_basis, self.dim_filter, activation=None)
+        self.linear = Dense(self.dim_in, self.dim_out, activation=None)
         self.residual = Residual(
-            self.dim_filter, activation=activation, n_hidden=n_hidden)
+            self.dim_out, activation=self.activation, n_hidden=n_hidden)
 
     def construct(self, x: Tensor):
         lx = self.linear(x)
         return self.residual(lx)
+
+
+
+_FILTER_BY_NAME = {filter.__name__: filter for filter in _FILTER_BY_KEY.values()}
+
+
+def get_filter(filter: str,
+               dim_in: int,
+               dim_out: int,
+               activation: Cell = None,
+               n_hidden: int = 1,
+               ) -> Filter:
+    """get filter by name"""
+
+    if isinstance(filter, Filter):
+        return filter
+    if filter is None:
+        return None
+
+    hyper_param = None
+    if isinstance(filter, dict):
+        if 'name' not in filter.keys():
+            raise KeyError('Cannot find the key "name" in filter dict!')
+        hyper_param = filter
+        filter = get_hyper_string(hyper_param, 'name')
+
+    if isinstance(filter, str):
+        if filter.lower() == 'none':
+            return None
+        if filter.lower() in _FILTER_BY_KEY.keys():
+            return _FILTER_BY_KEY[filter.lower()](dim_in=dim_in,
+                                               dim_out=dim_out,
+                                               activation=activation,
+                                               n_hidden=n_hidden)
+        if filter in _FILTER_BY_NAME.keys():
+            return _FILTER_BY_NAME[filter](dim_in=dim_in,
+                                        dim_out=dim_out,
+                                        activation=activation,
+                                        n_hidden=n_hidden)
+
+        raise ValueError(
+            "The filter corresponding to '{}' was not found.".format(filter))
+
+    raise TypeError("Unsupported filter type '{}'.".format(type(filter)))

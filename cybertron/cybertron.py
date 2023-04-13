@@ -45,6 +45,7 @@ from mindsponge.partition import IndexDistances
 from mindsponge.partition import FullConnectNeighbours
 from mindsponge.potential import PotentialCell
 
+from .embedding import GraphEmbedding
 from .readout import Readout, get_readout
 from .model import MolecularModel, get_molecular_model
 
@@ -98,13 +99,13 @@ class Cybertron(Cell):
     """
 
     def __init__(self,
-                 model: MolecularModel = None,
+                 embedding: GraphEmbedding,
+                 model: MolecularModel,
                  readout: Readout = 'atomwise',
                  dim_output: int = 1,
                  num_atoms: int = None,
                  atom_types: Tensor = None,
                  bond_types: Tensor = None,
-                 num_atom_types: int = 64,
                  pbc_box: Tensor = None,
                  use_pbc: bool = None,
                  length_unit: str = None,
@@ -145,6 +146,8 @@ class Cybertron(Cell):
         self.energy_unit = self.units.energy_unit
         self.model = get_molecular_model(model, length_unit=self.length_unit)
 
+        self.embedding = embedding
+
         self.model_name = self.model.network_name
         self.model_hyper_param = self.model.hyper_param
         self.dim_feature = self.model.dim_feature
@@ -156,11 +159,6 @@ class Cybertron(Cell):
         self.num_output = self.dim_output.size
         if self.num_output == 1:
             self.dim_output = get_integer(self.dim_output)
-
-        self.num_atom_types = get_integer(num_atom_types)
-        print(self.num_atom_types)
-        self.atom_embedding = Embedding(
-            self.num_atom_types, self.dim_feature, use_one_hot=True, embedding_table=Normal(1.0))
 
         if readout is None:
             self.num_readout = 0
@@ -557,37 +555,34 @@ class Cybertron(Cell):
             atom_types = self.atom_types
             atom_mask = self.atom_mask
 
-        if self.calc_distance:
-            bsize = positions.shape[0]
-            if distances is None:
-                if neighbours is None:
-                    if self.atom_types is None:
-                        neighbours, neighbour_mask = self.fc_neighbours(atom_mask)
-                    else:
-                        neighbours = self.neighbours
-                        neighbour_mask = self.neighbour_mask
-                if self.pbc_box is not None:
-                    pbc_box = self.pbc_box
-                distances = self.get_distance(
-                    positions, neighbours, neighbour_mask, pbc_box) * self.input_unit_scale
-        else:
-            bsize = bonds.shape[0]
-            distances = 1
-            neighbour_mask = bond_mask
+        if positions is not None and distance is None:
+            if neighbours is None:
+                if self.atom_types is None:
+                    neighbours, neighbour_mask = self.fc_neighbours(atom_mask)
+                else:
+                    neighbours = self.neighbours
+                    neighbour_mask = self.neighbour_mask
+            if self.pbc_box is not None:
+                pbc_box = self.pbc_box
+            distance = self.get_distance(
+                positions, neighbours, neighbour_mask, pbc_box) * self.input_unit_scale
 
-        node_emb = self.atom_embedding(atom_types)
-        if atom_types.shape[0] != bsize:
-            node_emb = msnp.broadcast_to(node_emb, (bsize,)+node_emb.shape[1:])
-            atom_mask = msnp.broadcast_to(
-                atom_mask, (bsize,)+atom_mask.shape[1:])
+        node_emb, node_mask, edge_emb, \
+            edge_mask, edge_cutoff, edge_self = self.embedding(atom_types=atom_types,
+                                                               atom_mask=atom_mask,
+                                                               neigh_list=neighbours,
+                                                               distance=distance,
+                                                               dis_mask=neighbour_mask,
+                                                               bond=bonds,
+                                                               bond_mask=bond_mask)
 
-        node_rep, edge_rep = self.model(atom_embedding=node_emb,
-                                        distances=distances,
-                                        atom_mask=atom_mask,
-                                        neighbours=neighbours,
-                                        neighbour_mask=neighbour_mask,
-                                        bonds=bonds,
-                                        bond_mask=bond_mask)
+        node_rep, edge_rep = self.model(node_emb=node_emb,
+                                        node_mask=node_mask,
+                                        neigh_list=neighbours,
+                                        edge_emb=edge_emb,
+                                        edge_mask=edge_mask,
+                                        edge_cutoff=edge_cutoff,
+                                        edge_self=edge_self)
 
         if self.readout is None:
             return node_rep, node_rep

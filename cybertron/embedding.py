@@ -23,253 +23,198 @@
 Embedding
 """
 
-from typing import Union
+from typing import Union, List
 
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import nn
 from mindspore import Tensor
 from mindspore.nn import Cell
-from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.common.initializer import Initializer, Normal
 
-from mindsponge.function import Units, GLOBAL_UNITS, Length
-from mindsponge.function import get_integer, concat_last_dim
+from mindsponge.function import Units, GLOBAL_UNITS, Length, get_length
+from mindsponge.function import get_integer, get_ms_array
 
 from .cutoff import Cutoff, get_cutoff
 from .rbf import get_rbf
+from .filter import Filter, get_filter
 
 __all__ = [
+    'GraphEmbedding',
 ]
 
-
-class AtomEmbedding(nn.Cell):
-    r"""Atom embedding
-
-
-    """
-
+class GraphEmbedding(nn.Cell):
     def __init__(self,
-                 dim_feature: int = 64,
-                 num_atom_types: int = 64,
-                 use_one_hot: bool = True,
-                 embedding_table: Union[str, Initializer] = Normal(1.0)
-                 ):
-
-        super().__init__()
-
-        num_atom_types = get_integer(num_atom_types)
-        dim_feature = get_integer(dim_feature)
-        self.embedding = nn.Embedding(
-            num_atom_types, dim_feature,
-            use_one_hot=use_one_hot, embedding_table=embedding_table)
-        
-    def construct(self, atom_types: Tensor, atom_mask: Tensor = None, batch_size: int = 1):
-        atom_embedding = self.embedding(atom_types)
-        if batch_size > 1 and atom_types.shape[0] != batch_size:
-            atom_embedding = msnp.broadcast_to(atom_embedding, (batch_size,) + atom_embedding.shape[1:])
-            if atom_mask is not None:
-                atom_mask = msnp.broadcast_to(atom_mask, (batch_size,)+atom_mask.shape[1:])
-
-        return atom_embedding, atom_mask
-
-
-class DistanceEmbedding(nn.Cell):
-    r"""Distance embedding
-
-    """
-
-    def __init__(self,
-                 
-                 
+                 dim_node: int = 128,
+                 dim_edge: int = 128,
+                 emb_dis: bool = True,
+                 emb_bond: bool = False,
                  cutoff: Length = Length(1, 'nm'),
                  cutoff_fn: Cutoff = None,
                  rbf_fn: Cell = None,
                  num_basis: int = None,
-                 filter: Cell = None,
-                 dim_feature: int = 64,
-                 r_self: Length = None,
+                 dis_filter: Union[Filter, str] = 'residual',
+                 bond_filter: Union[Filter, str] = 'residual',
+                 interaction: Cell = None,
+                 dis_self: Length = Length(0.05, 'nm'),
+                 num_atom_types: int = 64,
+                 num_bond_types: int = 16,
+                 initializer: Union[Initializer, str] = Normal(1.0),
+                 activation: Cell = 'swish',
                  length_unit: str = 'nm',
                  ):
+
         super().__init__()
 
         if length_unit is None:
             length_unit = GLOBAL_UNITS.length_unit
         self.units = Units(length_unit)
 
-        self.cutoff = self.get_length(cutoff)
+        self.emb_dis = emb_dis
+        self.emb_bond = emb_bond
+
+        num_atom_types = get_integer(num_atom_types)
+        self._dim_node = get_integer(dim_node)
+        self._dim_edge = get_integer(dim_edge)
+        self.atom_embedding = nn.Embedding(
+            num_atom_types, self._dim_node,
+            use_one_hot=True, embedding_table=initializer)
+
+        cutoff = get_length(cutoff, self.units)
+        self.cutoff = get_ms_array(cutoff, ms.float32)
         self.cutoff_fn = get_cutoff(cutoff_fn, self.cutoff)
 
-        self.num_basis = get_integer(num_basis)
-
-        self.rbf_fn = get_rbf(rbf_fn, r_max=self.cutoff, num_basis=self.num_basis,
-                              length_unit=self.units.length_unit)
-
-        self.r_self = r_self
-        self.r_self_ex = None
-        if self.r_self is not None:
-            self.r_self = self.get_length(self.r_self)
-            self.r_self_ex = F.expand_dims(self.r_self, 0)
-
-    def set_self_distance(self, distance: Tensor):
-        self.r_self = self.get_length(distance)
-        self.r_self_ex = F.expand_dims(distance, 0)
-        return self
-
-    def get_length(self, length: Union[float, Length, Tensor], unit: str = None):
-        """get length value according to unit"""
-        if isinstance(length, Length):
-            if unit is None:
-                unit = self.units
-            return Tensor(length(unit), ms.float32)
-        return Tensor(length, ms.float32)
-    
-    def get_rbf(self, distances: Tensor):
-        """get radical basis function"""
-        if self.rbf_fn is None:
-            rbf = F.expand_dims(distances, -1)
-        else:
-            rbf = self.rbf_fn(distances)
-        return rbf
-
-    def construct(self,
-                  distances: Tensor = 1,
-                  neighbours: Tensor = None,
-                  neighbour_mask: Tensor = None,
-                  atom_mask: Tensor = None,
-                  ):
-
-        rbf = self.get_rbf(distances)
-        rbf_self = 0
-        if self.r_self is not None:
-            self.get_rbf(self.r_self_ex)
-
-        # apply cutoff
-        if self.cutoff_fn is None:
-            cutoff = F.ones_like(neighbours)
-        else:
-            cutoff, neighbour_mask = self.cutoff_fn(neighbours, neighbour_mask)
-
-        cutoff_self = 1
-        if self.r_self is not None:
-            cutoff_self = F.cast(atom_mask, ms.float32)
-
-        return rbf, cutoff, neighbour_mask, rbf_self, cutoff_self
-
-
-class BondEmbedding(nn.Cell):
-    r"""Distance embedding
-
-    """
-
-    def __init__(self,
-                 dim_feature: int = 128,
-                 num_bond_types: int = 16,
-                 use_one_hot: bool = True,
-                 embedding_table: Union[str, Initializer] = Normal(1.0)
-                 ):
-        super().__init__()
+        dis_self = get_length(dis_self, self.units)
+        # (1)
+        self.dis_self = get_ms_array(dis_self, ms.float32).reshape((-1,))
 
         self.num_bond_types = get_integer(num_bond_types)
-        self.dim_feature = get_integer(dim_feature)
 
-        self.embedding = nn.Embedding(
-            self.num_bond_types, self.dim_feature,
-            use_one_hot=use_one_hot, embedding_table=embedding_table)
+        self.rbf_fn = None
+        self.dis_filter = None
+        if self.emb_dis:
+            num_basis = get_integer(num_basis)
+            self.rbf_fn = get_rbf(rbf_fn, r_max=self.cutoff, num_basis=num_basis,
+                                length_unit=self.units.length_unit)
 
-    def construct(self,
-                  bonds: Tensor = None,
-                  bond_mask: Tensor = None,
-                  atom_mask: Tensor = None,
-                  ):
+            self.dis_filter = get_filter(filter=dis_filter,
+                                        dim_in=self.num_basis,
+                                        dim_out=self._dim_edge,
+                                        activation=activation)
 
-        nbatch = bonds.shape[0]
-        natoms = bonds.shape[1]
+        self.bond_embedding = None
+        self.bond_filter = None
+        if self.emb_bond:
+            self.bond_embedding = nn.Embedding(
+                self.num_bond_types, self._dim_edge,
+                use_one_hot=True, embedding_table=initializer)
+            self.bond_filter = get_filter(filter=bond_filter,
+                                        dim_in=self._dim_edge,
+                                        dim_out=self._dim_edge,
+                                        activation=activation)
+        
+        if self.emb_dis and self.emb_bond:
+            self.interaction = interaction
 
-        bond_self = F.zeros((nbatch, natoms), ms.int32)
-        emb_self = self.embedding(bond_self)
+    @property
+    def num_basis(self) -> int:
+        if self.rbf_fn is None:
+            return 1
+        return self.rbf_fn.num_basis
 
-        emb = self.embedding(bonds)
-        cutoff = 1
-        if bond_mask is not None:
-            b_ij = b_ij * F.expand_dims(bond_mask, -1)
-            bond_mask = concat_last_dim((atom_mask, bond_mask))
-            cutoff = F.cast(bond_mask > 0, ms.float32)
+    @property
+    def dim_node(self) -> int:
+        return self._dim_node
 
-        return emb, cutoff, bond_mask, emb_self
+    @property
+    def dim_edge(self) -> int:
+        if self.emb_dis and self.dis_filter is None:
+            return self.num_basis
+        return self._dim_edge
 
-
-
-class EdgeEmbedding(nn.Cell):
-    r"""Edge embedding
-
-    """
-
-    def __init__(self,
-                 cutoff: Length = Length(1, 'nm'),
-                 cutoff_fn: Cutoff = None,
-                 rbf_fn: Cell = None,
-                 r_self: Length = None,
-                 length_unit: str = 'nm',
-                 ):
-        super().__init__()
-
-        if length_unit is None:
-            length_unit = GLOBAL_UNITS.length_unit
-        self.units = Units(length_unit)
-
-        self.cutoff = self.get_length(cutoff)
-        self.cutoff_fn = get_cutoff(cutoff_fn, self.cutoff)
-        self.rbf_fn = get_rbf(rbf_fn, self.cutoff, length_unit=self.units.length_unit)
-
-        self.r_self = r_self
-        self.r_self_ex = None
-        if self.r_self is not None:
-            self.r_self = self.get_length(self.r_self)
-            self.r_self_ex = F.expand_dims(self.r_self, 0)
-
-    def set_self_distance(self, distance: Tensor):
-        self.r_self = self.get_length(distance)
-        self.r_self_ex = F.expand_dims(distance, 0)
-        return self
-
-    def get_length(self, length: Union[float, Length, Tensor], unit: str = None):
-        """get length value according to unit"""
-        if isinstance(length, Length):
-            if unit is None:
-                unit = self.units
-            return Tensor(length(unit), ms.float32)
-        return Tensor(length, ms.float32)
-    
     def get_rbf(self, distances: Tensor):
         """get radical basis function"""
         if self.rbf_fn is None:
-            rbf = F.expand_dims(distances, -1)
-        else:
-            rbf = self.rbf_fn(distances)
-        return rbf
+            # (B, A, N, 1)
+            return F.expand_dims(distances, -1)
+        # (B, A, N, F)
+        return self.rbf_fn(distances)
 
     def construct(self,
-                  distances: Tensor = 1,
-                  neighbours: Tensor = None,
-                  neighbour_mask: Tensor = None,
-                  atom_mask: Tensor = None,
+                  atom_types: Tensor,
+                  atom_mask: Tensor,
+                  neigh_list: Tensor,
+                  distance: Tensor,
+                  dis_mask: Tensor,
+                  bond: Tensor,
+                  bond_mask: Tensor,
+                  **kwargs,
                   ):
-
-        rbf = self.get_rbf(distances)
-        rbf_self = 0
-        if self.r_self is not None:
-            self.get_rbf(self.r_self_ex)
-
-        # apply cutoff
-        if self.cutoff_fn is None:
-            cutoff = F.ones_like(neighbours)
+        
+        if self.emb_dis:
+            batch_size = distance.shape[0]
+            num_atoms = distance.shape[-2]
         else:
-            cutoff, neighbour_mask = self.cutoff_fn(neighbours, neighbour_mask)
+            batch_size = bond.shape[0]
+            num_atoms = bond.shape[-2]
 
-        cutoff_self = 1
-        if self.r_self is not None:
-            cutoff_self = F.cast(atom_mask, ms.float32)
+        node_emb = self.atom_embedding(atom_types)
+        node_mask = atom_mask
+        if batch_size > 1 and atom_types.shape[0] != batch_size:
+            node_emb = msnp.broadcast_to(node_emb, (batch_size,) + node_emb.shape[1:])
+            if atom_mask is not None:
+                node_mask = msnp.broadcast_to(atom_mask, (batch_size,)+atom_mask.shape[1:])
 
-        return rbf, cutoff, neighbour_mask, rbf_self, cutoff_self
+        dis_emb = None
+        dis_mask = None
+        dis_cutoff = None
+        dis_self = None
+        if self.emb_dis:
+            # (B, A, N, K)
+            dis_emb = self.get_rbf(distance)
+            # (1, K)
+            dis_self = self.get_rbf(self.dis_self)
+            if self.dis_filter is not None:
+                # (B, A, N, F)
+                dis_emb = self.dis_filter(dis_emb)
+                # (1, F)
+                dis_self = self.dis_filter(dis_self)
+
+            # (B, A, N)
+            if self.cutoff_fn is None:
+                dis_cutoff = F.ones_like(distance)
+            else:
+                dis_cutoff, dis_mask = self.cutoff_fn(distance, dis_mask)
+
+        bond_emb = None
+        bond_mask = None
+        bond_cutoff = None
+        bond_self = None
+        if self.emb_bond:
+            bond_emb = self.bond_embedding(bond)
+            bond_self = self.bond_embedding(F.zeros((batch_size, num_atoms), ms.int32))
+
+            if bond_mask is not None:
+                bond_emb = bond_emb * F.expand_dims(bond_mask, -1)
+                bond_cutoff = F.cast(bond_mask > 0, ms.float32)
+
+            if self.bond_filter is not None:
+                bond_emb = self.bond_filter(bond_emb)
+                bond_self = self.bond_filter(bond_self)
+
+        edge_cutoff = dis_cutoff
+        edge_mask = dis_mask
+        edge_self = dis_self
+        if not self.emb_dis:
+            edge_emb = bond_emb
+            edge_mask = bond_mask
+            edge_cutoff = bond_cutoff
+            edge_self = bond_self
+        elif not self.emb_bond:
+            edge_emb = dis_emb
+        else:
+            node_emb, edge_emb = self.interaction(node_emb, neigh_list, bond_emb,
+                                                  bond_mask, bond_cutoff, bond_self)
+
+        return node_emb, node_mask, edge_emb, edge_mask, edge_cutoff, edge_self

@@ -233,6 +233,18 @@ class RadicalBasisFunctions(Cell):
         return scale
 
     def construct(self, distance: Tensor):
+        """Compute gaussian type RBF.
+
+        Args:
+            distance (Tensor): Tensor of shape `(...)`. Data type is float.
+
+        Returns:
+            rbf (Tensor): Tensor of shape `(..., K)`. Data type is float.
+        
+        Symbol:
+            K: Number of basis functions.
+
+        """
         raise NotImplementedError
 
 
@@ -362,17 +374,20 @@ class GaussianBasis(RadicalBasisFunctions):
         """Compute gaussian type RBF.
 
         Args:
-            distance (ms.Tensor[float], [B,A,N]): distances between atoms
+            distance (Tensor): Tensor of shape `(...)`. Data type is float.
 
         Returns:
-            RBF (ms.Tensor[float], [B,A,N,F]): radical basis functions
+            rbf (Tensor): Tensor of shape `(..., K)`. Data type is float.
 
         """
         if self.clip_distance:
             distance = C.clip_by_value(distance, self.r_min, self.r_max)
 
+        # (..., 1) <- (..., N)
         ex_dis = F.expand_dims(distance, -1)
+        # (..., K) = (..., 1) - (K,)
         diff = ex_dis - self.offsets
+        # (..., K)
         rbf = self.exp(self.coeff * F.square(diff))
 
         if self.rescale:
@@ -542,24 +557,24 @@ class LogGaussianBasis(RadicalBasisFunctions):
         return self
 
     def construct(self, distance: Tensor):
-        """Compute log gaussian type RBF.
+        """Compute gaussian type RBF.
 
         Args:
-            distance (ms.Tensor[float], [B,A,N]): distances between atoms
+            distance (Tensor): Tensor of shape `(...)`. Data type is float.
 
         Returns:
-            RBF (ms.Tensor[float], [B,A,N,F]): radical basis functions
+            rbf (Tensor): Tensor of shape `(..., K)`. Data type is float.
 
         """
         if self.clip_distance:
             distance = C.clip_by_value(distance, self.r_min, self.r_max)
 
-        # (B,A,N)
+        # (...)
         log_r = self.log(distance * self.inv_ref)
-        # (B,A,N,1)
+        # (..., 1)
         log_r = F.expand_dims(log_r, -1)
 
-        # (B,A,N,K) = (B,A,N,1) - (K)
+        # (..., K) = (..., 1) - (K)
         log_diff = log_r - self.offsets
         rbf = self.exp(self.coeff*F.square(log_diff))
 

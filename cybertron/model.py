@@ -23,6 +23,8 @@
 Deep molecular model
 """
 
+from typing import Union
+
 import mindspore as ms
 import mindspore.nn as nn
 import mindspore.numpy as msnp
@@ -36,14 +38,14 @@ from mindsponge import GLOBAL_UNITS
 from mindsponge.data import set_class_into_hyper_param, set_hyper_parameter
 from mindsponge.data import get_hyper_string, get_hyper_parameter, get_class_parameters
 from mindsponge.function import Units, Length
-from mindsponge.function import get_integer
+from mindsponge.function import get_integer, get_ms_array
 
 from .block import Residual, Dense
 from .interaction import SchNetInteraction
 from .interaction import PhysNetModule
 from .interaction import NeuralInteractionUnit
 from .base import GraphNorm
-from .filter import ResFilter, DenseFilter
+from .filter import Filter, get_filter, ResFilter, DenseFilter
 from .cutoff import Cutoff, get_cutoff
 from .rbf import get_rbf
 from .activation import get_activation
@@ -118,18 +120,9 @@ class MolecularModel(Cell):
     def __init__(self,
                  dim_feature: int = 128,
                  n_interaction: int = 3,
-                 activation: Cell = None,
-                 cutoff: Length = Length(1, 'nm'),
-                 cutoff_fn: Cutoff = None,
-                 rbf: Cell = None,
-                 r_self: Length = None,
                  coupled_interaction: bool = False,
-                 use_distance: bool = True,
-                 use_bond: bool = False,
                  use_graph_norm: bool = False,
-                 public_dis_filter: bool = False,
-                 public_bond_filter: bool = False,
-                 num_bond_types: int = 16,
+                 activation: Cell = None,
                  length_unit: bool = 'nm',
                  hyper_param: dict = None,
                  ):
@@ -143,18 +136,9 @@ class MolecularModel(Cell):
             dim_feature = get_hyper_parameter(hyper_param, 'dim_feature')
             n_interaction = get_hyper_parameter(hyper_param, 'n_interaction')
             activation = get_class_parameters(hyper_param, 'activation')
-            cutoff = get_hyper_parameter(hyper_param, 'cutoff')
-            cutoff_fn = get_class_parameters(hyper_param, 'cutoff_fn')
-            rbf = get_class_parameters(hyper_param, 'rbf')
             r_self = get_hyper_parameter(hyper_param, 'r_self')
             coupled_interaction = get_hyper_parameter(
                 hyper_param, 'coupled_interaction')
-            use_distance = get_hyper_parameter(hyper_param, 'use_distance')
-            use_bond = get_hyper_parameter(hyper_param, 'use_bond')
-            public_dis_filter = get_hyper_parameter(
-                hyper_param, 'public_dis_filter')
-            public_bond_filter = get_hyper_parameter(
-                hyper_param, 'public_bond_filter')
             use_graph_norm = get_hyper_parameter(hyper_param, 'use_graph_norm')
             length_unit = get_hyper_string(hyper_param, 'length_unit')
 
@@ -168,42 +152,12 @@ class MolecularModel(Cell):
         self.dim_feature = get_integer(dim_feature)
         self.n_interaction = get_integer(n_interaction)
         self.r_self = r_self
-        self.coupled_interaction = Tensor(coupled_interaction, ms.bool_)
-        self.use_distance = self.broadcast_to_interactions(
-            use_distance, 'use_distance')
-        self.use_bond = self.broadcast_to_interactions(use_bond, 'use_bond')
-        self.public_dis_filter = Tensor(public_dis_filter, ms.bool_)
-        self.public_bond_filter = Tensor(public_bond_filter, ms.bool_)
-        self.use_graph_norm = Tensor(use_graph_norm, ms.bool_)
+        self.coupled_interaction = get_ms_array(coupled_interaction, ms.bool_)
+        self.use_graph_norm = get_ms_array(use_graph_norm, ms.bool_)
 
         self.activation = get_activation(activation)
 
-        self.cutoff = None
-        self.cutoff_fn = None
-        self.rbf = None
-
-        if self.use_distance.any():
-            self.cutoff = self.get_length(cutoff)
-            self.cutoff_fn = get_cutoff(cutoff_fn, self.cutoff)
-            self.rbf = get_rbf(rbf, r_max=self.cutoff, length_unit=self.length_unit)
-
-        self.r_self_ex = None
-        if self.r_self is not None:
-            self.r_self = self.get_length(self.r_self)
-            self.r_self_ex = F.expand_dims(self.r_self, 0)
-
-        self.bond_embedding = None
-        if self.use_bond.any():
-            self.bond_embedding = nn.Embedding(
-                self.num_bond_types, self.dim_feature, use_one_hot=True, embedding_table=Normal(1.0))
-
-        self.num_basis = self.rbf.num_basis
-
         self.interactions = None
-        self.interaction_typenames = []
-
-        self.calc_distance = self.use_distance.any()
-        self.calc_bond = self.use_bond.any()
 
         self.use_pub_norm = False
 
@@ -234,8 +188,6 @@ class MolecularModel(Cell):
             'rbf': 'Cell',
             'r_self': 'float',
             'coupled_interaction': 'bool',
-            'use_distance': 'bool',
-            'use_bond': 'bool',
             'public_dis_filter': 'bool',
             'public_bond_filter': 'bool',
             'use_graph_norm': 'bool',
@@ -278,15 +230,6 @@ class MolecularModel(Cell):
         print(ret+' Deep molecular model: ', self.network_name)
         print('-'*80)
         print(ret+gap+' Length unit: ' + self.units.length_unit_name)
-        print(ret+gap+' Cutoff distance: ' +
-              str(self.cutoff) + ' ' + self.length_unit)
-        print(ret+gap+' Radical basis function (RBF): ' + str(self.rbf.cls_name))
-        self.rbf.print_info(num_retraction=num_retraction +
-                            num_gap, num_gap=num_gap, char=char)
-        print(ret+gap+' Calculate distance: ' +
-              ('Yes' if self.calc_distance else 'No'))
-        print(ret+gap+' Calculate bond: ' +
-              ('Yes' if self.calc_bond else 'No'))
         print(ret+gap+' Feature dimension: ' + str(self.dim_feature))
         print('-'*80)
         if self.coupled_interaction:
@@ -305,53 +248,21 @@ class MolecularModel(Cell):
                 inter.print_info(num_retraction=num_retraction +
                                  num_gap, num_gap=num_gap, char=char)
 
-    def _get_self_interaction(self, atom_mask):
-        """get the distance of atomic self-interaction"""
-        # (B,A,1)
-        r_ii = msnp.full_like(atom_mask, self.r_self)
-        r_ii = msnp.where(atom_mask, r_ii, 5e4)
-        c_ii = F.ones_like(r_ii) * atom_mask
-        return r_ii, c_ii
-
-    def _calc_cutoffs(self, r_ij=1, neighbour_mask=None, atom_mask=None, bond_mask=None):
-        """calculate cutoff distance"""
-        if self.calc_distance:
-            if self.cutoff_fn is None:
-                return F.ones_like(r_ij), neighbour_mask
-            return self.cutoff_fn(r_ij, neighbour_mask)
-
-        mask = None
-        if bond_mask is not None:
-            mask = self.concat((atom_mask, bond_mask))
-        return F.cast(mask > 0, ms.float32), mask
-
-    def _get_self_cutoff(self, atom_mask):
-        """get the cutoff distance of atom itself"""
-        return F.cast(atom_mask, ms.float32)
-
-    def _get_rbf(self, dis):
-        """get radical basis function"""
-        if self.rbf is None:
-            rbf = F.expand_dims(dis, -1)
-        else:
-            rbf = self.rbf(dis)
-
-        return rbf
-
     def construct(self,
-                  atom_embedding: Tensor,
-                  distances: Tensor = 1,
-                  atom_mask: Tensor = None,
-                  neighbours: Tensor = None,
-                  neighbour_mask: Tensor = None,
-                  bonds: Tensor = None,
-                  bond_mask: Tensor = None,
+                  node_emb: Tensor,
+                  node_mask: Tensor = None,
+                  neigh_list: Tensor = None,
+                  edge_emb: Tensor = None,
+                  edge_mask: Tensor = None,
+                  edge_cutoff: Tensor = None,
+                  edge_self: Tensor = None,
+                  **kwargs
                   ):
         """Compute the representation of atoms.
 
         Args:
 
-            atom_embedding (Tensor):    Tensor of shape (B, A, F). Data type is float
+            node_emb (Tensor):    Tensor of shape (B, A, F). Data type is float
                                         Atom embedding.
             distances (Tensor):         Tensor of shape (B, A, N). Data type is float
                                         Distances between atoms.
@@ -377,47 +288,25 @@ class MolecularModel(Cell):
         """
 
         # (B,A) -> (B,A,1)
-        atom_mask = F.expand_dims(atom_mask, -1)
+        node_mask = F.expand_dims(node_mask, -1)
 
-        if self.calc_distance:
-            nbatch = distances.shape[0]
-            natoms = distances.shape[1]
+        node_vec = node_emb
+        edge_vec = edge_emb
 
-            f_ij = self._get_rbf(distances)
-            f_ii = 0 if self.r_self is None else self._get_rbf(self.r_self_ex)
-        else:
-            f_ii = 1
-            f_ij = 1
-            nbatch = bonds.shape[0]
-            natoms = bonds.shape[1]
-
-        if self.calc_bond:
-            b_ii = self.zeros((nbatch, natoms), ms.int32)
-            b_ii = self.bond_embedding(b_ii)
-
-            b_ij = self.bond_embedding(bonds)
-
-            if bond_mask is not None:
-                b_ij = b_ij * F.expand_dims(bond_mask, -1)
-        else:
-            b_ii = 0
-            b_ij = 0
-
-        # apply cutoff
-        c_ij, mask = self._calc_cutoffs(
-            distances, neighbour_mask, atom_mask, bond_mask)
-        c_ii = None if self.r_self is None else self._get_self_cutoff(
-            atom_mask)
-
-        # continuous-filter convolution interaction block followed by Dense layer
-        x = atom_embedding
         n_interaction = len(self.interactions)
         for i in range(n_interaction):
-            x, f_ij = self.interactions[i](
-                x, f_ij, b_ij, c_ij, neighbours, mask, atom_embedding, f_ii, b_ii, c_ii, atom_mask)
+            node_vec, edge_vec = self.interactions[i](
+                node_vec=node_vec,
+                node_emb=node_emb,
+                neigh_list=neigh_list,
+                edge_vec=edge_vec,
+                edge_mask=edge_mask,
+                edge_cutoff=edge_cutoff,
+                edge_self=edge_self,
+            )
             if self.use_graph_norm:
-                x = self.graph_norm[i](x)
-        return x, f_ij
+                node_vec = self.graph_norm[i](node_vec)
+        return node_vec, edge_vec
 
 
 class SchNet(MolecularModel):
@@ -478,13 +367,11 @@ class SchNet(MolecularModel):
                  dim_filter: int = 64,
                  n_interaction: int = 3,
                  activation: Cell = 'ssp',
-                 cutoff: float = Length(1, 'nm'),
-                 cutoff_fn: Cell = 'cosine',
-                 rbf: Cell = 'gaussian',
                  normalize_filter: bool = False,
                  coupled_interaction: bool = False,
                  use_graph_norm: bool = False,
-                 public_dis_filter: bool = False,
+                 filter_net: Union[Filter, str] = 'dense',
+                 filter_layer: int = 1,
                  length_unit: str = 'nm',
                  hyper_param: dict = None,
                  ):
@@ -493,15 +380,8 @@ class SchNet(MolecularModel):
             dim_feature=dim_feature,
             n_interaction=n_interaction,
             activation=activation,
-            cutoff=cutoff,
-            cutoff_fn=cutoff_fn,
-            rbf=rbf,
-            r_self=None,
             coupled_interaction=coupled_interaction,
-            use_distance=True,
-            use_bond=False,
             use_graph_norm=use_graph_norm,
-            public_dis_filter=public_dis_filter,
             length_unit=length_unit,
             hyper_param=hyper_param,
         )
@@ -513,9 +393,6 @@ class SchNet(MolecularModel):
             normalize_filter = get_hyper_parameter(
                 hyper_param, 'normalize_filter')
 
-        if self.calc_bond:
-            raise ValueError('SchNet cannot supported bond information!')
-
         self.dim_filter = self.broadcast_to_interactions(
             dim_filter, 'dim_filter')
         self.normalize_filter = self.broadcast_to_interactions(
@@ -523,10 +400,6 @@ class SchNet(MolecularModel):
 
         self.set_hyper_param()
 
-        self.filter = None
-        if self.public_dis_filter and (not self.coupled_interaction):
-            self.filter = DenseFilter(
-                self.num_basis, self.dim_filter, self.activation)
         # block for computing interaction
         if self.coupled_interaction:
             # use the same SchNetInteraction instance (hence the same weights)
@@ -534,10 +407,10 @@ class SchNet(MolecularModel):
                 [
                     SchNetInteraction(
                         dim_feature=self.dim_feature,
-                        dim_filter=self.dim_filter,
+                        dim_input=self.dim_filter,
+                        filter_net=filter_net,
+                        filter_layer=filter_layer,
                         activation=self.activation,
-                        dis_filter=DenseFilter(
-                            self.num_basis, self.dim_filter, self.activation),
                         normalize_filter=self.normalize_filter,
                     )
                 ]
@@ -549,11 +422,11 @@ class SchNet(MolecularModel):
                 [
                     SchNetInteraction(
                         dim_feature=self.dim_feature,
-                        dim_filter=self.dim_filter[i],
+                        dim_input=self.dim_filter,
+                        filter_net=filter_net,
+                        filter_layer=filter_layer,
                         activation=self.activation,
-                        dis_filter=self.filter if self.public_dis_filter
-                        else DenseFilter(self.num_basis, self.dim_filter[i], self.activation),
-                        normalize_filter=self.normalize_filter[i],
+                        normalize_filter=self.normalize_filter,
                     )
                     for i in range(self.n_interaction)
                 ]
@@ -624,13 +497,10 @@ class PhysNet(MolecularModel):
     def __init__(self,
                  dim_feature: int = 128,
                  n_interaction: int = 5,
-                 activation: Cell = 'ssp',
-                 cutoff: float = Length(1, 'nm'),
-                 cutoff_fn: Cell = 'smooth',
-                 rbf: Cell = 'log_gaussian',
+                 filter_net: Union[Filter, str] = 'dense',
+                 filter_layer: int = 0,
                  coupled_interaction: bool = False,
                  use_graph_norm: bool = False,
-                 public_dis_filter: bool = False,
                  n_inter_residual: int = 3,
                  n_outer_residual: int = 2,
                  length_unit: str = 'nm',
@@ -640,16 +510,8 @@ class PhysNet(MolecularModel):
         super().__init__(
             dim_feature=dim_feature,
             n_interaction=n_interaction,
-            activation=activation,
-            cutoff=cutoff,
-            cutoff_fn=cutoff_fn,
-            rbf=rbf,
-            r_self=None,
             coupled_interaction=coupled_interaction,
-            use_distance=True,
-            use_bond=False,
             use_graph_norm=use_graph_norm,
-            public_dis_filter=public_dis_filter,
             length_unit=length_unit,
             hyper_param=hyper_param,
         )
@@ -668,41 +530,33 @@ class PhysNet(MolecularModel):
 
         self.set_hyper_param()
 
-        self.filter = None
-        if self.public_dis_filter and (not self.coupled_interaction):
-            self.filter = Dense(self.num_basis, self.dim_feature,
-                                has_bias=False, activation=None)
-
         # block for computing interaction
         if self.coupled_interaction:
-            self.interaction_typenames = ['D0',] * self.n_interaction
             # use the same SchNetInteraction instance (hence the same weights)
             self.interactions = nn.CellList(
                 [
                     PhysNetModule(
-                        dis_filter=Dense(
-                            self.num_basis, self.dim_feature, has_bias=False, activation=None),
                         dim_feature=self.dim_feature,
-                        activation=self.activation,
+                        filter_net=filter_net,
+                        filter_layer=filter_layer,
                         n_inter_residual=self.n_inter_residual,
                         n_outer_residual=self.n_outer_residual,
+                        activation=self.activation,
                     )
                 ]
                 * self.n_interaction
             )
         else:
-            self.interaction_typenames = [
-                'D' + str(i) for i in range(self.n_interaction)]
             # use one SchNetInteraction instance for each interaction
             self.interactions = nn.CellList(
                 [
                     PhysNetModule(
-                        dis_filter=self.filter if self.public_dis_filter
-                        else Dense(self.num_basis, self.dim_feature, has_bias=False, activation=None),
                         dim_feature=self.dim_feature,
-                        activation=self.activation,
+                        filter_net=filter_net,
+                        filter_layer=filter_layer,
                         n_inter_residual=self.n_inter_residual,
                         n_outer_residual=self.n_outer_residual,
+                        activation=self.activation,
                     )
                     for _ in range(self.n_interaction)
                 ]
@@ -786,25 +640,17 @@ class MolCT(MolecularModel):
 
         F:  Feature dimension of representation.
 
-
     """
 
     def __init__(self,
                  dim_feature: int = 128,
                  n_interaction: int = 3,
+                 filter_net: Union[Filter, str] = None,
+                 filter_layer: int = 1,
                  n_heads: int = 8,
                  max_cycles: int = 10,
                  activation: Cell = 'swish',
-                 cutoff: Length = Length(1, 'nm'),
-                 cutoff_fn: Cell = 'smooth',
-                 rbf: Cell = 'log_gaussian',
-                 r_self: Length = Length(0.05, 'nm'),
                  coupled_interaction: bool = False,
-                 use_distance: bool = True,
-                 use_bond: bool = False,
-                 public_dis_filter: bool = True,
-                 public_bond_filter: bool = True,
-                 num_bond_types: int = 16,
                  act_threshold: float = 0.9,
                  fixed_cycles: bool = False,
                  use_feed_forward: bool = False,
@@ -816,17 +662,8 @@ class MolCT(MolecularModel):
             dim_feature=dim_feature,
             n_interaction=n_interaction,
             activation=activation,
-            cutoff=cutoff,
-            cutoff_fn=cutoff_fn,
-            rbf=rbf,
-            r_self=r_self,
             coupled_interaction=coupled_interaction,
-            use_distance=use_distance,
-            use_bond=use_bond,
-            public_dis_filter=public_dis_filter,
-            public_bond_filter=public_bond_filter,
             use_graph_norm=False,
-            num_bond_types=num_bond_types,
             length_unit=length_unit,
             hyper_param=hyper_param,
         )
@@ -858,30 +695,16 @@ class MolCT(MolecularModel):
 
         self.set_hyper_param()
 
-        self.dis_filter = None
-        if self.calc_distance and self.public_dis_filter and (not self.coupled_interaction):
-            self.dis_filter = ResFilter(
-                self.num_basis, self.dim_feature, self.activation)
-
-        self.bond_embedding = None
-        self.bond_filter = None
-        if self.calc_bond:
-            if self.calc_bond and self.public_bond_filter and (not self.coupled_interaction):
-                self.bond_filter = Residual(
-                    self.dim_feature, activation=self.activation)
-
         if self.coupled_interaction:
             self.interactions = nn.CellList(
                 [
                     NeuralInteractionUnit(
                         dim_feature=self.dim_feature,
+                        filter_net=filter_net,
+                        filter_layer=filter_layer,
                         n_heads=self.n_heads,
                         max_cycles=self.max_cycles,
                         activation=self.activation,
-                        dis_filter=(ResFilter(self.num_basis, self.dim_feature,
-                                              self.activation) if self.use_distance else None),
-                        bond_filter=(Residual(
-                            self.dim_feature, activation=self.activation) if self.use_bond else None),
                         use_feed_forward=self.use_feed_forward,
                         fixed_cycles=self.fixed_cycles,
                         act_threshold=self.act_threshold,
@@ -892,29 +715,14 @@ class MolCT(MolecularModel):
         else:
             interaction_list = []
             for i in range(self.n_interaction):
-                dis_filter = None
-                if self.use_distance[i]:
-                    if self.public_dis_filter:
-                        dis_filter = self.dis_filter
-                    else:
-                        dis_filter = ResFilter(
-                            self.num_basis, self.dim_feature, self.activation)
-                bond_filter = None
-                if self.use_bond[i]:
-                    if self.public_bond_filter:
-                        bond_filter = self.bond_filter
-                    else:
-                        bond_filter = Residual(
-                            self.dim_feature, activation=self.activation)
-
                 interaction_list.append(
                     NeuralInteractionUnit(
                         dim_feature=self.dim_feature,
                         n_heads=self.n_heads[i],
                         max_cycles=self.max_cycles[i],
                         activation=self.activation,
-                        dis_filter=dis_filter,
-                        bond_filter=bond_filter,
+                        filter_net=filter_net,
+                        filter_layer=filter_layer,
                         use_feed_forward=self.use_feed_forward[i],
                         fixed_cycles=self.fixed_cycles[i],
                         act_threshold=self.act_threshold[i],
@@ -934,6 +742,68 @@ class MolCT(MolecularModel):
         set_hyper_parameter(
             self.hyper_param, 'act_threshold', self.act_threshold)
         return self
+    
+    def construct(self,
+                  node_emb: Tensor,
+                  node_mask: Tensor = None,
+                  neigh_list: Tensor = None,
+                  edge_emb: Tensor = None,
+                  edge_mask: Tensor = None,
+                  edge_cutoff: Tensor = None,
+                  edge_self: Tensor = None,
+                  **kwargs
+                  ):
+        """Compute the representation of atoms.
+
+        Args:
+
+            node_emb (Tensor):    Tensor of shape (B, A, F). Data type is float
+                                        Atom embedding.
+            distances (Tensor):         Tensor of shape (B, A, N). Data type is float
+                                        Distances between atoms.
+                                        Atomic number.
+            atom_mask (Tensor):         Tensor of shape (B, A). Data type is bool
+                                        Mask of atomic number
+            neighbours (Tensor):        Tensor of shape (B, A, N). Data type is int
+                                        Neighbour index.
+            neighbour_mask (Tensor):    Tensor of shape (B, A, N). Data type is bool
+                                        Nask of neighbour index.
+
+        Returns:
+            representation: (Tensor)    Tensor of shape (B, A, F). Data type is float
+
+        Symbols:
+
+            B:  Batch size.
+            A:  Number of atoms in system.
+            N:  Number of neighbour atoms.
+            D:  Dimension of position coordinates, usually is 3.
+            F:  Feature dimension of representation.
+
+        """
+
+        # (B,A) -> (B,A,1)
+        node_mask = F.expand_dims(node_mask, -1)
+
+        c_ii = F.cast(node_mask, ms.float32)
+        edge_cutoff = self.concat((c_ii, edge_cutoff))
+        edge_mask = self.concat((node_mask, edge_mask))
+
+        node_vec = node_emb
+        edge_vec = edge_emb
+        n_interaction = len(self.interactions)
+        for i in range(n_interaction):
+            node_vec, edge_vec = self.interactions[i](
+                node_vec=node_vec,
+                edge_vec=edge_vec,
+                edge_cutoff=edge_cutoff,
+                neigh_list=neigh_list,
+                edge_mask=edge_mask,
+                node_emb=node_emb,
+                edge_self=edge_self,
+            )
+
+        return node_vec, edge_vec
 
 
 _MOLECULAR_MODEL_BY_KEY = {
