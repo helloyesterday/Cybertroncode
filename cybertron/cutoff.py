@@ -23,6 +23,9 @@
 Cutoff functions
 """
 
+from typing import Union
+from numpy import ndarray
+
 import math
 import mindspore as ms
 import mindspore.numpy as msnp
@@ -30,6 +33,9 @@ from mindspore import nn
 from mindspore import Tensor
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
+
+from mindsponge.function import get_ms_array, get_arguments
+from mindsponge.function import Units, GLOBAL_UNITS, Length, get_length
 
 __all__ = [
     "CosineCutoff",
@@ -67,19 +73,28 @@ class Cutoff(nn.Cell):
         cutoff (float): Cutoff distance.
 
     """
-    def __init__(self, cutoff: float):
-
+    def __init__(self,
+                 cutoff: Union[Length, float, Tensor, ndarray],
+                 length_unit: Union[str, Units] = None,
+                 **kwargs
+                 ):
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
+
+        if length_unit is None:
+            length_unit = GLOBAL_UNITS.length_unit
+        self.units = Units(length_unit)
+
         self.reg_key = 'none'
         self.name = 'cutoff'
 
-        self.cutoff = cutoff
-
+        self.cutoff = get_ms_array(get_length(cutoff, self.units), ms.float32)
         self.inv_cutoff = msnp.reciprocal(self.cutoff)
 
-    def set_cutoff(self, cutoff: float):
+    def set_cutoff(self, cutoff: Union[Length, float, Tensor, ndarray],
+                   unit: Union[str, Units] = None):
         """set cutoff distance"""
-        self.cutoff = cutoff
+        self.cutoff = get_ms_array(get_length(cutoff, unit), ms.float32)
         self.inv_cutoff = msnp.reciprocal(self.cutoff)
         return self
 
@@ -113,11 +128,17 @@ class CosineCutoff(Cutoff):
 
     """
 
-    def __init__(self, cutoff: float):
-        super().__init__(cutoff=cutoff)
-
-        self.reg_key = 'cosine'
-        self.name = 'cosine cutoff'
+    def __init__(self,
+                 cutoff: Union[Length, float, Tensor, ndarray],
+                 length_unit: Union[str, Units] = None,
+                 **kwargs
+                 ):
+        super().__init__(
+            cutoff=cutoff,
+            length_unit=length_unit,
+            **kwargs
+            )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.pi = Tensor(math.pi, ms.float32)
         self.cos = P.Cos()
@@ -162,21 +183,20 @@ class MollifierCutoff(Cutoff):
         cutoff (float): Cutoff distance.
 
     """
+    def __init__(self,
+                 cutoff: Union[Length, float, Tensor, ndarray],
+                 length_unit: Union[str, Units] = None,
+                 eps: float = 1e-8,
+                 **kwargs
+                 ):
+        super().__init__(
+            cutoff=cutoff,
+            length_unit=length_unit,
+            **kwargs
+            )
+        self._kwargs = get_arguments(locals(), kwargs)
 
-    def __init__(self, cutoff: float, eps: float = 1e-8):
-        super().__init__(cutoff=cutoff)
-
-        self.reg_key = 'mollifier'
-        self.name = "Mollifier cutoff"
-        self.eps = eps
-
-        self.exp = P.Exp()
-        self.logical_and = P.LogicalAnd()
-
-    def set_eps(self, eps):
-        """set eps"""
-        self.eps = eps
-        return self
+        self.eps = get_ms_array(get_length(eps, self.units), ms.float32)
 
     def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
         """Compute cutoff.
@@ -190,13 +210,12 @@ class MollifierCutoff(Cutoff):
 
         """
 
-        exponent = 1.0 - \
-            msnp.reciprocal(1.0 - F.square(distances * self.inv_cutoff))
-        cutoffs = self.exp(exponent)
+        exponent = 1.0 - msnp.reciprocal(1.0 - F.square(distances * self.inv_cutoff))
+        cutoffs = F.exp(exponent)
 
         mask = (distances + self.eps) < self.cutoff
         if neighbour_mask is not None:
-            mask = self.logical_and(mask, neighbour_mask)
+            mask = F.logical_and(mask, neighbour_mask)
 
         cutoffs = cutoffs * mask
 
@@ -218,13 +237,17 @@ class HardCutoff(Cutoff):
 
     """
 
-    def __init__(self, cutoff: float):
-        super().__init__(cutoff=cutoff)
-
-        self.reg_key = 'hard'
-        self.name = "Hard cutoff"
-
-        self.logical_and = P.LogicalAnd()
+    def __init__(self,
+                 cutoff: Union[Length, float, Tensor, ndarray],
+                 length_unit: Union[str, Units] = None,
+                 **kwargs
+                 ):
+        super().__init__(
+            cutoff=cutoff,
+            length_unit=length_unit,
+            **kwargs
+            )
+        self._kwargs = get_arguments(locals(), kwargs)
 
     def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
         """Compute cutoff.
@@ -241,7 +264,7 @@ class HardCutoff(Cutoff):
         mask = distances < self.cutoff
 
         if neighbour_mask is not None:
-            self.logical_and(mask, neighbour_mask)
+            F.logical_and(mask, neighbour_mask)
 
         return F.cast(mask, distances.dtype), mask
 
@@ -275,14 +298,17 @@ class SmoothCutoff(Cutoff):
 
     """
 
-    def __init__(self, cutoff: float):
-        super().__init__(cutoff=cutoff)
-
-        self.reg_key = 'smooth'
-        self.name = 'Smooth Cutoff'
-
-        self.pow = P.Pow()
-        self.logical_and = P.LogicalAnd()
+    def __init__(self,
+                 cutoff: Union[Length, float, Tensor, ndarray],
+                 length_unit: Union[str, Units] = None,
+                 **kwargs
+                 ):
+        super().__init__(
+            cutoff=cutoff,
+            length_unit=length_unit,
+            **kwargs
+            )
+        self._kwargs = get_arguments(locals(), kwargs)
 
     def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
         """Compute cutoff.
@@ -296,16 +322,14 @@ class SmoothCutoff(Cutoff):
 
         """
         dd = distances * self.inv_cutoff
-        cuts = -  6. * self.pow(dd, 5) \
-            + 15. * self.pow(dd, 4) \
-            - 10. * self.pow(dd, 3)
+        cuts = -  6. * F.pow(dd, 5) + 15. * F.pow(dd, 4) - 10. * F.pow(dd, 3)
 
         cutoffs = 1 + cuts
         mask_upper = distances > 0
         mask_lower = distances < self.cutoff
 
         if neighbour_mask is not None:
-            mask_lower = self.logical_and(mask_lower, neighbour_mask)
+            mask_lower = F.logical_and(mask_lower, neighbour_mask)
 
         cutoffs = msnp.where(mask_upper, cutoffs, 1)
         cutoffs = msnp.where(mask_lower, cutoffs, 0)
@@ -322,35 +346,37 @@ class GaussianCutoff(Cutoff):
 
     """
 
-    def __init__(self, cutoff: float, sigma: float = None):
-        super().__init__(cutoff=cutoff)
+    def __init__(self,
+                 cutoff: Union[Length, float, Tensor, ndarray],
+                 sigma: Union[Length, float, Tensor, ndarray] = None,
+                 length_unit: Union[str, Units] = None,
+                 **kwargs
+                 ):
+        super().__init__(
+            cutoff=cutoff,
+            length_unit=length_unit,
+            **kwargs
+            )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'gaussian'
         self.name = 'Gaussian Cutoff'
 
-        self.sigma = sigma
+        self.sigma = get_ms_array(get_length(sigma, self.units), ms.float32)
         if self.sigma is None:
-            self.sigma = cutoff
+            self.sigma = self.cutoff
         self.inv_sigma2 = msnp.reciprocal(self.sigma * self.sigma)
-
-        self.exp = P.Exp()
-        self.logical_and = P.LogicalAnd()
-
-    def set_sigma(self, sigma):
-        self.sigma = sigma
-        self.inv_sigma2 = msnp.reciprocal(self.sigma * self.sigma)
-        return self
 
     def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
         dd = distances - self.cutoff
         dd2 = dd * dd
 
-        gauss = self.exp(-0.5 * dd2 * self.inv_sigma2)
+        gauss = F.exp(-0.5 * dd2 * self.inv_sigma2)
 
         cuts = 1. - gauss
         mask = distances < self.cutoff
         if neighbour_mask is not None:
-            mask = self.logical_and(mask, neighbour_mask)
+            mask = F.logical_and(mask, neighbour_mask)
 
         cuts = cuts * mask
 
@@ -360,21 +386,32 @@ class GaussianCutoff(Cutoff):
 _CUTOFF_BY_NAME = {cut.__name__: cut for cut in _CUTOFF_BY_KEY.values()}
 
 
-def get_cutoff(cutoff_fn: str, cutoff_dis: float) -> Cutoff:
+def get_cutoff(cls_name: Union[Cutoff, str, dict],
+               cutoff: Union[Length, float, Tensor, ndarray],
+               length_unit: Union[str, Units] = None,
+               **kwargs
+               ) -> Cutoff:
     """get cutoff network by name"""
-    if cutoff_fn is None:
+    if cls_name is None:
         return None
-    if isinstance(cutoff_fn, Cutoff):
-        return cutoff_fn
+    if isinstance(cls_name, Cutoff):
+        return cls_name
 
-    if isinstance(cutoff_fn, str):
-        if cutoff_fn.lower() == 'none':
+    if isinstance(cls_name, dict):
+        return get_cutoff(**cls_name)
+
+    if isinstance(cls_name, str):
+        if cls_name.lower() == 'none':
             return None
-        if cutoff_fn.lower() in _CUTOFF_BY_KEY.keys():
-            return _CUTOFF_BY_KEY[cutoff_fn.lower()](cutoff=cutoff_dis)
-        if cutoff_fn in _CUTOFF_BY_NAME.keys():
-            return _CUTOFF_BY_NAME[cutoff_fn](cutoff=cutoff_dis)
+        if cls_name.lower() in _CUTOFF_BY_KEY.keys():
+            return _CUTOFF_BY_KEY[cls_name.lower()](cutoff=cutoff,
+                                                    length_unit=length_unit,
+                                                    **kwargs)
+        if cls_name in _CUTOFF_BY_NAME.keys():
+            return _CUTOFF_BY_NAME[cls_name](cutoff=cutoff,
+                                             length_unit=length_unit,
+                                             **kwargs)
         raise ValueError(
-            "The Cutoff corresponding to '{}' was not found.".format(cutoff_fn))
+            "The Cutoff corresponding to '{}' was not found.".format(cls_name))
 
-    raise TypeError("Unsupported Cutoff type '{}'.".format(type(cutoff_fn)))
+    raise TypeError("Unsupported Cutoff type '{}'.".format(type(cls_name)))

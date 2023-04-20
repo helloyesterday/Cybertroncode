@@ -32,24 +32,18 @@ from mindspore.nn import Cell, CellList
 from mindspore.ops import functional as F
 from mindspore.ops import operations as P
 from mindspore.common.initializer import Normal
-from mindspore.train._utils import _make_directory
 
-from mindspore.train import save_checkpoint
-
+from mindsponge.function import concat_last_dim
 from mindsponge.function import Units, GLOBAL_UNITS
-from mindsponge.function import get_integer
-from mindsponge.data import get_class_parameters
-from mindsponge.data import get_hyper_parameter, get_hyper_string
-from mindsponge.data import set_class_into_hyper_param
+from mindsponge.function import get_integer, get_ms_array, get_arguments
 from mindsponge.partition import IndexDistances
 from mindsponge.partition import FullConnectNeighbours
 from mindsponge.potential import PotentialCell
 
 from .embedding import GraphEmbedding
 from .readout import Readout, get_readout
-from .model import MolecularModel, get_molecular_model
+from .model import MolecularGNN, get_molecular_model
 
-_cur_dir = os.getcwd()
 
 class Cybertron(Cell):
     """Cybertron: An architecture to perform deep molecular model for molecular modeling.
@@ -100,8 +94,8 @@ class Cybertron(Cell):
 
     def __init__(self,
                  embedding: GraphEmbedding,
-                 model: MolecularModel,
-                 readout: Readout = 'atomwise',
+                 model: MolecularGNN,
+                 readout: Readout = 'node',
                  dim_output: int = 1,
                  num_atoms: int = None,
                  atom_types: Tensor = None,
@@ -110,52 +104,29 @@ class Cybertron(Cell):
                  use_pbc: bool = None,
                  length_unit: str = None,
                  energy_unit: str = None,
-                 hyper_param: dict = None,
+                 **kwargs
                  ):
 
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
-        if hyper_param is not None:
-            model = get_class_parameters(hyper_param, 'hyperparam.model')
-            num_readout = get_hyper_parameter(
-                hyper_param, 'hyperparam.num_readout')
-            readout = get_class_parameters(
-                hyper_param, 'hyperparam.readout', num_readout)
-            dim_output = get_hyper_parameter(
-                hyper_param, 'hyperparam.dim_output')
-            num_atoms = get_hyper_parameter(
-                hyper_param, 'hyperparam.num_atoms')
-            atom_types = get_hyper_parameter(
-                hyper_param, 'hyperparam.atom_types')
-            bond_types = get_hyper_parameter(
-                hyper_param, 'hyperparam.bond_types')
-            num_atom_types = get_hyper_parameter(hyper_param, 'num_atom_types')
-            pbc_box = get_hyper_parameter(hyper_param, 'hyperparam.pbc_box')
-            use_pbc = get_hyper_parameter(hyper_param, 'hyperparam.use_pbc')
-            length_unit = get_hyper_string(
-                hyper_param, 'hyperparam.length_unit')
-            energy_unit = get_hyper_string(
-                hyper_param, 'hyperparam.energy_unit')
+        if length_unit is None:
+            length_unit = GLOBAL_UNITS.length_unit
+        if energy_unit is None:
+            energy_unit = GLOBAL_UNITS.energy_unit
+        self._units = Units(length_unit, energy_unit)
 
-        if length_unit is None and energy_unit is None:
-            self.units = GLOBAL_UNITS
-        else:
-            self.units = Units(length_unit, energy_unit)
-
-        self.length_unit = self.units.length_unit
-        self.energy_unit = self.units.energy_unit
         self.model = get_molecular_model(model, length_unit=self.length_unit)
 
-        self.embedding = embedding
+        if isinstance(embedding, Cell):
+            self.embedding = embedding
+        elif isinstance(embedding, dict):
+            self.embedding = Embedding(**embedding)
 
-        self.model_name = self.model.network_name
-        self.model_hyper_param = self.model.hyper_param
-        self.dim_feature = self.model.dim_feature
         self.activation = self.model.activation
         self.input_unit_scale = self.units.convert_energy_to(self.model.units)
-        self.calc_distance = self.model.calc_distance
 
-        self.dim_output = Tensor(dim_output).reshape(-1)
+        self.dim_output: Tensor = get_ms_array(dim_output).reshape(-1)
         self.num_output = self.dim_output.size
         if self.num_output == 1:
             self.dim_output = get_integer(self.dim_output)
@@ -217,8 +188,6 @@ class Cybertron(Cell):
         else:
             self.readout = None
 
-        self.atomwise_scaleshift = self.get_atomwise_scaleshift()
-
         self.output_unit_scale = self.get_output_unit_scale()
 
         if atom_types is None:
@@ -268,25 +237,21 @@ class Cybertron(Cell):
             keepdims=False
         )
 
-        self.hyper_param = dict()
-        self.hyper_types = {
-            'model': 'Cell',
-            'num_readout': 'int',
-            'readout': 'Cell',
-            'dim_output': 'int',
-            'num_atoms': 'int',
-            'atom_types': 'int',
-            'bond_types': 'int',
-            'num_atom_types': 'int',
-            'pbc_box': 'bool',
-            'use_pbc': 'bool',
-            'length_unit': 'str',
-            'energy_unit': 'str',
-        }
+    @property
+    def length_unit(self) -> str:
+        return self.units.length_unit
 
-        self.set_hyper_param()
-
-        self.concat = P.Concat(-1)
+    @property
+    def energy_unit(self) -> str:
+        return self.units.energy_unit
+    
+    @property
+    def model_name(self) -> str:
+        return self.model.cls_name
+    
+    @property
+    def dim_feature(self) -> int:
+        return self.model.dim_feature
 
     def set_units(self, length_unit: str = None, energy_unit: str = None, units: Units = None):
         """set units"""
@@ -297,8 +262,6 @@ class Cybertron(Cell):
                 self.set_energy_unit(energy_unit)
         else:
             self.units = units
-            self.length_unit = self.units.length_unit
-            self.energy_unit = self.units.energy_unit
             self.input_unit_scale = self.units.convert_energy_to(
                 self.model.units)
             self.output_unit_scale = self.get_output_unit_scale()
@@ -307,14 +270,12 @@ class Cybertron(Cell):
     def set_length_unit(self, length_unit: str):
         """set length unit"""
         self.units = self.units.set_length_unit(length_unit)
-        self.length_unit = self.units.length_unit
         self.input_unit_scale = self.units.convert_energy_to(self.model.units)
         return self
 
     def set_energy_unit(self, energy_units: str):
         """set energy unit"""
         self.units.set_energy_unit(energy_units)
-        self.energy_unit = self.units.energy_unit
         self.output_unit_scale = self.get_output_unit_scale()
         return self
 
@@ -332,25 +293,6 @@ class Cybertron(Cell):
                     (scale,) * readout.dim_output
         return Tensor(output_unit_scale, ms.float32)
 
-    def set_hyper_param(self):
-        """set hyperparameters"""
-        set_class_into_hyper_param(
-            self.hyper_param, self.hyper_types, self, 'hyperparam')
-        return self
-
-    def get_atomwise_scaleshift(self):
-        """get the atomwaise scale and shift"""
-        if self.readout is None:
-            return None
-        if self.num_readout == 1:
-            return self.readout.atomwise_scaleshift
-        atomwise_scaleshift = []
-        for i in range(self.num_readout):
-            for _ in range(self.readout[i].dim_output):
-                atomwise_scaleshift.append(
-                    self.readout[i].atomwise_scaleshift)
-        return F.stack(atomwise_scaleshift)
-
     def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
         """print the information of Cybertron"""
         ret = char * num_retraction
@@ -358,14 +300,12 @@ class Cybertron(Cell):
         print("================================================================================")
         print("Cybertron Engine, Ride-on!")
         print('-'*80)
-        print(ret+' Length unit: ' + self.units.length_unit_name)
-        print(ret+' Input unit scale: ' + str(self.input_unit_scale))
-        print(ret+' Atom embedding size: ' + str(self.num_atom_types))
+        print(f'{ret} Length unit: {self.units.length_unit_name}')
+        print(f'{ret} Input unit scale: {self.input_unit_scale}')
         if self.atom_types is not None:
-            print(ret+' Using fixed atom type index:')
+            print(f'{ret} Using fixed atom type index:')
             for i, atom in enumerate(self.atom_types[0]):
-                print(
-                    ret+gap+' Atom {: <7}'.format(str(i)+': ')+str(atom.asnumpy()))
+                print(ret+gap+' Atom {: <7}'.format(str(i))+f': {atom.asnumpy()}')
         if self.bond_types is not None:
             print(ret+' Using fixed bond connection:')
             for b in self.bond_types[0]:
@@ -493,22 +433,8 @@ class Cybertron(Cell):
                     atomwise_scaleshift=atomwise_scaleshift[i],
                     unit=unit
                 )
-        self.atomwise_scaleshift = self.get_atomwise_scaleshift()
         if unit is not None:
             self.set_energy_unit(unit)
-        self.set_hyper_param()
-        return self
-
-    def save_checkpoint(self, ckpt_file_name: str, directory: str = None):
-        """save checkpoint file"""
-        if directory is not None:
-            directory = _make_directory(directory)
-        else:
-            directory = _cur_dir
-        ckpt_file = os.path.join(directory, ckpt_file_name)
-        if os.path.exists(ckpt_file):
-            os.remove(ckpt_file)
-        save_checkpoint(self, ckpt_file, append_dict=self.hyper_param)
         return self
 
     def construct(self,
@@ -600,7 +526,7 @@ class Cybertron(Cell):
                                      neighbour_mask=neighbour_mask,
                                      )
                 ytuple = ytuple + (yi,)
-            return self.concat(ytuple) * self.output_unit_scale
+            return concat_last_dim(ytuple) * self.output_unit_scale
 
         return self.readout(node_rep=node_rep,
                             edge_rep=edge_rep,
@@ -611,6 +537,7 @@ class Cybertron(Cell):
                             neighbours=neighbours,
                             neighbour_mask=neighbour_mask,
                             ) * self.output_unit_scale
+
 
 class CybertronFF(PotentialCell):
     """Cybertron as potential for Mindmindsponge.
@@ -652,7 +579,7 @@ class CybertronFF(PotentialCell):
 
     """
     def __init__(self,
-                 model: MolecularModel = None,
+                 model: MolecularGNN = None,
                  readout: Readout = 'atomwise',
                  num_atoms: int = None,
                  atom_types: Tensor = None,
@@ -671,26 +598,6 @@ class CybertronFF(PotentialCell):
 
         dim_output = 1
         pbc_box = None
-        if hyper_param is not None:
-            model = get_class_parameters(hyper_param, 'hyperparam.model')
-            num_readout = get_hyper_parameter(
-                hyper_param, 'hyperparam.num_readout')
-            readout = get_class_parameters(
-                hyper_param, 'hyperparam.readout', num_readout)
-            dim_output = get_hyper_parameter(
-                hyper_param, 'hyperparam.dim_output')
-            num_atoms = get_hyper_parameter(
-                hyper_param, 'hyperparam.num_atoms')
-            atom_types = get_hyper_parameter(
-                hyper_param, 'hyperparam.atom_types')
-            bond_types = get_hyper_parameter(
-                hyper_param, 'hyperparam.bond_types')
-            pbc_box = get_hyper_parameter(hyper_param, 'hyperparam.pbc_box')
-            use_pbc = get_hyper_parameter(hyper_param, 'hyperparam.use_pbc')
-            length_unit = get_hyper_string(
-                hyper_param, 'hyperparam.length_unit')
-            energy_unit = get_hyper_string(
-                hyper_param, 'hyperparam.energy_unit')
 
         if dim_output != 1:
             raise ValueError('The output dimension of CybertronFF must be 1 but got: '+str(dim_output))
@@ -699,12 +606,9 @@ class CybertronFF(PotentialCell):
 
         self.model = get_molecular_model(model, length_unit=self.length_unit)
 
-        self.model_name = self.model.network_name
-        self.model_hyper_param = self.model.hyper_param
         self.dim_feature = self.model.dim_feature
         self.activation = self.model.activation
         self.input_unit_scale = self.units.convert_energy_to(self.model.units)
-        self.calc_distance = self.model.calc_distance
 
         if isinstance(readout, (list, tuple)):
             raise ValueError('CybertronFF cannot accept multiple readouts!')
@@ -747,25 +651,6 @@ class CybertronFF(PotentialCell):
             # (1,D)
             self.pbc_box = Tensor(pbc_box, ms.float32).reshape(1, -1)
 
-        self.hyper_param = dict()
-        self.hyper_types = {
-            'model': 'Cell',
-            'num_readout': 'int',
-            'readout': 'Cell',
-            'dim_output': 'int',
-            'num_atoms': 'int',
-            'atom_types': 'int',
-            'bond_types': 'int',
-            'pbc_box': 'bool',
-            'use_pbc': 'bool',
-            'length_unit': 'str',
-            'energy_unit': 'str',
-        }
-
-        self.set_hyper_param()
-
-        self.concat = P.Concat(-1)
-
     def set_units(self, length_unit: str = None, energy_unit: str = None, units: Units = None):
         """set units"""
         if units is None:
@@ -787,11 +672,6 @@ class CybertronFF(PotentialCell):
         output_unit_scale = self.units.convert_energy_from(
             self.readout.energy_unit)
         return Tensor(output_unit_scale, ms.float32)
-
-    def set_hyper_param(self):
-        """set hyperparameters"""
-        set_class_into_hyper_param(self.hyper_param, self.hyper_types, self, 'hyperparam')
-        return self
 
     def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
         """print the information of CybertronFF"""
@@ -841,19 +721,6 @@ class CybertronFF(PotentialCell):
             self.units.set_energy_unit(unit)
             self.output_unit_scale = self.get_output_unit_scale()
 
-        self.set_hyper_param()
-        return self
-
-    def save_checkpoint(self, ckpt_file_name: str, directory: str = None):
-        """save checkpoint file"""
-        if directory is not None:
-            directory = _make_directory(directory)
-        else:
-            directory = _cur_dir
-        ckpt_file = os.path.join(directory, ckpt_file_name)
-        if os.path.exists(ckpt_file):
-            os.remove(ckpt_file)
-        save_checkpoint(self, ckpt_file, append_dict=self.hyper_param)
         return self
 
     def construct(self,

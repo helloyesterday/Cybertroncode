@@ -23,6 +23,9 @@
 Radical basis functions (RBF)
 """
 
+from typing import Union
+from numpy import ndarray
+
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore.nn import Cell
@@ -31,11 +34,9 @@ from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.ops import composite as C
 
-from mindsponge.data import get_hyper_string, get_hyper_parameter
 from mindsponge.data import set_hyper_parameter
-from mindsponge.data import set_class_into_hyper_param
-from mindsponge.function import get_integer
-from mindsponge.function import Units, Length
+from mindsponge.function import get_integer, get_ms_array, get_arguments
+from mindsponge.function import Units, GLOBAL_UNITS, Length, get_length
 
 __all__ = [
     "GaussianBasis",
@@ -85,117 +86,33 @@ class RadicalBasisFunctions(Cell):
 
     """
     def __init__(self,
-                 r_max: Length = 1,
-                 r_min: Length = 0,
-                 sigma: float = 0,
-                 delta: float = None,
-                 num_basis: int = None,
-                 rescale: bool = False,
+                 num_basis: int,
+                 r_max: Union[Length, float, Tensor, ndarray],
+                 r_min: Union[Length, float, Tensor, ndarray] = 0,
                  clip_distance: bool = False,
-                 length_unit: str = 'nm',
-                 hyper_param: dict = None,
+                 length_unit: Union[str, Units] ='nm',
+                 **kwargs,
                  ):
 
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
-        if hyper_param is not None:
-            r_max = get_hyper_parameter(hyper_param, 'r_max')
-            r_min = get_hyper_parameter(hyper_param, 'r_min')
-            sigma = get_hyper_parameter(hyper_param, 'sigma')
-            delta = get_hyper_parameter(hyper_param, 'delta')
-            num_basis = get_hyper_parameter(hyper_param, 'num_basis')
-            clip_distance = get_hyper_parameter(hyper_param, 'clip_distance')
-            rescale = get_hyper_parameter(hyper_param, 'rescale')
-            length_unit = get_hyper_string(hyper_param, 'length_unit')
-
+        if length_unit is None:
+            length_unit = GLOBAL_UNITS.length_unit
         self.units = Units(length_unit)
-        self.r_max = self.get_length(r_max)
-        self.r_min = self.get_length(r_min)
-        self.sigma = sigma
-        self.delta = delta
+
         self.num_basis = get_integer(num_basis)
+        self.r_max = get_ms_array(get_length(r_max, self.units), ms.float32)
+        self.r_min = get_ms_array(get_length(r_min, self.units), ms.float32)
         self.clip_distance = Tensor(clip_distance, ms.bool_)
-        self.rescale = Tensor(rescale, ms.bool_)
 
         self.length_unit = self.units.length_unit
 
-        self.check_range()
-        self.check_basis(num_basis, delta)
-        self.r_range = self.r_max - self.r_min
-        self.offsets = None
-
-        self.hyper_param = dict()
-        self.hyper_types = {
-            'r_max': 'float',
-            'r_min': 'float',
-            'sigma': 'float',
-            'delta': 'float',
-            'num_basis': 'int',
-            'clip_distance': 'bool',
-            'rescale': 'bool',
-            'length_unit': 'str',
-        }
-
-    def set_hyper_param(self):
-        """set hyperparameter"""
-        set_hyper_parameter(self.hyper_param, 'name', self.cls_name)
-        set_class_into_hyper_param(self.hyper_param, self.hyper_types, self)
-        return self
-
-    def check_basis(self, num_basis, delta):
-        """check basis functions"""
-        if num_basis is None and delta is None:
-            raise TypeError('"num_basis" and "delta" cannot both be "None".')
-        if num_basis is not None and num_basis <= 0:
-            raise ValueError('"num_basis" must be larger than 0.')
-        if delta is not None and delta <= 0:
-            raise ValueError('"delta" must be larger than 0.')
-        return self
-
-    def check_range(self):
-        """check range of distance"""
         if self.r_max <= self.r_min:
             raise ValueError('The argument "r_max" must be larger ' +
                              'than the argument "r_min" in RBF!')
-        return self
 
-    def set_rmax(self, r_max):
-        """set minimum distance"""
-        self.r_max = self.get_length(r_max)
-        self.check_range()
         self.r_range = self.r_max - self.r_min
-        set_hyper_parameter(self.hyper_param, 'r_max', self.r_max)
-        return self
-
-    def set_rmin(self, r_min):
-        """set minimum distance"""
-        self.r_min = self.get_length(r_min)
-        self.check_range()
-        self.r_range = self.r_max - self.r_min
-        set_hyper_parameter(self.hyper_param, 'r_min', self.r_min)
-        return self
-
-    def set_range(self, r_min, r_max):
-        """set range of distance"""
-        self.r_max = self.get_length(r_max)
-        self.r_min = self.get_length(r_min)
-        self.check_range()
-        self.r_range = self.r_max - self.r_min
-        set_hyper_parameter(self.hyper_param, 'r_max', self.r_max)
-        set_hyper_parameter(self.hyper_param, 'r_min', self.r_min)
-        return self
-
-    def set_sigma(self, sigma):
-        """set sigma"""
-        self.sigma = sigma
-        set_hyper_parameter(self.hyper_param, 'sigma', self.sigma)
-        return self
-
-    def set_basis(self, num_basis=None, delta=None):
-        """set number of basis function"""
-        if num_basis is None and delta is None:
-            raise TypeError('"num_basis" and "delta" cannot both be "None".')
-        return self
 
     def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
         """print the information of RBF"""
@@ -206,33 +123,11 @@ class RadicalBasisFunctions(Cell):
         print(ret+gap+' Maximum distance: ' +
               str(self.r_max)+' '+self.units.length_unit)
         print(ret+gap+' Number of basis functions: ' + str(self.num_basis))
-        print(ret+gap+' Interval: ' + str(self.delta))
-        print(ret+gap+' Sigma: ' + str(self.sigma))
         if self.clip_distance:
             print(ret+gap+' Clip the range of distance to (r_min,r_max).')
-        if self.rescale:
-            print(ret+gap+' Rescale the range of RBF to (-1,1).')
         return self
 
-    def get_length(self, length, unit=None):
-        """get length value"""
-        if isinstance(length, Length):
-            if unit is None:
-                unit = self.units
-            return length(unit)
-
-        return Tensor(length, ms.float32)
-
-    def change_unit(self, unit):
-        """change unit"""
-        scale = self.units.convert_length_to(unit)
-        self.r_min *= scale
-        self.r_max *= scale
-        self.r_range *= scale
-        self.units.set_length_unit(unit)
-        return scale
-
-    def construct(self, distance: Tensor):
+    def construct(self, distance: Tensor) -> Tensor:
         """Compute gaussian type RBF.
 
         Args:
@@ -263,8 +158,6 @@ class GaussianBasis(RadicalBasisFunctions):
 
         num_basis (int):        Number of basis functions. Defatul: None
 
-        rescale (bool):         Whether to rescale the output of RBF from -1 to 1. Default: False
-
         clip_distance (bool):   Whether to clip the value of distance. Default: False
 
         length_unit (str):      Unit for distance. Default: = 'nm',
@@ -274,34 +167,35 @@ class GaussianBasis(RadicalBasisFunctions):
     """
 
     def __init__(self,
-                 r_max: Length = Length(1, 'nm'),
-                 r_min: Length = Length(0, 'nm'),
-                 sigma: Length = Length(0.03, 'nm'),
-                 delta: Length = Length(0.016, 'nm'),
+                 r_max: Union[Length, float, Tensor, ndarray] = Length(1, 'nm'),
+                 r_min: Union[Length, float, Tensor, ndarray] = 0,
+                 sigma: Union[float, Tensor, ndarray] = Length(0.03, 'nm'),
+                 delta: Union[float, Tensor, ndarray] = Length(0.016, 'nm'),
                  num_basis: int = None,
-                 rescale: bool = False,
                  clip_distance: bool = False,
                  length_unit: str = 'nm',
-                 hyper_param: dict = None,
+                 **kwargs,
                  ):
 
         super().__init__(
-            r_min=r_min,
             r_max=r_max,
-            sigma=sigma,
-            delta=delta,
+            r_min=r_min,
             num_basis=num_basis,
-            rescale=rescale,
             clip_distance=clip_distance,
             length_unit=length_unit,
-            hyper_param=hyper_param,
+            **kwargs,
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
-        self.reg_key = 'gaussian'
+        if num_basis is None and delta is None:
+            raise TypeError('"num_basis" and "delta" cannot both be "None".')
+        if num_basis is not None and num_basis <= 0:
+            raise ValueError('"num_basis" must be larger than 0.')
+        if delta is not None and delta <= 0:
+            raise ValueError('"delta" must be larger than 0.')
 
-        self.sigma = self.get_length(self.sigma)
-        self.delta = self.get_length(self.delta)
-
+        self.delta = get_ms_array(get_length(delta, self.units), ms.float32)
+        self.sigma = get_ms_array(get_length(sigma, self.units), ms.float32)
         self.coeff = -0.5 * msnp.reciprocal(msnp.square(self.sigma))
 
         if self.delta is None:
@@ -314,43 +208,6 @@ class GaussianBasis(RadicalBasisFunctions):
                 self.num_basis = get_integer(num_basis)
             self.offsets = self.r_min + \
                 msnp.arange(0, self.num_basis) * self.delta
-
-        self.set_hyper_param()
-
-        self.exp = P.Exp()
-
-    def set_sigma(self, sigma):
-        self.sigma = self.get_length(sigma)
-        self.coeff = -0.5 * msnp.reciprocal(msnp.square(self.sigma))
-        set_hyper_parameter(self.hyper_param, 'sigma', self.sigma)
-        return self
-
-    def set_basis(self, num_basis=None, delta=None):
-        self.check_basis(num_basis, delta)
-        if delta is None:
-            self.num_basis = get_integer(num_basis)
-            self.offsets = msnp.linspace(
-                self.r_min, self.r_max, self.num_basis, dtype=ms.float32)
-            self.delta = Tensor(self.r_range/(self.num_basis-1), ms.float32)
-        else:
-            self.delta = self.get_length(delta)
-            if num_basis is None:
-                num_basis = msnp.ceil(self.r_range/self.delta, ms.int32) + 1
-                self.num_basis = get_integer(num_basis)
-            self.offsets = self.r_min + \
-                msnp.arange(0, self.num_basis) * self.delta
-        set_hyper_parameter(self.hyper_param, 'delta', self.delta)
-        set_hyper_parameter(self.hyper_param, 'num_basis', self.num_basis)
-        return self
-
-    def change_unit(self, unit):
-        scale = super().change_unit(unit)
-        self.sigma *= scale
-        self.coeff = -0.5 * msnp.reciprocal(msnp.square(self.sigma))
-        self.delta *= scale
-        self.offsets = self.r_min + msnp.arange(0, self.num_basis) * self.delta
-        self.set_hyper_param()
-        return self
 
     def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
         ret = char * num_retraction
@@ -366,11 +223,9 @@ class GaussianBasis(RadicalBasisFunctions):
         print(ret+gap+' Number of basis functions: ' + str(self.num_basis))
         if self.clip_distance:
             print(ret+gap+' Clip the range of distance to (r_min,r_max).')
-        if self.rescale:
-            print(ret+gap+' Rescale the range of RBF to (-1,1).')
         return self
 
-    def construct(self, distance: Tensor):
+    def construct(self, distance: Tensor) -> Tensor:
         """Compute gaussian type RBF.
 
         Args:
@@ -388,10 +243,7 @@ class GaussianBasis(RadicalBasisFunctions):
         # (..., K) = (..., 1) - (K,)
         diff = ex_dis - self.offsets
         # (..., K)
-        rbf = self.exp(self.coeff * F.square(diff))
-
-        if self.rescale:
-            rbf = rbf * 2 - 1.0
+        rbf = F.exp(self.coeff * F.square(diff))
 
         return rbf
 
@@ -423,43 +275,47 @@ class LogGaussianBasis(RadicalBasisFunctions):
 
     """
     def __init__(self,
-                 r_max: Length = Length(1, 'nm'),
-                 r_min: Length = Length(0.04, 'nm'),
-                 sigma: float = 0.3,
-                 delta: float = 0.0512,
+                 r_max: Union[Length, float, Tensor, ndarray] = Length(1, 'nm'),
+                 r_min: Union[Length, float, Tensor, ndarray] = Length(0.04, 'nm'),
+                 sigma: Union[Length, float, Tensor, ndarray] = 0.3,
+                 delta: Union[Length, float, Tensor, ndarray] = 0.0512,
                  num_basis: int = None,
                  rescale: bool = True,
                  clip_distance: bool = False,
                  length_unit: str = 'nm',
-                 hyper_param: dict = None,
                  r_ref: Length = Length(1, 'nm'),
+                 **kwargs,
                  ):
 
         super().__init__(
-            r_min=r_min,
-            r_max=r_max,
-            sigma=sigma,
-            delta=delta,
             num_basis=num_basis,
-            rescale=rescale,
+            r_max=r_max,
+            r_min=r_min,
             clip_distance=clip_distance,
             length_unit=length_unit,
-            hyper_param=hyper_param,
+            **kwargs,
         )
-        if hyper_param is not None:
-            r_ref = get_hyper_parameter(hyper_param, 'r_ref')
+        self._kwargs = get_arguments(locals(), kwargs)
 
-        self.reg_key = 'log_gaussian'
-
-        if isinstance(self.sigma, Length):
-            raise TypeError(
-                '"sigma" in Log Gaussian RBF is dimensionless, so its type should not be "Length"')
-        if isinstance(self.delta, Length):
+        if num_basis is None and delta is None:
+            raise TypeError('"num_basis" and "delta" cannot both be "None".')
+        if num_basis is not None and num_basis <= 0:
+            raise ValueError('"num_basis" must be larger than 0.')
+        if delta is not None and delta <= 0:
+            raise ValueError('"delta" must be larger than 0.')
+        if isinstance(delta, Length):
             raise TypeError(
                 '"delta" in Log Gaussian RBF is dimensionless, so its type should not be "Length"')
+        
+        self.delta = get_ms_array(delta, ms.float32)        
+        
+        if isinstance(sigma, Length):
+            raise TypeError('"sigma" in Log Gaussian RBF is dimensionless, so its type should not be "Length"')
+        
+        self.sigma = get_ms_array(sigma, ms.float32)
+        self.rescale = rescale
 
-        self.delta = Tensor(self.delta, ms.float32)
-        self.r_ref = self.get_length(r_ref)
+        self.r_ref = get_ms_array(get_length(r_ref, self.units), ms.float32)
 
         log_rmin = msnp.log(self.r_min/self.r_ref, dtype=ms.float32)
         log_rmax = msnp.log(self.r_max/self.r_ref, dtype=ms.float32)
@@ -475,66 +331,8 @@ class LogGaussianBasis(RadicalBasisFunctions):
             self.offsets = msnp.log(self.r_min/self.r_ref) + \
                 msnp.arange(0, self.num_basis) * self.delta
 
-        # self.sigma = Tensor(sigma,ms.float32)
         self.coeff = -0.5 * msnp.reciprocal(msnp.square(self.sigma))
         self.inv_ref = msnp.reciprocal(self.r_ref)
-
-        self.set_hyper_param()
-
-        self.log = P.Log()
-        self.exp = P.Exp()
-        self.max = P.Maximum()
-        self.min = P.Minimum()
-
-        self.exp = P.Exp()
-
-    def set_basis(self, num_basis=None, delta=None):
-        self.check_basis(num_basis, delta)
-
-        log_rmin = msnp.log(self.r_min/self.r_ref, dtype=ms.float32)
-        log_rmax = msnp.log(self.r_max/self.r_ref, dtype=ms.float32)
-        log_range = log_rmax-log_rmin
-
-        if delta is None:
-            log_rmax = msnp.log(self.r_max/self.r_ref, dtype=ms.float32)
-            self.num_basis = get_integer(num_basis)
-            self.offsets = msnp.linspace(
-                log_rmin, log_rmax, num_basis, dtype=ms.float32)
-            self.delta = Tensor(log_range/(num_basis-1), ms.float32)
-        else:
-            self.delta = Tensor(delta, ms.float32)
-            if num_basis is None:
-                num_basis = msnp.ceil(log_range/self.delta, ms.int32) + 1
-                self.num_basis = get_integer(num_basis)
-            self.offsets = msnp.log(
-                self.r_min/self.r_ref) + msnp.arange(0, self.num_basis.asnumpy()) * self.delta
-        set_hyper_parameter(self.hyper_param, 'delta', self.delta)
-        set_hyper_parameter(self.hyper_param, 'num_basis', self.num_basis)
-        return self
-
-    def set_sigma(self, sigma):
-        self.sigma = Tensor(sigma, ms.float32)
-        self.coeff = -0.5 * msnp.reciprocal(msnp.square(self.sigma))
-        set_hyper_parameter(self.hyper_param, 'sigma', self.sigma)
-        return self
-
-    def set_ref(self, r_ref):
-        self.r_ref = self.get_length(r_ref)
-        self.inv_ref = msnp.reciprocal(self.r_ref)
-        set_hyper_parameter(self.hyper_param, 'r_ref', self.r_ref)
-        return self
-
-    def set_hyper_param(self):
-        super().set_hyper_param()
-        set_hyper_parameter(self.hyper_param, 'r_ref', self.r_ref)
-        return self
-
-    def change_unit(self, unit):
-        scale = super().change_unit(unit)
-        self.r_ref *= scale
-        self.inv_ref = msnp.reciprocal(self.r_ref)
-        self.set_hyper_param()
-        return scale
 
     def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
         ret = char * num_retraction
@@ -556,7 +354,7 @@ class LogGaussianBasis(RadicalBasisFunctions):
             print(ret+gap+' Rescale the range of RBF to (-1,1).')
         return self
 
-    def construct(self, distance: Tensor):
+    def construct(self, distance: Tensor) -> Tensor:
         """Compute gaussian type RBF.
 
         Args:
@@ -570,13 +368,13 @@ class LogGaussianBasis(RadicalBasisFunctions):
             distance = C.clip_by_value(distance, self.r_min, self.r_max)
 
         # (...)
-        log_r = self.log(distance * self.inv_ref)
+        log_r = F.log(distance * self.inv_ref)
         # (..., 1)
         log_r = F.expand_dims(log_r, -1)
 
         # (..., K) = (..., 1) - (K)
         log_diff = log_r - self.offsets
-        rbf = self.exp(self.coeff*F.square(log_diff))
+        rbf = F.exp(self.coeff*F.square(log_diff))
 
         if self.rescale:
             rbf = rbf * 2 - 1.0
@@ -587,40 +385,37 @@ class LogGaussianBasis(RadicalBasisFunctions):
 _RBF_BY_NAME = {rbf.__name__: rbf for rbf in _RBF_BY_KEY.values()}
 
 
-def get_rbf(rbf: str = None,
-            r_max=Length(1, 'nm'),
+def get_rbf(cls_name: Union[RadicalBasisFunctions, str, dict],
+            r_max: Union[Length, float, Tensor, ndarray] = Length(1, 'nm'),
             num_basis: int = None,
-            length_unit='nm'
+            length_unit: Union[str, Units] ='nm',
+            **kwargs,
             ) -> RadicalBasisFunctions:
     """get RBF by name"""
 
-    if isinstance(rbf, RadicalBasisFunctions):
-        return rbf
-    if rbf is None:
+    if isinstance(cls_name, RadicalBasisFunctions):
+        return cls_name
+    if cls_name is None:
         return None
 
-    hyper_param = None
-    if isinstance(rbf, dict):
-        if 'name' not in rbf.keys():
-            raise KeyError('Cannot find the key "name" in rbf dict!')
-        hyper_param = rbf
-        rbf = get_hyper_string(hyper_param, 'name')
+    if isinstance(cls_name, dict):
+        return get_rbf(**cls_name)
 
-    if isinstance(rbf, str):
-        if rbf.lower() == 'none':
+    if isinstance(cls_name, str):
+        if cls_name.lower() == 'none':
             return None
-        if rbf.lower() in _RBF_BY_KEY.keys():
-            return _RBF_BY_KEY[rbf.lower()](r_max=r_max,
+        if cls_name.lower() in _RBF_BY_KEY.keys():
+            return _RBF_BY_KEY[cls_name.lower()](r_max=r_max,
                                             num_basis=num_basis,
                                             length_unit=length_unit,
-                                            hyper_param=hyper_param)
-        if rbf in _RBF_BY_NAME.keys():
-            return _RBF_BY_NAME[rbf](r_max=r_max,
+                                            **kwargs)
+        if cls_name in _RBF_BY_NAME.keys():
+            return _RBF_BY_NAME[cls_name](r_max=r_max,
                                      num_basis=num_basis,
                                      length_unit=length_unit,
-                                     hyper_param=hyper_param)
+                                     **kwargs)
 
         raise ValueError(
-            "The RBF corresponding to '{}' was not found.".format(rbf))
+            "The RBF corresponding to '{}' was not found.".format(cls_name))
 
-    raise TypeError("Unsupported RBF type '{}'.".format(type(rbf)))
+    raise TypeError("Unsupported RBF type '{}'.".format(type(cls_name)))

@@ -23,63 +23,65 @@
 Readout functions
 """
 
-from mindspore.numpy import count_nonzero
+from typing import Union
+from numpy import ndarray
+
 import mindspore as ms
-from mindspore import nn
-from mindspore import Tensor
-from mindspore.nn import Cell
+from mindspore import Tensor, Parameter
+from mindspore.nn import Cell, get_activation
+from mindspore.numpy import count_nonzero
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 
-from mindsponge.data import get_class_parameters, get_hyper_string, get_hyper_parameter
-from mindsponge.data import set_class_into_hyper_param, set_hyper_parameter
-from mindsponge.function import Units
-from mindsponge.function import get_integer
+from mindsponge.function import Units, get_energy_unit
+from mindsponge.function import get_integer, get_ms_array, get_arguments
 
-from .activation import get_activation
 from .aggregator import Aggregator, get_aggregator
 from .decoder import Decoder, get_decoder
-from .model import MolecularModel
 
 __all__ = [
-    "AtomwiseReadout",
-    "GraphReadout",
+    "Readout",
+    "NodeReadout",
 ]
 
+_READOUT_BY_KEY = dict()
 
-class Readout(nn.Cell):
-    r"""
-    Readout function
+
+def _readout_register(*aliases):
+    """Return the alias register."""
+    def alias_reg(cls):
+        name = cls.__name__
+        name = name.lower()
+        if name not in _READOUT_BY_KEY:
+            _READOUT_BY_KEY[name] = cls
+
+        for alias in aliases:
+            if alias not in _READOUT_BY_KEY:
+                _READOUT_BY_KEY[alias] = cls
+
+        return cls
+
+    return alias_reg
+
+
+class Readout(Cell):
+    r"""Readout function that merges and converts representation vectors into predicted properties.
 
     Args:
-        model (MolecularModel):     Molecular model.
 
-        dim_output (int):           Output dimension.
+        dim_output (int): Dimension of outputs. Default: 1
 
-        activation (Cell):          Activation function
+        dim_node (int): Dimension of node vectors. Default: None
 
-        decoder (str):              Decoder network for atom representation. Default: 'halve'
+        dim_edge (int): Dimension of edge vectors. Default: None
 
-        aggregator (str):           Aggregator network for atom representation. Default: 'sum'
+        activation (Cell): Activation function, Default: None
 
-        scale (float):              Scale value for output. Default: 1
+        scale (float): Scale factor for outputs. Default: 1
 
-        shift (float):              Shift value for output. Default: 0
+        shift (float): Shift factor for outputs. Default: 0
 
-        type_ref (Tensor):          Tensor of shape (B, T, Y). Data type is float.
-                                    Reference value for atom types. Default: None
-
-        atomwise_scaleshift (bool): To use atomwise scaleshift (True) or graph scaleshift (False).
-                                    Default: False
-
-        axis (int):                 Axis to readout. Default: -2
-
-        n_decoder_layers (list):    number of neurons in each hidden layer of the decoder network.
-                                    Default: 1
-
-        energy_unit (str):          Energy unit of output. Default: None
-
-        hyper_param (dict):         Hyperparameter. Default: None
+        unit (str): Unit of output. Default: None
 
     Symbols:
 
@@ -92,173 +94,107 @@ class Readout(nn.Cell):
         Y:  Output dimension.
 
     """
-
     def __init__(self,
-                 model: MolecularModel = None,
                  dim_output: int = 1,
+                 dim_node: int = None,
+                 dim_edge: int = None,
                  activation: Cell = None,
-                 decoder: Decoder = None,
-                 aggregator: Aggregator = None,
-                 scale: float = 1,
-                 shift: float = 0,
-                 type_ref: Tensor = None,
-                 atomwise_scaleshift: bool = False,
-                 axis: int = -2,
-                 n_decoder_layers: int = 1,
-                 energy_unit: str = None,
-                 hyper_param: dict = None,
+                 scale: Union[float, Tensor, ndarray] = 1,
+                 shift: Union[float, Tensor, ndarray] = 0,
+                 unit: str = None,
+                 **kwargs,
                  ):
-
         super().__init__()
+        self._kwargs = kwargs
 
-        dim_represent = None
-        if hyper_param is not None:
-            dim_represent = get_hyper_parameter(hyper_param, 'dim_represent')
-            dim_output = get_hyper_parameter(hyper_param, 'dim_output')
-            activation = get_class_parameters(hyper_param, 'activation')
-            decoder = get_class_parameters(hyper_param, 'decoder')
-            aggregator = get_class_parameters(hyper_param, 'aggregator')
-            scale = get_hyper_parameter(hyper_param, 'scale')
-            shift = get_hyper_parameter(hyper_param, 'shift')
-            type_ref = get_hyper_parameter(hyper_param, 'type_ref')
-            atomwise_scaleshift = get_hyper_parameter(
-                hyper_param, 'atomwise_scaleshift')
-            axis = get_hyper_parameter(hyper_param, 'axis')
-            n_decoder_layers = get_hyper_parameter(
-                hyper_param, 'n_decoder_layers')
-            energy_unit = get_hyper_string(hyper_param, 'energy_unit')
+        try:
+            self.output_unit = get_energy_unit(unit)
+            self.units = Units(energy_unit=self.output_unit)
+        except KeyError:
+            self.output_unit = unit
+            self.units = Units(energy_unit=None)
 
-        self.units = Units(energy_unit=energy_unit)
-        self.energy_unit = energy_unit
-        self.dim_represent = dim_represent
         self.dim_output = get_integer(dim_output)
+        self.dim_node = get_integer(dim_node)
+        self.dim_edge = get_integer(dim_edge)
 
-        if model is not None:
-            self.dim_represent = model.dim_feature
-            self.activation = model.activation
+        self.activation = None
         if activation is not None:
             self.activation = get_activation(activation)
-        self.activation_name = 'none' if self.activation is None else self.activation.cls_name
 
-        self.n_decoder_layers = get_integer(n_decoder_layers)
-        self.decoder = get_decoder(
-            decoder, self.dim_represent, self.dim_output, self.activation, self.n_decoder_layers)
-        self.decoder_name = 'none' if self.decoder is None else self.decoder.cls_name
+        self.scale = Parameter(get_ms_array(scale, ms.float32), name='scale', requires_grad=False)
+        self.shift = Parameter(get_ms_array(shift, ms.float32), name='scale', requires_grad=False)
 
-        self.aggregator = get_aggregator(aggregator, self.dim_output, axis)
-        self.aggregator_name = 'none' if self.aggregator is None else self.aggregator.cls_name
+    @property
+    def energy_unit(self) -> str:
+        return self.units.energy_unit
 
-        self.scale = Tensor(scale, ms.float32)
-        self.shift = Tensor(shift, ms.float32)
-        self.axis = get_integer(axis)
+    def check_and_set(self, dim_node: int, dim_edge: int, activation: Union[Cell, str] = None):
+        """check and set dimension of representation vectors"""
+        if self.dim_node is None:
+            self.dim_node = get_integer(dim_node)
+        elif self.dim_node != dim_node:
+            raise ValueError(f'The `dim_node` ({self.dim_node}) of Readout cannot match '
+                             f'the dimension of node representation vector ({dim_node}).')
 
-        self.atomwise_scaleshift = Tensor(atomwise_scaleshift, ms.bool_)
-        self.type_ref = None if type_ref is None else Tensor(
-            type_ref, ms.float32)
+        if self.dim_edge is None:
+            self.dim_edge = get_integer(dim_edge)
+        elif self.dim_edge != dim_edge:
+            raise ValueError(f'The `dim_edge` ({self.dim_edge}) of Readout cannot match '
+                             f'the dimension of edge representation vector ({dim_edge}).')
 
-        if self.decoder is None and self.dim_represent != self.dim_output:
-            raise ValueError("When decoder is None, dim_output ("+str(dim_output) +
-                             ") must be equal to dim_represent ("+str(self.dim_represent)+")")
-        self.reduce_sum = P.ReduceSum()
+        if activation is not None:
+            self.activation = get_activation(activation)
 
-        self.hyper_param = dict()
-        self.hyper_types = {
-            'dim_represent': 'int',
-            'dim_output': 'int',
-            'activation': 'Cell',
-            'decoder': 'Cell',
-            'aggregator': 'Cell',
-            'scale': 'float',
-            'shift': 'float',
-            'type_ref': 'Tensor',
-            'atomwise_scaleshift': 'bool',
-            'axis': 'int',
-            'n_decoder_layers': 'int',
-            'energy_unit': 'str',
-        }
-
-    def set_hyper_param(self):
-        """set hyperparameters"""
-        set_hyper_parameter(self.hyper_param, 'name', self.cls_name)
-        set_class_into_hyper_param(self.hyper_param, self.hyper_types, self)
         return self
+    
+    def convert_energy_from(self, unit) -> float:
+        """returns a scale factor that converts the energy from a specified unit."""
+        return self.units.convert_energy_from(unit)
 
+    def convert_energy_to(self, unit) -> float:
+        """returns a scale factor that converts the energy to a specified unit."""
+        return self.units.convert_energy_to(unit)
+
+    def set_unit(self, unit: str):
+        """set output unit"""
+        try:
+            self.output_unit = get_energy_unit(unit)
+            self.units.set_energy_unit(self.output_unit)
+        except KeyError:
+            self.output_unit = unit
+            self.units.set_energy_unit(None)
+        self._kwargs['unit'] = self.output_unit
+        return self
+    
     def set_scaleshift(self,
-                       scale: float = 1,
-                       shift: float = 0,
-                       type_ref: Tensor = None,
-                       atomwise_scaleshift: bool = None,
+                       scale: Union[float, Tensor, ndarray] = 1,
+                       shift: Union[float, Tensor, ndarray] = 0,
                        unit: str = None
                        ):
-
         """set scale and shift"""
         if unit is not None:
-            self.units.set_energy_unit(unit)
-            set_hyper_parameter(self.hyper_param, 'energy_unit',
-                                self.units.energy_unit)
-        self.scale = Tensor(scale, ms.float32).reshape(-1)
-        if self.scale.shape[-1] != self.dim_output and self.scale.shape[-1] != 1:
-            raise ValueError('The dimension of "scale" ('+str(self.scale.shape[-1]) +
-                             ') does not match the output dimension ('+str(self.dim_output)+').')
-        self.shift = Tensor(shift, ms.float32).reshape(-1)
-        if self.shift.shape[-1] != self.dim_output and self.shift.shape[-1] != 1:
-            raise ValueError('The dimension of "shift" ('+str(self.shift.shape[-1]) +
-                             ') does not match the output dimension ('+str(self.dim_output)+').')
-        if type_ref is not None:
-            self.type_ref = Tensor(type_ref, ms.float32)
-            if self.type_ref.shape[-1] != self.dim_output and self.type_ref.shape[-1] != 1:
-                raise ValueError('The dimension of "type_ref" ('+str(self.type_ref.shape[-1]) +
-                                 ') does not match the output dimension ('+str(self.dim_output)+').')
-        set_hyper_parameter(self.hyper_param, 'scale', self.scale)
-        set_hyper_parameter(self.hyper_param, 'shift', self.shift)
-        set_hyper_parameter(self.hyper_param, 'type_ref', self.type_ref)
-        if atomwise_scaleshift is not None:
-            self.atomwise_scaleshift = Tensor(atomwise_scaleshift, ms.bool_)
-            if self.atomwise_scaleshift.size != 1:
-                raise ValueError(
-                    'The size of "atomwise_scaleshift" must be 1!')
-            set_hyper_parameter(
-                self.hyper_param, 'atomwise_scaleshift', self.atomwise_scaleshift)
-        return self
+            self.set_unit(unit)
 
-    def change_unit(self, units):
-        """change units"""
-        scale = self.units.convert_energy_to(units)
-        self.scale *= scale
-        self.shift *= scale
-        if self.type_ref is not None:
-            self.type_ref *= scale
-        set_hyper_parameter(self.hyper_param, 'scale', self.scale)
-        set_hyper_parameter(self.hyper_param, 'shift', self.shift)
-        set_hyper_parameter(self.hyper_param, 'type_ref', self.type_ref)
-        set_hyper_parameter(self.hyper_param, 'energy_unit',
-                            self.units.energy_unit)
-        return self
-
-    def print_info(self, num_retraction: int = 0, num_gap: int = 3, char: str = '-'):
-        """print the information of readout"""
-        ret = char * num_retraction
-        gap = char * num_gap
-        print(ret+gap+" Activation function: "+str(self.activation.cls_name))
-        if self.decoder is not None:
-            print(ret+gap+" Decoder: "+str(self.decoder.cls_name))
-        if self.aggregator is not None:
-            print(ret+gap+" Aggregator: "+str(self.aggregator.cls_name))
-        print(ret+gap+" Representation dimension: "+str(self.dim_represent))
-        print(ret+gap+" Readout dimension: "+str(self.dim_output))
-        print(ret+gap+" Scale: "+str(self.scale.asnumpy()))
-        print(ret+gap+" Shift: "+str(self.shift.asnumpy()))
-        print(ret+gap+" Scaleshift mode: " +
-              ("Atomwise" if self.atomwise_scaleshift else "Graph"))
-        if self.type_ref is None:
-            print(ret+gap+" Reference value for atom types: None")
+        scale: Tensor = get_ms_array(scale, ms.float32).reshape(-1)
+        if scale.shape[-1] != self.dim_output and scale.shape[-1] != 1:
+            raise ValueError(f'The dimension of "scale" ({scale.shape[-1]}) does not match the '
+                             f'output dimension ({self.dim_output})')
+        if scale.shape == self.scale.shape:
+            F.assign(self.scale, scale)
         else:
-            print(ret+gap+" Reference value for atom types:")
-            for i, ref in enumerate(self.type_ref):
-                print(ret+gap+gap+' No.{: <5}'.format(str(i)+': ')+str(ref))
-        print(ret+gap+" Output unit: "+str(self.units.energy_unit_name))
-        print(ret+gap+" Reduce axis: "+str(self.axis))
-        print('-'*80)
+            self.scale = Parameter(scale, name='scale', requires_grad=False)
+
+        shift: Tensor = get_ms_array(shift, ms.float32).reshape(-1)
+        if shift.shape[-1] != self.dim_output and shift.shape[-1] != 1:
+            raise ValueError(f'The dimension of "shift" ({self.shift.shape[-1]}) does not match the '
+                             f'output dimension ({self.dim_output})')
+        if shift.shape == self.shift.shape:
+            F.assign(self.shift, shift)
+        else:
+            self.shift = Parameter(shift, name='shift', requires_grad=False)
+
+        return self
 
     def construct(self,
                   node_rep: Tensor,
@@ -270,6 +206,7 @@ class Readout(nn.Cell):
                   distances: Tensor = None,
                   neighbours: Tensor = None,
                   neighbour_mask: Tensor = None,
+                  **kwargs,
                   ):
         r"""Compute readout network.
 
@@ -307,12 +244,12 @@ class Readout(nn.Cell):
         raise NotImplementedError
 
 
-class AtomwiseReadout(Readout):
+@_readout_register('node')
+class NodeReadout(Readout):
     r"""
-    Atomwise readout function
+    Readout function
 
     Args:
-        model (MolecularModel):     Molecular model.
 
         dim_output (int):           Output dimension.
 
@@ -326,7 +263,7 @@ class AtomwiseReadout(Readout):
 
         shift (float):              Shift value for output. Default: 0
 
-        type_ref (Tensor):          Tensor of shape (B, T, Y). Data type is float.
+        type_ref (Tensor):          Tensor of shape `(T, Y)`. Data type is float.
                                     Reference value for atom types. Default: None
 
         atomwise_scaleshift (bool): To use atomwise scaleshift (True) or graph scaleshift (False).
@@ -354,186 +291,112 @@ class AtomwiseReadout(Readout):
     """
 
     def __init__(self,
-                 model: MolecularModel = None,
                  dim_output: int = 1,
+                 dim_node: int = None,
                  activation: Cell = None,
                  decoder: Decoder = 'halve',
-                 aggregator: Aggregator = 'sum',
+                 aggregator: Aggregator = 'default',
                  scale: float = 1,
                  shift: float = 0,
                  type_ref: Tensor = None,
-                 atomwise_scaleshift: bool = True,
                  axis: int = -2,
                  n_decoder_layers: int = 1,
+                 mode: str = 'atomwise',
                  energy_unit: str = None,
-                 hyper_param: dict = None,
+                 **kwargs,
                  ):
-
         super().__init__(
-            model=model,
             dim_output=dim_output,
+            dim_node=dim_node,
+            dim_edge=None,
             activation=activation,
-            decoder=decoder,
-            aggregator=aggregator,
             scale=scale,
             shift=shift,
-            type_ref=type_ref,
-            atomwise_scaleshift=atomwise_scaleshift,
-            axis=axis,
-            n_decoder_layers=n_decoder_layers,
             energy_unit=energy_unit,
-            hyper_param=hyper_param,
+            **kwargs,
         )
+        self._kwargs = get_arguments(locals())
 
-        self.set_hyper_param()
+        self.n_decoder_layers = get_integer(n_decoder_layers)
 
-    def construct(self,
-                  node_rep: Tensor,
-                  edge_rep: Tensor,
-                  node_emb: Tensor = None,
-                  edge_emb: Tensor = None,
-                  atom_types: Tensor = None,
-                  atom_mask: Tensor = None,
-                  distances: Tensor = None,
-                  neighbours: Tensor = None,
-                  neighbour_mask: Tensor = None,
-                  ):
-        r"""Compute readout network.
+        if mode.lower() in ['atomwise', 'a']:
+            self.atomwise_readout = True
+        elif mode.lower() in ['graph', 'set2set', 'g']:
+            self.atomwise_readout = True
+        else:
+            self.atomwise_readout = None
+            raise ValueError(f'Unknown mode: {mode}')
 
-        Args:
-            node_rep (Tensor): Tensor of shape (B, A, F). Data type is float.
-                Atomic (node) representation vector.
-            edge_rep (Tensor): Tensor of shape (B, A, N, F). Data type is float.
-                Edge representation vector.
-            node_emb (Tensor): Tensor of shape (B, A, F). Data type is float.
-                Atomic (node) embedding vector.
-            edge_emb (Tensor): Tensor of shape (B, A, F). Data type is float.
-                Edge embedding vector.
-            atom_types (Tensor): Tensor of shape (B, A). Data type is int.
-                Index of atom types. Default: None
-            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool
-                Mask for atom types
-            distances (Tensor): Tensor of shape (B, A, N). Data type is float.
-                Distances between atoms
-            neighbours (Tensor): Tensor of shape (B, A, N). Data type is int.
-                Indices of other near neighbour atoms around a atom
-            neighbour_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
-                Mask for neighbours
-
-        Returns:
-            output: (Tensor):    Tensor of shape (B, A, Y). Data type is float
-
-        Symbols:
-
-            B:  Batch size.
-            A:  Number of atoms in system.
-            F:  Feature dimension of representation.
-            Y:  Output dimension.
-
-        """
-        y = node_rep
-        if self.decoder is not None:
-            y = self.decoder(y)
-
-        if self.aggregator is not None:
-            if self.atomwise_scaleshift:
-                y = y * self.scale + self.shift
-                if self.type_ref is not None:
-                    y += F.gather(self.type_ref, atom_types, 0)
-                y = self.aggregator(y, atom_mask)
+        self.decoder = decoder
+        if isinstance(decoder, (Decoder, dict)) or self.dim_edge is not None:
+            self.decoder = get_decoder(decoder, self.dim_node, self.dim_output,
+                                       self.activation, self.n_decoder_layers)
+            if self.decoder is None:
+                self.dim_node = None
             else:
-                num_atoms = count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
-                y = self.aggregator(y, atom_mask) / num_atoms
-                y = y * self.scale + self.shift
-                if self.type_ref is not None:
-                    ref = F.gather(self.type_ref, atom_types, 0)
-                    y += self.reduce_sum(ref, self.axis)
+                self.dim_node = self.decoder.dim_in
 
-        return y
+        if isinstance(aggregator, str) and aggregator.lower() == 'default':
+            aggregator = 'sum' if self.atomwise_readout else 'mean'
 
+        self.aggregator = get_aggregator(aggregator, self.dim_output, axis)
 
-class GraphReadout(Readout):
-    r"""
-    Graph readout function
+        self.axis = get_integer(axis)
 
-    Args:
-        model (MolecularModel):     Molecular model.
+        self.reduce_sum = P.ReduceSum()
 
-        dim_output (int):           Output dimension.
+        self.type_ref = get_ms_array(type_ref, ms.float32)
+        if self.type_ref is not None:
+            self.type_ref = Parameter(self.type_ref, name='type_ref', requires_grad=False)
 
-        activation (Cell):          Activation function
+    def check_and_set(self, dim_node: int, dim_edge: int, activation: Cell = None):
+        super().check_and_set(dim_node, dim_edge, activation)
+        if self.dim_node is not None and isinstance(self.decoder, str):
+            self.decoder = get_decoder(self.decoder, self.dim_node, self.dim_output,
+                                       self.activation, self.n_decoder_layers)
 
-        decoder (str):              Decoder network for atom representation. Default: 'halve'
+    def set_type_ref(self, type_ref: Union[Tensor, ndarray]):
+        type_ref: Tensor = get_ms_array(type_ref, ms.float32)
+        if type_ref is None:
+            self.type_ref = None
+            return self
 
-        aggregator (str):           Aggregator network for atom representation. Default: 'mean'
+        if type_ref.ndim != 2:
+            raise ValueError(f'The rank (ndim) of type_ref must be 2 but got: {type_ref.ndim}')
+        if type_ref.shape[-1] != self.dim_output and type_ref.shape[-1] != 1:
+            raise ValueError(f'The dimension of "type_ref" ({self.type_ref.shape[-1]}) does not match the '
+                                f'output dimension ({self.dim_output})')
 
-        scale (float):              Scale value for output. Default: 1
+        if self.type_ref is not None and self.type_ref.shape == type_ref.shape:
+            F.assign(self.type_ref, type_ref)
+        else:
+            self.type_ref = Parameter(self.type_ref, name='type_ref', requires_grad=False)
 
-        shift (float):              Shift value for output. Default: 0
+        return self
 
-        type_ref (Tensor):          Tensor of shape (B, T, Y). Data type is float.
-                                    Reference value for atom types. Default: None
-
-        atomwise_scaleshift (bool): To use atomwise scaleshift (True) or graph scaleshift (False).
-                                    Default: False
-
-        axis (int):                 Axis to readout. Default: -2
-
-        n_decoder_layers (list):    number of neurons in each hidden layer of the decoder network.
-                                    Default: 1
-
-        energy_unit (str):          Energy unit of output. Default: None
-
-        hyper_param (dict):         Hyperparameter. Default: None
-
-    Symbols:
-
-        B:  Batch size.
-
-        A:  Number of atoms.
-
-        T:  Number of atom types.
-
-        Y:  Output dimension.
-
-    """
-
-    def __init__(self,
-                 model: MolecularModel = None,
-                 dim_output: int = 1,
-                 activation: Cell = None,
-                 decoder: Decoder = 'halve',
-                 aggregator: Aggregator = 'mean',
-                 scale: float = 1,
-                 shift: float = 0,
-                 type_ref: Tensor = None,
-                 atomwise_scaleshift: bool = False,
-                 axis: int = -2,
-                 n_decoder_layers: int = 1,
-                 energy_unit: str = None,
-                 hyper_param: dict = None,
-                 ):
-
-        super().__init__(
-            model=model,
-            dim_output=dim_output,
-            activation=activation,
-            decoder=decoder,
-            aggregator=aggregator,
-            scale=scale,
-            shift=shift,
-            type_ref=type_ref,
-            atomwise_scaleshift=atomwise_scaleshift,
-            axis=axis,
-            n_decoder_layers=n_decoder_layers,
-            energy_unit=energy_unit,
-            hyper_param=hyper_param,
-        )
-
-        if self.aggregator is None:
-            raise ValueError("aggregator cannot be None at GraphReadout")
-
-        self.set_hyper_param()
+    def print_info(self, num_retraction: int = 0, num_gap: int = 3, char: str = '-'):
+        """print the information of readout"""
+        ret = char * num_retraction
+        gap = char * num_gap
+        print(ret+gap+" Activation function: "+str(self.activation))
+        if self.decoder is not None:
+            print(ret+gap+" Decoder: "+str(self.decoder.cls_name))
+        if self.aggregator is not None:
+            print(ret+gap+" Aggregator: "+str(self.aggregator.cls_name))
+        print(ret+gap+" Representation dimension: "+str(self.dim_node))
+        print(ret+gap+" Readout dimension: "+str(self.dim_output))
+        print(ret+gap+" Scale: "+str(self.scale.asnumpy()))
+        print(ret+gap+" Shift: "+str(self.shift.asnumpy()))
+        if self.type_ref is None:
+            print(ret+gap+" Reference value for atom types: None")
+        else:
+            print(ret+gap+" Reference value for atom types:")
+            for i, ref in enumerate(self.type_ref):
+                print(ret+gap+gap+' No.{: <5}'.format(str(i)+': ')+str(ref))
+        print(ret+gap+" Output unit: "+str(self.units.energy_unit_name))
+        print(ret+gap+" Reduce axis: "+str(self.axis))
+        print('-'*80)
+        return self
 
     def construct(self,
                   node_rep: Tensor,
@@ -545,6 +408,7 @@ class GraphReadout(Readout):
                   distances: Tensor = None,
                   neighbours: Tensor = None,
                   neighbour_mask: Tensor = None,
+                  **kwargs,
                   ):
         r"""Compute readout network.
 
@@ -579,79 +443,95 @@ class GraphReadout(Readout):
             Y:  Output dimension.
 
         """
-
+        
         if atom_mask is None:
             num_atoms = node_rep.shape[-2]
         else:
             num_atoms = count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
 
-        y = self.aggregator(node_rep, atom_mask, num_atoms)
+        if self.atomwise_readout:
+            if self.decoder is not None:
+                # (B, A, Y) <- (B, A, F)
+                y = self.decoder(node_rep)
 
-        if self.decoder is not None:
-            y = self.decoder(y)
+            if self.aggregator is not None:
+                # (B, A, Y)
+                y = y * self.scale + self.shift
+                if self.type_ref is not None:
+                    y += F.gather(self.type_ref, atom_types, 0)
+                # (B, Y) <- (B, A, Y)
+                y = self.aggregator(y, atom_mask, num_atoms)
 
-        y = y * self.scale + self.shift
-        if self.atomwise_scaleshift:
-            y *= num_atoms
+        else:
+            y = self.aggregator(node_rep, atom_mask, num_atoms)
 
-        if self.type_ref is not None:
-            ref = F.gather(self.type_ref, atom_types, 0)
-            y += self.reduce_sum(ref, self.axis)
+            if self.decoder is not None:
+                y = self.decoder(y)
+
+            y = y * self.scale + self.shift
+
+            if self.type_ref is not None:
+                ref = F.gather(self.type_ref, atom_types, 0)
+                y += self.reduce_sum(ref, self.axis)
 
         return y
 
 
-_READOUT_BY_KEY = {
-    'atomwise': AtomwiseReadout,
-    'graph': GraphReadout,
-}
-
 _READOUT_BY_NAME = {out.__name__: out for out in _READOUT_BY_KEY.values()}
 
 
-def get_readout(readout: str = None,
-                model: MolecularModel = None,
-                dim_output: int = 1,
-                energy_unit: str = None,
+def get_readout(cls_name: Union[Readout, str],
+                dim_output=1,
+                dim_node=None,
+                dim_edge=None,
+                activation=None,
+                scale=1,
+                shift=0,
+                unit=None,
+                **kwargs,
                 ) -> Readout:
     """get readout function
 
     Args:
         readout (str):          Name of readout function. Default: None
-        model (MolecularModel): Molecular model. Default: None
+        model (MolecularGNN): Molecular model. Default: None
         dim_output (int):       Output dimension. Default: 1
         energy_unit (str):      Energy Unit. Default: None
 
     """
-    if isinstance(readout, Readout):
-        return readout
-    if readout is None:
+    if isinstance(cls_name, Readout):
+        return cls_name
+    if cls_name is None:
         return None
 
-    hyper_param = None
-    if isinstance(readout, dict):
-        if 'name' not in readout.keys():
-            raise KeyError('Cannot find the key "name"! in readout dict')
-        hyper_param = readout
-        readout = get_hyper_string(hyper_param, 'name')
+    if isinstance(cls_name, dict):
+        return get_readout(**cls_name)
 
-    if isinstance(readout, str):
-        if readout.lower() == 'none':
+    if isinstance(cls_name, str):
+        if cls_name.lower() == 'none':
             return None
-        if readout.lower() in _READOUT_BY_KEY.keys():
-            return _READOUT_BY_KEY[readout.lower()](
-                model=model,
+        if cls_name.lower() in _READOUT_BY_KEY.keys():
+            return _READOUT_BY_KEY[cls_name.lower()](
                 dim_output=dim_output,
-                energy_unit=energy_unit,
-                hyper_param=hyper_param,
+                dim_node=dim_node,
+                dim_edge=dim_edge,
+                activation=activation,
+                scale=scale,
+                shift=shift,
+                unit=unit,
+                **kwargs,
             )
-        if readout in _READOUT_BY_NAME.keys():
-            return _READOUT_BY_NAME[readout](
-                model=model,
+        if cls_name in _READOUT_BY_NAME.keys():
+            return _READOUT_BY_NAME[cls_name](
                 dim_output=dim_output,
-                energy_unit=energy_unit,
-                hyper_param=hyper_param,
+                dim_node=dim_node,
+                dim_edge=dim_edge,
+                activation=activation,
+                scale=scale,
+                shift=shift,
+                unit=unit,
+                **kwargs,
             )
         raise ValueError(
-            "The Readout corresponding to '{}' was not found.".format(readout))
-    raise TypeError("Unsupported Readout type '{}'.".format(type(readout)))
+            "The Readout corresponding to '{}' was not found.".format(cls_name))
+    raise TypeError("Unsupported Readout type '{}'.".format(type(cls_name)))

@@ -25,7 +25,9 @@ Decoder networks for readout function
 
 from mindspore import nn
 from mindspore import Tensor
-from mindspore.nn import Cell
+from mindspore.nn import Cell, get_activation
+
+from mindsponge.function import get_ms_array, get_arguments
 
 from .block import MLP, Dense
 from .block import PreActResidual
@@ -62,9 +64,9 @@ class Decoder(Cell):
 
     Args:
 
-        n_in (int):         Input dimension.
+        dim_in (int):         Input dimension.
 
-        n_out (int):        Output dimension. Default: 1
+        dim_out (int):        Output dimension. Default: 1
 
         activation (Cell):  Activation function. Default: None
 
@@ -72,23 +74,25 @@ class Decoder(Cell):
 
     """
     def __init__(self,
-                 n_in: int,
-                 n_out: int = 1,
+                 dim_in: int,
+                 dim_out: int = 1,
                  activation: Cell = None,
                  n_layers: int = 1,
+                 **kwargs
                  ):
 
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'none'
         self.name = 'decoder'
 
-        self.n_in = n_in
-        self.n_out = n_out
+        self.dim_in = dim_in
+        self.dim_out = dim_out
         self.n_layers = n_layers
 
         self.output = None
-        self.activation = activation
+        self.activation = get_activation(activation)
 
     def construct(self, x: Tensor):
         #pylint: disable=not-callable
@@ -101,9 +105,9 @@ class HalveDecoder(Decoder):
 
     Args:
 
-        n_in (int):         Input dimension.
+        dim_in (int):         Input dimension.
 
-        n_out (int):        Output dimension. Default: 1
+        dim_out (int):        Output dimension. Default: 1
 
         activation (Cell):  Activation function. Default: None
 
@@ -111,34 +115,37 @@ class HalveDecoder(Decoder):
 
     """
     def __init__(self,
-                 n_in: int,
-                 n_out: int = 1,
+                 dim_in: int,
+                 dim_out: int = 1,
                  activation: Cell = None,
                  n_layers: int = 1,
+                 **kwargs,
                  ):
 
         super().__init__(
-            n_in=n_in,
-            n_out=n_out,
+            dim_in=dim_in,
+            dim_out=dim_out,
             activation=activation,
             n_layers=n_layers,
+            **kwargs,
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'halve'
         self.name = 'halve'
 
         if self.n_layers > 0:
             n_hiddens = []
-            dim = self.n_in
+            dim = self.dim_in
             for _ in range(self.n_layers):
                 dim = dim // 2
-                if dim < n_out:
+                if dim < dim_out:
                     raise ValueError(
                         "The dimension of hidden layer is smaller than output dimension")
                 n_hiddens.append(dim)
-            self.output = MLP(self.n_in, self.n_out, n_hiddens, activation=self.activation)
+            self.output = MLP(self.dim_in, self.dim_out, n_hiddens, activation=self.activation)
         else:
-            self.output = Dense(self.n_in, self.n_out, activation=self.activation)
+            self.output = Dense(self.dim_in, self.dim_out, activation=self.activation)
 
     def __str__(self):
         return 'halve'
@@ -150,9 +157,9 @@ class ResidualOutputBlock(Decoder):
 
     Args:
 
-        n_in (int):         Input dimension.
+        dim_in (int):         Input dimension.
 
-        n_out (int):        Output dimension. Default: 1
+        dim_out (int):        Output dimension. Default: 1
 
         activation (Cell):  Activation function. Default: None
 
@@ -160,15 +167,15 @@ class ResidualOutputBlock(Decoder):
 
     """
     def __init__(self,
-                 n_in: int,
-                 n_out: int = 1,
+                 dim_in: int,
+                 dim_out: int = 1,
                  activation: Cell = None,
                  n_layers: int = 1,
                  ):
 
         super().__init__(
-            n_in=n_in,
-            n_out=n_out,
+            dim_in=dim_in,
+            dim_out=dim_out,
             activation=activation,
             n_layers=n_layers,
         )
@@ -177,14 +184,14 @@ class ResidualOutputBlock(Decoder):
         self.name = 'residual'
 
         if self.n_layers == 1:
-            output_residual = PreActResidual(self.n_in, activation=self.activation)
+            output_residual = PreActResidual(self.dim_in, activation=self.activation)
         else:
             output_residual = SeqPreActResidual(
-                self.n_in, activation=self.activation, n_res=self.n_layers)
+                self.dim_in, activation=self.activation, n_res=self.n_layers)
 
         self.output = nn.SequentialCell([
             output_residual,
-            PreActDense(self.n_in, self.n_out, activation=self.activation),
+            PreActDense(self.dim_in, self.dim_out, activation=self.activation),
         ])
 
     def __str__(self):
@@ -195,35 +202,41 @@ _DECODER_BY_NAME = {
     decoder.__name__: decoder for decoder in _DECODER_BY_KEY.values()}
 
 
-def get_decoder(decoder: str,
-                n_in: int,
-                n_out: int,
+def get_decoder(cls_name: str,
+                dim_in: int,
+                dim_out: int,
                 activation: Cell = None,
                 n_layers: int = 1,
+                **kwargs
                 ) -> Decoder:
     """get decoder by name"""
-    if decoder is None or isinstance(decoder, Decoder):
-        return decoder
+    if cls_name is None or isinstance(cls_name, Decoder):
+        return cls_name
+    
+    if isinstance(cls_name, dict):
+        return get_decoder(**cls_name)
 
-    if isinstance(decoder, str):
-        if decoder.lower() == 'none':
+    if isinstance(cls_name, str):
+        if cls_name.lower() == 'none':
             return None
-        if decoder.lower() in _DECODER_BY_KEY.keys():
-            return _DECODER_BY_KEY[decoder.lower()](
-                n_in=n_in,
-                n_out=n_out,
+        if cls_name.lower() in _DECODER_BY_KEY.keys():
+            return _DECODER_BY_KEY[cls_name.lower()](
+                dim_in=dim_in,
+                dim_out=dim_out,
                 activation=activation,
                 n_layers=n_layers,
+                **kwargs
             )
-        if decoder in _DECODER_BY_NAME.keys():
-            return _DECODER_BY_NAME[decoder](
-                n_in=n_in,
-                n_out=n_out,
+        if cls_name in _DECODER_BY_NAME.keys():
+            return _DECODER_BY_NAME[cls_name](
+                dim_in=dim_in,
+                dim_out=dim_out,
                 activation=activation,
                 n_layers=n_layers,
+                **kwargs
             )
 
         raise ValueError(
-            "The Decoder corresponding to '{}' was not found.".format(decoder))
+            "The Decoder corresponding to '{}' was not found.".format(cls_name))
 
-    raise TypeError("Unsupported init type '{}'.".format(type(decoder)))
+    raise TypeError("Unsupported init type '{}'.".format(type(cls_name)))

@@ -23,14 +23,15 @@
 Basic Neural network module
 """
 
+from typing import Union
+
 from mindspore import nn
 from mindspore import Tensor
-from mindspore.nn import Cell
+from mindspore.nn import Cell, get_activation
 from mindspore.common.initializer import Initializer
 
-from mindsponge.function import get_integer
+from mindsponge.function import get_integer, get_arguments
 
-from .activation import get_activation
 
 __all__ = [
     "Dense",
@@ -67,10 +68,11 @@ class Dense(nn.Dense):
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
-                 weight_init: Initializer = 'xavier_uniform',
-                 bias_init: Initializer = 'zero',
+                 weight_init: Union[Initializer, str] = 'xavier_uniform',
+                 bias_init: Union[Initializer, str] = 'zero',
                  has_bias: bool = True,
-                 activation: Cell = None,
+                 activation: Union[Cell, str] = None,
+                 **kwargs,
                  ):
 
         super().__init__(
@@ -79,8 +81,9 @@ class Dense(nn.Dense):
             weight_init=weight_init,
             bias_init=bias_init,
             has_bias=has_bias,
-            activation=get_activation(activation),
+            activation=activation,
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
 
 class MLP(Cell):
@@ -112,13 +115,15 @@ class MLP(Cell):
                  n_in: int,
                  n_out: int,
                  layer_dims: list = None,
-                 activation: Cell = None,
-                 weight_init: Initializer = 'xavier_uniform',
-                 bias_init: Initializer = 'zero',
+                 activation: Union[Cell, str] = None,
+                 weight_init: Union[Initializer, str] = 'xavier_uniform',
+                 bias_init: Union[Initializer, str] = 'zero',
                  use_last_activation: bool = False,
+                 **kwargs
                  ):
 
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.n_in = get_integer(n_in)
         self.n_out = get_integer(n_out)
@@ -139,7 +144,7 @@ class MLP(Cell):
                         weight_init=weight_init,
                         bias_init=bias_init,
                         has_bias=True,
-                        activation=get_activation(activation),
+                        activation=activation,
                     )
                 )
                 indim = ldim
@@ -153,7 +158,7 @@ class MLP(Cell):
                         weight_init=weight_init,
                         bias_init=bias_init,
                         has_bias=True,
-                        activation=get_activation(activation),
+                        activation=activation,
                     )
                 )
             else:
@@ -202,9 +207,11 @@ class Residual(Cell):
     def __init__(self,
                  dim: int,
                  activation: Cell,
-                 n_hidden: int = 1
+                 n_hidden: int = 1,
+                 **kwargs
                  ):
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
         if n_hidden > 0:
             hidden_layers = [dim] * n_hidden
@@ -244,9 +251,11 @@ class PreActDense(Cell):
     def __init__(self,
                  dim_in: int,
                  dim_out: int,
-                 activation: Cell
+                 activation: Cell,
+                 **kwargs
                  ):
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.activation = get_activation(activation)
         self.dense = Dense(dim_in, dim_out, activation=None)
@@ -278,8 +287,9 @@ class PreActResidual(Cell):
         activation (Cell):  Activation function.
 
     """
-    def __init__(self, dim: int, activation: Cell):
+    def __init__(self, dim: int, activation: Cell, **kwargs):
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.preact_dense1 = PreActDense(dim, dim, activation)
         self.preact_dense2 = PreActDense(dim, dim, activation)
@@ -317,9 +327,11 @@ class SeqPreActResidual(Cell):
     def __init__(self,
                  dim: int,
                  activation: Cell,
-                 n_res: int
+                 n_res: int,
+                 **kwargs
                  ):
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.sequential = nn.SequentialCell(
             [PreActResidual(dim, activation) for _ in range(n_res)]

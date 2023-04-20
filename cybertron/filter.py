@@ -23,11 +23,12 @@
 Filter networks
 """
 
+from typing import Union
+
 from mindspore import Tensor
 from mindspore.nn import Cell
 
-from mindsponge.function import get_integer
-from mindsponge.data import get_hyper_string
+from mindsponge.function import get_integer, get_arguments
 
 from .block import MLP, Dense, Residual
 
@@ -67,15 +68,14 @@ class Filter(Cell):
                  dim_in: int,
                  dim_out: int,
                  activation: Cell = None,
-                 n_hidden: int = 1,
+                 **kwargs,
                  ):
-
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.dim_in = get_integer(dim_in)
         self.dim_out = get_integer(dim_out)
         self.activation = activation
-        self.n_hidden = get_integer(n_hidden)
 
     def construct(self, x: Tensor):
         return x
@@ -101,14 +101,15 @@ class DenseFilter(Filter):
                  dim_out: int,
                  activation: Cell,
                  n_hidden: int = 1,
+                 **kwargs,
                  ):
 
         super().__init__(
             dim_in=dim_in,
             dim_out=dim_out,
             activation=activation,
-            n_hidden=n_hidden,
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         if n_hidden > 0:
             hidden_layers = [self.dim_out for _ in range(n_hidden)]
@@ -142,13 +143,14 @@ class ResFilter(Filter):
                  dim_out: int,
                  activation: Cell,
                  n_hidden: int = 1,
+                 **kwargs,
                  ):
         super().__init__(
             dim_in=dim_in,
             dim_out=dim_out,
             activation=activation,
-            n_hidden=n_hidden,
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.linear = Dense(self.dim_in, self.dim_out, activation=None)
         self.residual = Residual(
@@ -159,45 +161,41 @@ class ResFilter(Filter):
         return self.residual(lx)
 
 
-
 _FILTER_BY_NAME = {filter.__name__: filter for filter in _FILTER_BY_KEY.values()}
 
 
-def get_filter(filter: str,
+def get_filter(cls_name: Union[Filter, str],
                dim_in: int,
                dim_out: int,
                activation: Cell = None,
-               n_hidden: int = 1,
+               **kwargs,
                ) -> Filter:
     """get filter by name"""
 
-    if isinstance(filter, Filter):
-        return filter
-    if filter is None:
+    if isinstance(cls_name, Filter):
+        return cls_name
+
+    if cls_name is None:
         return None
 
-    hyper_param = None
-    if isinstance(filter, dict):
-        if 'name' not in filter.keys():
-            raise KeyError('Cannot find the key "name" in filter dict!')
-        hyper_param = filter
-        filter = get_hyper_string(hyper_param, 'name')
+    if isinstance(cls_name, dict):
+        return get_filter(**cls_name)
 
-    if isinstance(filter, str):
-        if filter.lower() == 'none':
+    if isinstance(cls_name, str):
+        if cls_name.lower() == 'none':
             return None
-        if filter.lower() in _FILTER_BY_KEY.keys():
-            return _FILTER_BY_KEY[filter.lower()](dim_in=dim_in,
+        if cls_name.lower() in _FILTER_BY_KEY.keys():
+            return _FILTER_BY_KEY[cls_name.lower()](dim_in=dim_in,
                                                dim_out=dim_out,
                                                activation=activation,
-                                               n_hidden=n_hidden)
-        if filter in _FILTER_BY_NAME.keys():
-            return _FILTER_BY_NAME[filter](dim_in=dim_in,
+                                               **kwargs)
+        if cls_name in _FILTER_BY_NAME.keys():
+            return _FILTER_BY_NAME[cls_name](dim_in=dim_in,
                                         dim_out=dim_out,
                                         activation=activation,
-                                        n_hidden=n_hidden)
+                                        **kwargs)
 
         raise ValueError(
-            "The filter corresponding to '{}' was not found.".format(filter))
+            "The filter corresponding to '{}' was not found.".format(cls_name))
 
-    raise TypeError("Unsupported filter type '{}'.".format(type(filter)))
+    raise TypeError("Unsupported filter type '{}'.".format(type(cls_name)))

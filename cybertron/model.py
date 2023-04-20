@@ -28,37 +28,30 @@ from typing import Union
 import mindspore as ms
 import mindspore.nn as nn
 import mindspore.numpy as msnp
-from mindspore.nn import Cell
+from mindspore.nn import Cell, get_activation
 from mindspore import Tensor
 from mindspore.ops import functional as F
 from mindspore.ops import operations as P
-from mindspore.common.initializer import Normal
 
 from mindsponge import GLOBAL_UNITS
-from mindsponge.data import set_class_into_hyper_param, set_hyper_parameter
-from mindsponge.data import get_hyper_string, get_hyper_parameter, get_class_parameters
+from mindsponge.function import concat_last_dim
 from mindsponge.function import Units, Length
-from mindsponge.function import get_integer, get_ms_array
+from mindsponge.function import get_integer, get_ms_array, get_arguments
 
-from .block import Residual, Dense
 from .interaction import SchNetInteraction
 from .interaction import PhysNetModule
 from .interaction import NeuralInteractionUnit
-from .base import GraphNorm
-from .filter import Filter, get_filter, ResFilter, DenseFilter
-from .cutoff import Cutoff, get_cutoff
-from .rbf import get_rbf
-from .activation import get_activation
+from .filter import Filter, ResFilter
 
 __all__ = [
-    "MolecularModel",
+    "MolecularGNN",
     "SchNet",
     "PhysNet",
     "MolCT",
 ]
 
 
-class MolecularModel(Cell):
+class MolecularGNN(Cell):
     r"""Basic class for graph neural network (GNN) based deep molecular model
 
     Reference:
@@ -118,29 +111,19 @@ class MolecularModel(Cell):
     """
 
     def __init__(self,
-                 dim_feature: int = 128,
-                 n_interaction: int = 3,
+                 dim_node: int,
+                 dim_edge: int,
+                 n_interaction: int,
                  coupled_interaction: bool = False,
-                 use_graph_norm: bool = False,
                  activation: Cell = None,
-                 length_unit: bool = 'nm',
-                 hyper_param: dict = None,
+                 input_node_dim: int = None,
+                 input_edge_dim: int = None,
+                 length_unit: Union[str, Units] = 'nm',
+                 **kwargs,
                  ):
 
         super().__init__()
-
-        self.network_name = 'MolecularModel'
-
-        if hyper_param is not None:
-            num_bond_types = get_hyper_parameter(hyper_param, 'num_bond_types')
-            dim_feature = get_hyper_parameter(hyper_param, 'dim_feature')
-            n_interaction = get_hyper_parameter(hyper_param, 'n_interaction')
-            activation = get_class_parameters(hyper_param, 'activation')
-            r_self = get_hyper_parameter(hyper_param, 'r_self')
-            coupled_interaction = get_hyper_parameter(
-                hyper_param, 'coupled_interaction')
-            use_graph_norm = get_hyper_parameter(hyper_param, 'use_graph_norm')
-            length_unit = get_hyper_string(hyper_param, 'length_unit')
+        self._kwargs = kwargs
 
         if length_unit is None:
             self.units = GLOBAL_UNITS
@@ -148,56 +131,28 @@ class MolecularModel(Cell):
             self.units = Units(length_unit)
         self.length_unit = self.units.length_unit
 
-        self.num_bond_types = get_integer(num_bond_types)
-        self.dim_feature = get_integer(dim_feature)
+        self.dim_node = get_integer(dim_node)
+        self.dim_edge = get_integer(dim_edge)
+        self.input_node_dim = get_integer(input_node_dim)
+        self.input_edge_dim = get_integer(input_edge_dim)
         self.n_interaction = get_integer(n_interaction)
-        self.r_self = r_self
-        self.coupled_interaction = get_ms_array(coupled_interaction, ms.bool_)
-        self.use_graph_norm = get_ms_array(use_graph_norm, ms.bool_)
+        self.coupled_interaction = coupled_interaction
 
         self.activation = get_activation(activation)
 
         self.interactions = None
 
-        self.use_pub_norm = False
-
-        if self.use_graph_norm:
-            if self.use_pub_norm:
-                self.graph_norm = nn.CellList(
-                    [GraphNorm(dim_feature) * self.n_interaction]
-                )
-            else:
-                self.graph_norm = nn.CellList(
-                    [GraphNorm(dim_feature) for _ in range(self.n_interaction)]
-                )
-        else:
-            self.graph_norm = None
-
         self.zeros = P.Zeros()
         self.ones = P.Ones()
-        self.concat = P.Concat(-1)
 
-        self.hyper_param = dict()
-        self.hyper_types = {
-            'num_bond_types': 'int',
-            'dim_feature': 'int',
-            'n_interaction': 'int',
-            'activation': 'Cell',
-            'cutoff': 'float',
-            'cutoff_fn': 'Cell',
-            'rbf': 'Cell',
-            'r_self': 'float',
-            'coupled_interaction': 'bool',
-            'public_dis_filter': 'bool',
-            'public_bond_filter': 'bool',
-            'use_graph_norm': 'bool',
-            'length_unit': 'str',
-        }
+    def set_input_dim(self, input_node_dim: int, input_edge_dim: int):
+        """check and set dimension of representation vectors"""
 
-    def set_hyper_param(self):
-        """set hyperparameters"""
-        set_hyper_parameter(self.hyper_param, 'name', self.cls_name)
-        set_class_into_hyper_param(self.hyper_param, self.hyper_types, self)
+        if self.input_edge_dim is None:
+            self.input_edge_dim = get_integer(input_edge_dim)
+        elif self.input_edge_dim != input_edge_dim:
+            raise ValueError(f'The `input_dim_edge` ({input_edge_dim}) of Embedding cannot match '
+                             f'the dimension of edge feature ({self.input_edge_dim}).')
         return self
 
     def get_length(self, length, unit=None):
@@ -214,12 +169,11 @@ class MolecularModel(Cell):
         size = tensor.size
         if self.coupled_interaction:
             if size > 1:
-                raise ValueError(
-                    'The size of "'+name+'" must be 1 when "coupled_interaction" is "True"')
+                raise ValueError(f'The size of "{name}" must be 1 when "coupled_interaction" is "True"')
         else:
             if size  not in (self.n_interaction, 1):
-                raise ValueError('"The size of "'+name+'" ('+str(size) +
-                                 ') must be equal to "n_interaction" ('+str(self.n_interaction)+')!')
+                raise ValueError(f'"The size of "{name}" ({size}) must be equal to '
+                                 f'"n_interaction" ({self.n_interaction})!')
             tensor = msnp.broadcast_to(tensor, (self.n_interaction,))
         return tensor
 
@@ -227,7 +181,7 @@ class MolecularModel(Cell):
         """print the information of molecular model"""
         ret = char * num_retraction
         gap = char * num_gap
-        print(ret+' Deep molecular model: ', self.network_name)
+        print(ret+f' Deep molecular model: {self.cls_name}')
         print('-'*80)
         print(ret+gap+' Length unit: ' + self.units.length_unit_name)
         print(ret+gap+' Feature dimension: ' + str(self.dim_feature))
@@ -236,7 +190,7 @@ class MolecularModel(Cell):
             print(ret+gap+' Using coupled interaction with ' +
                   str(self.n_interaction)+' layers:')
             print('-'*80)
-            print(ret+gap+gap+' '+self.interactions[0].name)
+            print(ret+gap+gap+' '+self.interactions[0].cls_name)
             self.interactions[0].print_info(
                 num_retraction=num_retraction+num_gap, num_gap=num_gap, char=char)
         else:
@@ -244,7 +198,7 @@ class MolecularModel(Cell):
                   ' independent interaction layers:')
             print('-'*80)
             for i, inter in enumerate(self.interactions):
-                print(ret+gap+' '+str(i)+'. '+inter.name)
+                print(ret+gap+' '+str(i)+'. '+inter.cls_name)
                 inter.print_info(num_retraction=num_retraction +
                                  num_gap, num_gap=num_gap, char=char)
 
@@ -304,12 +258,11 @@ class MolecularModel(Cell):
                 edge_cutoff=edge_cutoff,
                 edge_self=edge_self,
             )
-            if self.use_graph_norm:
-                node_vec = self.graph_norm[i](node_vec)
+
         return node_vec, edge_vec
 
 
-class SchNet(MolecularModel):
+class SchNet(MolecularGNN):
     r"""SchNet Model.
 
     Reference:
@@ -326,7 +279,7 @@ class SchNet(MolecularModel):
 
         n_interaction (int):        Number of interaction layers. Default: 3
 
-        activation (Cell):          Activation function. Default: 'ssp'
+        activation (Cell):          Activation function. Default: 'silu'
 
         cutoff (Length):            Cutoff distance. Default: Length(1, 'nm')
 
@@ -366,39 +319,29 @@ class SchNet(MolecularModel):
                  dim_feature: int = 64,
                  dim_filter: int = 64,
                  n_interaction: int = 3,
-                 activation: Cell = 'ssp',
+                 activation: Cell = 'silu',
                  normalize_filter: bool = False,
                  coupled_interaction: bool = False,
-                 use_graph_norm: bool = False,
                  filter_net: Union[Filter, str] = 'dense',
                  filter_layer: int = 1,
                  length_unit: str = 'nm',
-                 hyper_param: dict = None,
+                 **kwargs,
                  ):
 
         super().__init__(
             dim_feature=dim_feature,
+            dim_node=dim_feature,
             n_interaction=n_interaction,
             activation=activation,
             coupled_interaction=coupled_interaction,
-            use_graph_norm=use_graph_norm,
             length_unit=length_unit,
-            hyper_param=hyper_param,
+            **kwargs
         )
-        self.reg_key = 'schnet'
-        self.network_name = 'SchNet'
+        self._kwargs = get_arguments(locals())
 
-        if hyper_param is not None:
-            dim_filter = get_hyper_parameter(hyper_param, 'dim_filter')
-            normalize_filter = get_hyper_parameter(
-                hyper_param, 'normalize_filter')
-
-        self.dim_filter = self.broadcast_to_interactions(
-            dim_filter, 'dim_filter')
-        self.normalize_filter = self.broadcast_to_interactions(
-            normalize_filter, 'normalize_filter')
-
-        self.set_hyper_param()
+        self.dim_filter = self.broadcast_to_interactions(dim_filter, 'dim_filter')
+        self.normalize_filter = self.broadcast_to_interactions(normalize_filter,
+                                                               'normalize_filter')
 
         # block for computing interaction
         if self.coupled_interaction:
@@ -432,16 +375,8 @@ class SchNet(MolecularModel):
                 ]
             )
 
-    def set_hyper_param(self):
-        """set hyperparameters"""
-        super().set_hyper_param()
-        set_hyper_parameter(self.hyper_param, 'dim_filter', self.dim_filter)
-        set_hyper_parameter(
-            self.hyper_param, 'normalize_filter', self.normalize_filter)
-        return self
 
-
-class PhysNet(MolecularModel):
+class PhysNet(MolecularGNN):
     r"""PhysNet Model
 
     Reference:
@@ -455,8 +390,6 @@ class PhysNet(MolecularModel):
         dim_feature (int):          Dimension of atomic representation. Default: 128
 
         n_interaction (int):        Number of interaction layers. Default: 5
-
-        activation (Cell):          Activation function. Default: 'ssp'
 
         cutoff (Length):            Cutoff distance. Default: Length(1, 'nm')
 
@@ -500,35 +433,26 @@ class PhysNet(MolecularModel):
                  filter_net: Union[Filter, str] = 'dense',
                  filter_layer: int = 0,
                  coupled_interaction: bool = False,
-                 use_graph_norm: bool = False,
                  n_inter_residual: int = 3,
                  n_outer_residual: int = 2,
                  length_unit: str = 'nm',
-                 hyper_param: dict = None,
+                 **kwargs,
                  ):
 
         super().__init__(
             dim_feature=dim_feature,
             n_interaction=n_interaction,
             coupled_interaction=coupled_interaction,
-            use_graph_norm=use_graph_norm,
             length_unit=length_unit,
-            hyper_param=hyper_param,
+            **kwargs
         )
+        self._kwargs = get_arguments(locals())
 
         self.reg_key = 'physnet'
         self.network_name = 'PhysNet'
 
-        if hyper_param is not None:
-            n_inter_residual = get_hyper_parameter(
-                hyper_param, 'n_inter_residual')
-            n_outer_residual = get_hyper_parameter(
-                hyper_param, 'n_outer_residual')
-
         self.n_inter_residual = get_integer(n_inter_residual)
         self.n_outer_residual = get_integer(n_outer_residual)
-
-        self.set_hyper_param()
 
         # block for computing interaction
         if self.coupled_interaction:
@@ -564,17 +488,8 @@ class PhysNet(MolecularModel):
 
         self.readout = None
 
-    def set_hyper_param(self):
-        """set hyperparameters"""
-        super().set_hyper_param()
-        set_hyper_parameter(
-            self.hyper_param, 'n_inter_residual', self.n_inter_residual)
-        set_hyper_parameter(
-            self.hyper_param, 'n_outer_residual', self.n_outer_residual)
-        return self
 
-
-class MolCT(MolecularModel):
+class MolCT(MolecularGNN):
     r"""Molecular Configuration Transformer (MolCT) Model
 
     Reference:
@@ -594,7 +509,7 @@ class MolCT(MolecularModel):
         max_cycles (int):           Maximum number of cycles of the adapative computation time (ACT).
                                     Default: 10
 
-        activation (Cell):          Activation function. Default: 'swish'
+        activation (Cell):          Activation function. Default: 'silu'
 
         cutoff (Length):            Cutoff distance. Default: Length(1, 'nm')
 
@@ -644,18 +559,17 @@ class MolCT(MolecularModel):
 
     def __init__(self,
                  dim_feature: int = 128,
+                 num_basis: int = None,
                  n_interaction: int = 3,
-                 filter_net: Union[Filter, str] = None,
-                 filter_layer: int = 1,
                  n_heads: int = 8,
                  max_cycles: int = 10,
-                 activation: Cell = 'swish',
+                 activation: Cell = 'silu',
                  coupled_interaction: bool = False,
                  act_threshold: float = 0.9,
                  fixed_cycles: bool = False,
                  use_feed_forward: bool = False,
                  length_unit: str = 'nm',
-                 hyper_param: dict = None,
+                 **kwargs
                  ):
 
         super().__init__(
@@ -663,25 +577,13 @@ class MolCT(MolecularModel):
             n_interaction=n_interaction,
             activation=activation,
             coupled_interaction=coupled_interaction,
-            use_graph_norm=False,
             length_unit=length_unit,
-            hyper_param=hyper_param,
+            **kwargs
         )
+        self._kwargs = get_arguments(locals())
 
         self.reg_key = 'molct'
         self.network_name = 'MolCT'
-
-        if hyper_param is not None:
-            n_heads = get_hyper_parameter(hyper_param, 'n_heads')
-            max_cycles = get_hyper_parameter(hyper_param, 'max_cycles')
-            use_feed_forward = get_hyper_parameter(
-                hyper_param, 'use_feed_forward')
-            fixed_cycles = get_hyper_parameter(hyper_param, 'fixed_cycles')
-            act_threshold = get_hyper_parameter(hyper_param, 'act_threshold')
-
-        if self.r_self is None:
-            raise ValueError('"r_self" cannot be "None" at MolCT.')
-        self.self_dis_tensor = F.expand_dims(self.r_self, 0)
 
         self.n_heads = self.broadcast_to_interactions(n_heads, 'n_heads')
         self.max_cycles = self.broadcast_to_interactions(
@@ -692,16 +594,13 @@ class MolCT(MolecularModel):
             fixed_cycles, 'fixed_cycles')
         self.act_threshold = self.broadcast_to_interactions(
             act_threshold, 'act_threshold')
-
-        self.set_hyper_param()
-
+        
+        self.filter_net = ResFilter(num_basis, dim_feature, activation)
         if self.coupled_interaction:
             self.interactions = nn.CellList(
                 [
                     NeuralInteractionUnit(
-                        dim_feature=self.dim_feature,
-                        filter_net=filter_net,
-                        filter_layer=filter_layer,
+                        dim_feature=dim_feature,
                         n_heads=self.n_heads,
                         max_cycles=self.max_cycles,
                         activation=self.activation,
@@ -717,31 +616,16 @@ class MolCT(MolecularModel):
             for i in range(self.n_interaction):
                 interaction_list.append(
                     NeuralInteractionUnit(
-                        dim_feature=self.dim_feature,
+                        dim_feature=dim_feature,
                         n_heads=self.n_heads[i],
                         max_cycles=self.max_cycles[i],
                         activation=self.activation,
-                        filter_net=filter_net,
-                        filter_layer=filter_layer,
                         use_feed_forward=self.use_feed_forward[i],
                         fixed_cycles=self.fixed_cycles[i],
                         act_threshold=self.act_threshold[i],
                     )
                 )
             self.interactions = nn.CellList(interaction_list)
-
-    def set_hyper_param(self):
-        """set hyperparameters"""
-        super().set_hyper_param()
-        set_hyper_parameter(self.hyper_param, 'n_heads', self.n_heads)
-        set_hyper_parameter(self.hyper_param, 'max_cycles', self.max_cycles)
-        set_hyper_parameter(
-            self.hyper_param, 'use_feed_forward', self.use_feed_forward)
-        set_hyper_parameter(
-            self.hyper_param, 'fixed_cycles', self.fixed_cycles)
-        set_hyper_parameter(
-            self.hyper_param, 'act_threshold', self.act_threshold)
-        return self
     
     def construct(self,
                   node_emb: Tensor,
@@ -786,11 +670,10 @@ class MolCT(MolecularModel):
         node_mask = F.expand_dims(node_mask, -1)
 
         c_ii = F.cast(node_mask, ms.float32)
-        edge_cutoff = self.concat((c_ii, edge_cutoff))
-        edge_mask = self.concat((node_mask, edge_mask))
+        edge_cutoff = concat_last_dim((c_ii, edge_cutoff))
+        edge_mask = concat_last_dim((node_mask, edge_mask))
 
-        node_vec = node_emb
-        edge_vec = edge_emb
+        edge_vec = self.filter_net(edge_vec)
         n_interaction = len(self.interactions)
         for i in range(n_interaction):
             node_vec, edge_vec = self.interactions[i](
@@ -816,32 +699,43 @@ _MOLECULAR_MODEL_BY_NAME = {
     model.__name__: model for model in _MOLECULAR_MODEL_BY_KEY.values()}
 
 
-def get_molecular_model(model, length_unit=None) -> MolecularModel:
+def get_molecular_model(cls_name: Union[MolecularGNN, str, dict],
+                        dim_feature: int = 64,
+                        n_interaction: int = 3,
+                        coupled_interaction: bool = False,
+                        use_graph_norm: bool = False,
+                        activation: Cell = None,
+                        length_unit: Union[str, Units] = None,
+                        **kwargs) -> MolecularGNN:
     """get molecular model"""
-    if isinstance(model, MolecularModel):
-        return model
-    if model is None:
-        return None
+    if cls_name is None or isinstance(cls_name, MolecularGNN):
+        return cls_name
 
-    hyper_param = None
-    if isinstance(model, dict):
-        if 'name' not in model.keys():
-            raise KeyError('Cannot find the key "name" in model dict!')
-        hyper_param = model
-        model = get_hyper_string(hyper_param, 'name')
+    if isinstance(cls_name, dict):
+        return get_molecular_model(**cls_name)
 
-    if isinstance(model, str):
-        if model.lower() == 'none':
+    if isinstance(cls_name, str):
+        if cls_name.lower() == 'none':
             return None
-        if model.lower() in _MOLECULAR_MODEL_BY_KEY.keys():
-            return _MOLECULAR_MODEL_BY_KEY[model.lower()](
+        if cls_name.lower() in _MOLECULAR_MODEL_BY_KEY.keys():
+            return _MOLECULAR_MODEL_BY_KEY[cls_name.lower()](
+                dim_feature=dim_feature,
+                n_interaction=n_interaction,
+                activation=activation,
+                coupled_interaction=coupled_interaction,
+                use_graph_norm=use_graph_norm,
                 length_unit=length_unit,
-                hyper_param=hyper_param,
+                **kwargs
             )
-        if model in _MOLECULAR_MODEL_BY_NAME.keys():
-            return _MOLECULAR_MODEL_BY_NAME[model](
+        if cls_name in _MOLECULAR_MODEL_BY_NAME.keys():
+            return _MOLECULAR_MODEL_BY_NAME[cls_name](
+                dim_feature=dim_feature,
+                n_interaction=n_interaction,
+                activation=activation,
+                coupled_interaction=coupled_interaction,
+                use_graph_norm=use_graph_norm,
                 length_unit=length_unit,
-                hyper_param=hyper_param,
+                **kwargs
             )
-        raise ValueError("The MolecularModel corresponding to '{}' was not found.".format(model))
-    raise TypeError("Unsupported MolecularModel type '{}'.".format(type(model)))
+        raise ValueError("The MolecularGNN corresponding to '{}' was not found.".format(cls_name))
+    raise TypeError("Unsupported MolecularGNN type '{}'.".format(type(cls_name)))

@@ -23,6 +23,8 @@
 Aggregator for readout network
 """
 
+from typing import Union
+
 import mindspore as ms
 from mindspore import Tensor
 from mindspore import nn
@@ -32,7 +34,7 @@ from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
 
-from mindsponge.function import get_integer
+from mindsponge.function import get_integer, get_arguments
 
 from .block import MLP, Dense
 from .base import SoftmaxWithMask
@@ -112,10 +114,12 @@ class Aggregator(nn.Cell):
 
     def __init__(self,
                  dim: int,
-                 axis: int = -2
+                 axis: int = -2,
+                 **kwargs,
                  ):
 
         super().__init__()
+        #pylint: disable=unused-argument
 
         self.reg_key = 'aggregator'
         self.name = 'aggregator'
@@ -167,21 +171,11 @@ class InteractionAggregator(nn.Cell):
 
     """
 
-    def __init__(self,
-                 dim: int,
-                 num_agg: int = None,
-                 n_hidden: int = 0,
-                 activation: Cell = None
-                 ):
-
+    def __init__(self, **kwargs):
         super().__init__()
+        #pylint: disable=unused-argument
 
         self.reg_key = 'none'
-
-        self.dim = dim
-        self.num_agg = num_agg
-        self.n_hidden = n_hidden
-        self.activation = activation
 
         self.stack = P.Stack(-1)
         self.reduce_sum = P.ReduceSum()
@@ -223,13 +217,16 @@ class TensorSummation(Aggregator):
 
     def __init__(self,
                  dim: int = None,
-                 axis: int = -2
+                 axis: int = -2,
+                 **kwargs,
                  ):
 
         super().__init__(
             dim=dim,
-            axis=axis
+            axis=axis,
+            **kwargs,
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'sum'
         self.name = 'sum'
@@ -284,13 +281,16 @@ class TensorMean(Aggregator):
 
     def __init__(self,
                  dim: int = None,
-                 axis: int = -2
+                 axis: int = -2,
+                 **kwargs,
                  ):
 
         super().__init__(
             dim=dim,
-            axis=axis
+            axis=axis,
+            **kwargs
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'mean'
         self.name = 'mean'
@@ -352,13 +352,16 @@ class SoftmaxGeneralizedAggregator(Aggregator):
 
     def __init__(self,
                  dim: int,
-                 axis: int = -2
+                 axis: int = -2,
+                 **kwargs,
                  ):
 
         super().__init__(
             dim=dim,
-            axis=axis
+            axis=axis,
+            **kwargs,
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'softmax'
         self.name = 'softmax'
@@ -432,13 +435,16 @@ class PowermeanGeneralizedAggregator(Aggregator):
 
     def __init__(self,
                  dim: int,
-                 axis: int = -2
+                 axis: int = -2,
+                 **kwargs,
                  ):
 
         super().__init__(
             dim=dim,
-            axis=axis
+            axis=axis,
+            **kwargs
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'powermean'
         self.name = 'powermean'
@@ -503,13 +509,16 @@ class TransformerAggregator(Aggregator):
     def __init__(self,
                  dim: int,
                  axis: int = -2,
-                 n_heads: int = 8
+                 n_heads: int = 8,
+                 **kwargs,
                  ):
 
         super().__init__(
             dim=dim,
-            axis=axis
+            axis=axis,
+            **kwargs,
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'transformer'
         self.name = 'transformer'
@@ -587,19 +596,10 @@ class InteractionSummation(InteractionAggregator):
 
     """
 
-    def __init__(self,
-                 dim: int = None,
-                 num_agg: int = None,
-                 n_hidden: int = 0,
-                 activation: Cell = None
-                 ):
+    def __init__(self, **kwargs):
 
-        super().__init__(
-            dim=None,
-            num_agg=None,
-            n_hidden=0,
-            activation=None
-        )
+        super().__init__(**kwargs)
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'sum'
 
@@ -638,19 +638,9 @@ class InteractionMean(InteractionAggregator):
 
     """
 
-    def __init__(self,
-                 dim: int = None,
-                 num_agg: int = None,
-                 n_hidden: int = 0,
-                 activation: Cell = None
-                 ):
-
-        super().__init__(
-            dim=None,
-            num_agg=None,
-            n_hidden=0,
-            activation=None
-        )
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'mean'
         self.reduce_mean = P.ReduceMean()
@@ -691,19 +681,10 @@ class LinearTransformation(InteractionAggregator):
 
     """
 
-    def __init__(self,
-                 dim: int = None,
-                 num_agg: int = None,
-                 n_hidden: int = 0,
-                 activation: Cell = None
-                 ):
+    def __init__(self, **kwargs):
 
-        super().__init__(
-            dim=None,
-            num_agg=None,
-            n_hidden=0,
-            activation=None
-        )
+        super().__init__(**kwargs)
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'linear'
 
@@ -753,17 +734,25 @@ class MultipleChannelRepresentation(InteractionAggregator):
                  dim: int,
                  num_agg: int,
                  n_hidden: int = 0,
-                 activation: Cell = None
+                 activation: Cell = None,
+                 **kwargs,
                  ):
 
         super().__init__(
             dim=dim,
             num_agg=num_agg,
             n_hidden=n_hidden,
-            activation=activation
+            activation=activation,
+            **kwargs,
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'mcr'
+
+        self.dim = dim
+        self.num_agg = num_agg
+        self.n_hidden = n_hidden
+        self.activation = activation
 
         sub_dim = self.dim // self.num_agg
         last_dim = self.dim - (sub_dim * (self.num_agg - 1))
@@ -805,41 +794,45 @@ _INTERACTION_AGGREGATOR_BY_NAME = {
     agg.__name__: agg for agg in _INTERACTION_AGGREGATOR_BY_KEY.values()}
 
 
-def get_aggregator(aggregator: Aggregator,
+def get_aggregator(cls_name: Union[Aggregator, str, dict],
                    dim: int,
-                   axis: int = -2
+                   axis: int = -2,
+                   **kwargs,
                    ) -> Aggregator:
     """get aggregator by name"""
-    if aggregator is None or isinstance(aggregator, Aggregator):
-        return aggregator
-    if isinstance(aggregator, str):
-        if aggregator.lower() == 'none':
+    if cls_name is None or isinstance(cls_name, Aggregator):
+        return cls_name
+    if isinstance(cls_name, dict):
+        return get_aggregator(**cls_name)
+    if isinstance(cls_name, str):
+        if cls_name.lower() == 'none':
             return None
-        if aggregator.lower() in _AGGREGATOR_BY_KEY.keys():
-            return _AGGREGATOR_BY_KEY[aggregator.lower()](dim=dim, axis=axis)
-        if aggregator in _AGGREGATOR_BY_NAME.keys():
-            return _AGGREGATOR_BY_NAME[aggregator](dim=dim, axis=axis)
+        if cls_name.lower() in _AGGREGATOR_BY_KEY.keys():
+            return _AGGREGATOR_BY_KEY[cls_name.lower()](dim=dim, axis=axis, **kwargs)
+        if cls_name in _AGGREGATOR_BY_NAME.keys():
+            return _AGGREGATOR_BY_NAME[cls_name](dim=dim, axis=axis, **kwargs)
         raise ValueError(
-            "The Aggregator corresponding to '{}' was not found.".format(aggregator))
+            "The Aggregator corresponding to '{}' was not found.".format(cls_name))
     raise TypeError(
-        "Unsupported Aggregator type '{}'.".format(type(aggregator)))
+        "Unsupported Aggregator type '{}'.".format(type(cls_name)))
 
 
-def get_interaction_aggregator(aggregator: InteractionAggregator,
-                               dim: int,
-                               axis: int = -2
+def get_interaction_aggregator(cls_name: Union[InteractionAggregator, str, dict],
+                               **kwargs,
                                ) -> InteractionAggregator:
     """get aggregator by name"""
-    if aggregator is None or isinstance(aggregator, InteractionAggregator):
-        return aggregator
-    if isinstance(aggregator, str):
-        if aggregator.lower() == 'none':
+    if cls_name is None or isinstance(cls_name, InteractionAggregator):
+        return cls_name
+    if isinstance(cls_name, dict):
+        return get_interaction_aggregator(**cls_name)
+    if isinstance(cls_name, str):
+        if cls_name.lower() == 'none':
             return None
-        if aggregator.lower() in _INTERACTION_AGGREGATOR_BY_KEY.keys():
-            return _INTERACTION_AGGREGATOR_BY_KEY[aggregator.lower()](dim=dim, axis=axis)
-        if aggregator in _INTERACTION_AGGREGATOR_BY_NAME.keys():
-            return _INTERACTION_AGGREGATOR_BY_NAME[aggregator](dim=dim, axis=axis)
+        if cls_name.lower() in _INTERACTION_AGGREGATOR_BY_KEY.keys():
+            return _INTERACTION_AGGREGATOR_BY_KEY[cls_name.lower()](**kwargs)
+        if cls_name in _INTERACTION_AGGREGATOR_BY_NAME.keys():
+            return _INTERACTION_AGGREGATOR_BY_NAME[cls_name](**kwargs)
         raise ValueError(
-            "The Interaction Aggregator corresponding to '{}' was not found.".format(aggregator))
+            "The Interaction Aggregator corresponding to '{}' was not found.".format(cls_name))
     raise TypeError(
-        "Unsupported Interaction Aggregator type '{}'.".format(type(aggregator)))
+        "Unsupported Interaction Aggregator type '{}'.".format(type(cls_name)))

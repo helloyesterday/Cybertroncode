@@ -29,12 +29,13 @@ import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import nn
 from mindspore import Tensor
-from mindspore.nn import Cell
+from mindspore.nn import Cell, get_activation
 from mindspore.ops import functional as F
 from mindspore.common.initializer import Initializer, Normal
 
+
 from mindsponge.function import Units, GLOBAL_UNITS, Length, get_length
-from mindsponge.function import get_integer, get_ms_array
+from mindsponge.function import get_integer, get_ms_array, get_arguments, get_initializer
 
 from .cutoff import Cutoff, get_cutoff
 from .rbf import get_rbf
@@ -44,16 +45,48 @@ __all__ = [
     'GraphEmbedding',
 ]
 
+
 class GraphEmbedding(nn.Cell):
     def __init__(self,
-                 dim_node: int = 128,
-                 dim_edge: int = 128,
+                 dim_feature: int = None,
+                 activation: Cell = None,
+                 length_unit: str = GLOBAL_UNITS.length_unit,
+                 **kwargs,
+                 ):
+        super().__init__()
+        self._kwargs = kwargs
+
+        if length_unit is None:
+            length_unit = GLOBAL_UNITS.length_unit
+        self.units = Units(length_unit)
+
+        self.dim_feature = get_integer(dim_feature)
+
+        self.activation = get_activation(activation)
+
+    @property
+    def dim_node(self) -> int:
+        return self.dim_feature
+
+    @property
+    def dim_edge(self) -> int:
+        return self.dim_feature
+    
+    def set_dim_feature(self, dim_feature: int):
+        self.dim_feature = get_integer(dim_feature)
+        return self
+
+
+class MolEmbedding(GraphEmbedding):
+    def __init__(self,
+                 dim_feature: int = None,
                  emb_dis: bool = True,
                  emb_bond: bool = False,
                  cutoff: Length = Length(1, 'nm'),
-                 cutoff_fn: Cutoff = None,
-                 rbf_fn: Cell = None,
+                 cutoff_fn: Cutoff = 'smooth',
+                 rbf_fn: Cell = 'log_gaussian',
                  num_basis: int = None,
+                 atom_filter: Union[Filter, str] = None,
                  dis_filter: Union[Filter, str] = 'residual',
                  bond_filter: Union[Filter, str] = 'residual',
                  interaction: Cell = None,
@@ -61,35 +94,49 @@ class GraphEmbedding(nn.Cell):
                  num_atom_types: int = 64,
                  num_bond_types: int = 16,
                  initializer: Union[Initializer, str] = Normal(1.0),
-                 activation: Cell = 'swish',
-                 length_unit: str = 'nm',
+                 activation: Cell = 'silu',
+                 length_unit: str = GLOBAL_UNITS.length_unit,
+                 **kwargs,
                  ):
 
-        super().__init__()
-
-        if length_unit is None:
-            length_unit = GLOBAL_UNITS.length_unit
-        self.units = Units(length_unit)
+        super().__init__(
+            dim_feature=dim_feature,
+            activation=activation,
+            length_unit=length_unit,
+            **kwargs,
+        )
+        self._kwargs = get_arguments(locals())
 
         self.emb_dis = emb_dis
         self.emb_bond = emb_bond
 
-        num_atom_types = get_integer(num_atom_types)
-        self._dim_node = get_integer(dim_node)
-        self._dim_edge = get_integer(dim_edge)
-        self.atom_embedding = nn.Embedding(
-            num_atom_types, self._dim_node,
-            use_one_hot=True, embedding_table=initializer)
+        self.num_atom_types = get_integer(num_atom_types)
+        self.initializer = get_initializer(initializer)
+        self.atom_embedding = None
+        if self.dim_feature is not None:
+            self.atom_embedding = nn.Embedding(vocab_size=self.num_atom_types,
+                                               embedding_size=self.dim_feature,
+                                               use_one_hot=True,
+                                               embedding_table=self.initializer)
 
         cutoff = get_length(cutoff, self.units)
-        self.cutoff = get_ms_array(cutoff, ms.float32)
-        self.cutoff_fn = get_cutoff(cutoff_fn, self.cutoff)
+        self.cutoff_fn = get_cutoff(cutoff_fn, cutoff)
+        if self.cutoff_fn is None:
+            self.cutoff = get_ms_array(cutoff, ms.float32)
+        else:
+            self.cutoff = self.cutoff_fn.cutoff
 
         dis_self = get_length(dis_self, self.units)
         # (1)
         self.dis_self = get_ms_array(dis_self, ms.float32).reshape((-1,))
 
         self.num_bond_types = get_integer(num_bond_types)
+
+        if self.dim_feature is not None or isinstance(atom_filter, (Filter, dict)):
+            self.atom_filter = get_filter(atom_filter, self.dim_feature,
+                                          self.dim_feature, activation)
+        else:
+            self.atom_filter = atom_filter
 
         self.rbf_fn = None
         self.dis_filter = None
@@ -98,40 +145,53 @@ class GraphEmbedding(nn.Cell):
             self.rbf_fn = get_rbf(rbf_fn, r_max=self.cutoff, num_basis=num_basis,
                                 length_unit=self.units.length_unit)
 
-            self.dis_filter = get_filter(filter=dis_filter,
-                                        dim_in=self.num_basis,
-                                        dim_out=self._dim_edge,
-                                        activation=activation)
+            self.dis_filter = get_filter(cls_name=dis_filter,
+                                         dim_in=self.num_basis,
+                                         dim_out=self.dim_edge,
+                                         activation=activation)
 
         self.bond_embedding = None
         self.bond_filter = None
         if self.emb_bond:
             self.bond_embedding = nn.Embedding(
-                self.num_bond_types, self._dim_edge,
+                self.num_bond_types, self.dim_edge,
                 use_one_hot=True, embedding_table=initializer)
-            self.bond_filter = get_filter(filter=bond_filter,
-                                        dim_in=self._dim_edge,
-                                        dim_out=self._dim_edge,
-                                        activation=activation)
+            self.bond_filter = get_filter(cls_name=bond_filter,
+                                          dim_in=self.dim_edge,
+                                          dim_out=self.dim_edge,
+                                          activation=activation)
         
         if self.emb_dis and self.emb_bond:
             self.interaction = interaction
 
     @property
     def num_basis(self) -> int:
+        """number of radical basis function"""
         if self.rbf_fn is None:
             return 1
         return self.rbf_fn.num_basis
 
     @property
-    def dim_node(self) -> int:
-        return self._dim_node
-
-    @property
     def dim_edge(self) -> int:
+        """dimension of edge vector"""
         if self.emb_dis and self.dis_filter is None:
             return self.num_basis
-        return self._dim_edge
+        return self.dim_edge
+    
+    def set_dim_feature(self, dim_feature: int):
+        self.dim_feature = get_integer(dim_feature)
+        self.atom_embedding = nn.Embedding(vocab_size=self.num_atom_types,
+                                           embedding_size=self.dim_feature,
+                                           use_one_hot=True,
+                                           embedding_table=self.initializer)
+        if isinstance(self.atom_filter, Filter):
+            if self.atom_filter.dim_in != self.dim_feature:
+                raise ValueError(f'The input dimension of atom_filter ({self.atom_filter.dim_in}) '
+                                 f'must be equal to the feature dimension ({self.dim_feature})!')
+        else:
+            self.atom_filter = get_filter(self.atom_filter, self.dim_feature,
+                                          self.dim_feature, self.activation)
+        return self
 
     def get_rbf(self, distances: Tensor):
         """get radical basis function"""
@@ -160,6 +220,9 @@ class GraphEmbedding(nn.Cell):
             num_atoms = bond.shape[-2]
 
         node_emb = self.atom_embedding(atom_types)
+        if self.atom_filter is not None:
+            node_emb = self.atom_filter(node_emb)
+
         node_mask = atom_mask
         if batch_size > 1 and atom_types.shape[0] != batch_size:
             node_emb = msnp.broadcast_to(node_emb, (batch_size,) + node_emb.shape[1:])
@@ -218,3 +281,47 @@ class GraphEmbedding(nn.Cell):
                                                   bond_mask, bond_cutoff, bond_self)
 
         return node_emb, node_mask, edge_emb, edge_mask, edge_cutoff, edge_self
+
+
+class ConformationEmbedding(MolEmbedding):
+    def __init__(self,
+                 dim_feature: int,
+                 emb_bond: bool = False,
+                 cutoff: Length = Length(1, 'nm'),
+                 cutoff_fn: Cutoff = None,
+                 rbf_fn: Cell = None,
+                 num_basis: int = None,
+                 atom_filter: Union[Filter, str] = None, 
+                 dis_filter: Union[Filter, str] = 'residual',
+                 bond_filter: Union[Filter, str] = 'residual',
+                 interaction: Cell = None,
+                 dis_self: Length = Length(0.05, 'nm'),
+                 num_atom_types: int = 64,
+                 num_bond_types: int = 16,
+                 initializer: Union[Initializer, str] = Normal(1.0),
+                 activation: Cell = 'swish',
+                 length_unit: str = None,
+                 **kwargs,
+                 ):
+    
+        super().__init__(
+            dim_feature=dim_feature,
+            emb_dis=True,
+            emb_bond=emb_bond,
+            cutoff=cutoff,
+            cutoff_fn=cutoff_fn,
+            rbf_fn=rbf_fn,
+            num_basis=num_basis,
+            atom_filter=atom_filter,
+            dis_filter=dis_filter,
+            bond_filter=bond_filter,
+            interaction=interaction,
+            dis_self=dis_self,
+            num_atom_types=num_atom_types,
+            num_bond_types=num_bond_types,
+            initializer=initializer,
+            activation=activation,
+            length_unit=length_unit,
+            **kwargs,
+        )
+        self._kwargs = get_arguments(locals())
