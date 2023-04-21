@@ -23,10 +23,11 @@
 Main program of Cybertron
 """
 
-import os
+from typing import Union, List, Tuple
+from numpy import ndarray
+
 import mindspore as ms
 import mindspore.numpy as msnp
-from mindspore.nn import Embedding
 from mindspore import Tensor
 from mindspore.nn import Cell, CellList
 from mindspore.ops import functional as F
@@ -39,7 +40,7 @@ from mindsponge.partition import IndexDistances
 from mindsponge.partition import FullConnectNeighbours
 from mindsponge.potential import PotentialCell
 
-from .embedding import GraphEmbedding
+from .embedding import GraphEmbedding, get_embedding
 from .readout import Readout, get_readout
 from .model import MolecularGNN, get_molecular_model
 
@@ -92,17 +93,18 @@ class Cybertron(Cell):
     """
 
     def __init__(self,
-                 embedding: GraphEmbedding,
-                 model: MolecularGNN,
-                 readout: Readout = 'node',
-                 dim_output: int = 1,
+                 model: Union[MolecularGNN, dict, str],
+                 embedding: Union[GraphEmbedding, dict, str] = 'molecule',
+                 readout: Union[Readout, dict, str, List[Readout]] = 'node',
                  num_atoms: int = None,
-                 atom_types: Tensor = None,
-                 bond_types: Tensor = None,
-                 pbc_box: Tensor = None,
+                 atom_types: Union[Tensor, ndarray, List[int]] = None,
+                 bond_types: Union[Tensor, ndarray, List[int]] = None,
+                 pbc_box: Union[Tensor, ndarray, List[float]] = None,
                  use_pbc: bool = None,
-                 length_unit: str = None,
-                 energy_unit: str = None,
+                 concat_outputs: bool = None,
+                 concat_axis: int = -1,
+                 length_unit: Union[str, Units] = None,
+                 energy_unit: Union[str, Units] = None,
                  **kwargs
                  ):
 
@@ -114,80 +116,6 @@ class Cybertron(Cell):
         if energy_unit is None:
             energy_unit = GLOBAL_UNITS.energy_unit
         self._units = Units(length_unit, energy_unit)
-
-        self.model = get_molecular_model(model, length_unit=self.length_unit)
-
-        if isinstance(embedding, Cell):
-            self.embedding = embedding
-        elif isinstance(embedding, dict):
-            self.embedding = GraphEmbedding(**embedding)
-
-        self.activation = self.model.activation
-        self.input_unit_scale = self.units.convert_energy_to(self.model.units)
-
-        self.dim_output: Tensor = get_ms_array(dim_output).reshape(-1)
-        self.num_output = self.dim_output.size
-        if self.num_output == 1:
-            self.dim_output = get_integer(self.dim_output)
-
-        if readout is None:
-            self.num_readout = 0
-            self.dim_output = self.dim_feature
-            self.num_output = 0
-        elif isinstance(readout, (list, tuple)):
-            self.num_readout = len(readout)
-            if self.num_readout == 1:
-                readout = readout[0]
-        else:
-            self.num_readout = 1
-
-        if self.num_output != self.num_readout:
-            if self.num_output == 1:
-                self.dim_output = Tensor(
-                    [self.dim_output,] * self.num_readout)
-                self.num_output = self.num_readout
-            elif self.num_readout == 1:
-                if isinstance(readout, Readout):
-                    raise TypeError(
-                        'The class "Readout" cannot be broadcast, please use "str" or "dict" instead.')
-                readout = [readout,] * self.num_output
-                self.num_readout = self.num_output
-            else:
-                raise ValueError('"The number of "readout" ('+str(self.num_readout) +
-                                 ') mismatch does not match the number of "dim_output" (' +
-                                 str(self.num_output)+').')
-
-        self.multi_readouts = False
-        if self.num_readout > 1:
-            self.multi_readouts = True
-            self.readout = CellList(
-                [
-                    get_readout(
-                        readout[i],
-                        model=self.model,
-                        dim_output=self.dim_output[i],
-                        energy_unit=self.units.energy_unit,
-                    )
-                    for i in range(self.num_readout)
-                ]
-            )
-            self.tot_out_dim = 0
-            for i in range(self.num_readout):
-                self.dim_output[i] = self.readout[i].dim_output
-                self.tot_out_dim += self.readout[i].dim_output
-        elif self.num_readout == 1:
-            self.readout = get_readout(
-                readout,
-                model=self.model,
-                dim_output=self.dim_output,
-                energy_unit=self.units.energy_unit,
-            )
-            self.dim_output = self.readout.dim_output
-            self.tot_out_dim = self.dim_output
-        else:
-            self.readout = None
-
-        self.output_unit_scale = self.get_output_unit_scale()
 
         if atom_types is None:
             self.atom_types = None
@@ -218,10 +146,11 @@ class Cybertron(Cell):
         self.fc_neighbours = FullConnectNeighbours(natoms)
         self.neighbours = None
         self.neighbour_mask = None
+        self.num_neighbours = self.num_atoms - 1
         if self.atom_types is not None:
             self.neighbours, self.neighbour_mask = self.fc_neighbours(
                 self.atom_types > 0)
-
+            
         self.pbc_box = None
         self.use_pbc = use_pbc
         if pbc_box is not None:
@@ -229,12 +158,86 @@ class Cybertron(Cell):
             self.pbc_box = Tensor(pbc_box, ms.float32).reshape(1, -1)
             self.use_pbc = True
 
-        cutoff = self.model.cutoff
-        self.get_distance = IndexDistances(
-            use_pbc=self.use_pbc,
-            large_dis=cutoff*10,
-            keepdims=False
-        )
+        self.model = get_molecular_model(model, length_unit=self.length_unit)
+        dim_node_emb = self.model.dim_node_emb
+        dim_edge_emb = self.model.dim_edge_emb
+        self.activation = self.model.activation
+
+        self.embedding = get_embedding(embedding,
+                                       dim_node=dim_node_emb,
+                                       dim_edge=dim_edge_emb,
+                                       activation=self.activation,
+                                       length_unit=length_unit
+                                       )
+        self.dim_node_emb = self.embedding.dim_node
+        self.dim_edge_emb = self.embedding.dim_edge
+
+        self.model.set_dimension(self.dim_node_emb, self.dim_edge_emb)
+
+        self.dim_node_rep = self.model.dim_node_rep
+        self.dim_edge_rep = self.model.dim_edge_rep
+
+        self.activation = self.model.activation
+
+        self.num_readouts = 0
+        self.num_outputs = 2
+        self.output_ndim = (2, 3)
+        # [(A, F), (A, N, F)]
+        self.output_shape = ((self.num_atoms, self.dim_node_rep),
+                             (self.num_atoms, self.num_neighbours, self.dim_edge_rep))
+        if readout is not None:
+            if isinstance(readout, Readout):
+                readout = [readout]
+            if isinstance(readout, (list, tuple)):
+                readout = CellList(readout)
+            if isinstance(readout, CellList):
+                self.num_readouts = len(readout)
+                self.num_outputs = len(readout)
+                self.readout = readout
+            else:
+                raise TypeError(f'Unsupported `readout` type: {type(readout)}')
+
+            self.output_ndim = []
+            self.output_shape = []
+            for i in range(self.num_outputs):
+                self.output_ndim.append(self.readout[i].ndim)
+                self.output_shape.append(self.readout[i].shape)
+
+        self.concat_outputs = concat_outputs
+        self.concat_axis = get_integer(concat_axis)
+
+        if self.concat_outputs is not False:
+            ndim_set = set(self.output_ndim)
+            if self.concat_outputs is None and len(ndim_set) == 1 and (1 in ndim_set):
+                self.concat_outputs = True
+            if self.concat_outputs and len(ndim_set) > 1:
+                raise ValueError(f'Outputs cannot be concatenated when '
+                                 f'the ndim of the outputs are different: {self.output_ndim}.')
+
+        if self.concat_outputs:
+            rest_shape = []
+            cdim = 0
+            for shape in self.output_shape:
+                shape_ = list((-1,) + shape)
+                cdim += shape_[self.concat_axis]
+                shape_[self.concat_axis] = -1
+                rest_shape.append(shape_)
+            if len(set(rest_shape)) != 1:
+                raise ValueError(f'The shape of outputs cannot be concatenated '
+                                 f'with axis {self.concat_axis}: {self.output_shape}.')
+            
+            output_shape = rest_shape[0]
+            output_shape[self.concat_axis] = cdim
+            output_shape = tuple(output_shape[0:])
+            self.output_shape = (output_shape,)
+            self.output_ndim = (len(output_shape),)
+            self.num_outputs = 1
+
+        self.input_unit_scale = self.embedding.convert_length_from(self.units)
+        self.output_unit_scale = [Tensor(self.readout[i].convert_length_to(self.units), ms.float32)
+                                  for i in range(self.num_readouts)]
+
+        self.concat = P.Concat(self.concat_axis)
 
     @property
     def length_unit(self) -> str:
@@ -244,13 +247,17 @@ class Cybertron(Cell):
     def energy_unit(self) -> str:
         return self.units.energy_unit
     
-    @property
-    def model_name(self) -> str:
-        return self.model.cls_name
-    
-    @property
-    def dim_feature(self) -> int:
-        return self.model.dim_feature
+    def readout_ndim(self, idx: int) -> int:
+        if idx >= self.num_readouts:
+            raise ValueError(f'The index ({idx}) is exceed '
+                             f'the number of readout ({self.num_readouts})')
+        return self.readout[idx].ndim
+
+    def readout_shape(self, idx: int) -> Tuple[int]:
+        if idx >= self.num_readouts:
+            raise ValueError(f'The index ({idx}) is exceed '
+                             f'the number of readout ({self.num_readouts})')
+        return self.readout[idx].shape
 
     def set_units(self, length_unit: str = None, energy_unit: str = None, units: Units = None):
         """set units"""
@@ -261,36 +268,24 @@ class Cybertron(Cell):
                 self.set_energy_unit(energy_unit)
         else:
             self.units = units
-            self.input_unit_scale = self.units.convert_energy_to(
-                self.model.units)
-            self.output_unit_scale = self.get_output_unit_scale()
+            self.input_unit_scale = self.embedding.convert_length_from(self.units)
+            self.output_unit_scale = \
+                (Tensor(self.readout[i].convert_length_to(self.units), ms.float32)
+                 for i in range(self.num_readouts))
         return self
 
     def set_length_unit(self, length_unit: str):
         """set length unit"""
         self.units = self.units.set_length_unit(length_unit)
-        self.input_unit_scale = self.units.convert_energy_to(self.model.units)
+        self.input_unit_scale = self.embedding.convert_length_from(self.units)
         return self
 
     def set_energy_unit(self, energy_units: str):
         """set energy unit"""
         self.units.set_energy_unit(energy_units)
-        self.output_unit_scale = self.get_output_unit_scale()
+        self.output_unit_scale = (Tensor(self.readout[i].convert_length_to(self.units), ms.float32)
+                                for i in range(self.num_readouts))
         return self
-
-    def get_output_unit_scale(self) -> Tensor:
-        """get the scale factor of output unit"""
-        if self.num_readout == 1:
-            output_unit_scale = self.units.convert_energy_from(
-                self.readout.energy_unit)
-        elif self.num_readout > 1:
-            output_unit_scale = ()
-            for readout in self.readout:
-                unit = readout.energy_unit
-                scale = self.units.convert_energy_from(unit)
-                output_unit_scale = output_unit_scale + \
-                    (scale,) * readout.dim_output
-        return Tensor(output_unit_scale, ms.float32)
 
     def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
         """print the information of Cybertron"""
@@ -316,124 +311,28 @@ class Cybertron(Cell):
         self.model.print_info(num_retraction=num_retraction,
                               num_gap=num_gap, char=char)
 
-        if self.multi_readouts:
-            print(ret+" With "+str(self.num_readout)+" readout networks: ")
-            print('-'*80)
-            for i in range(self.num_readout):
-                print(ret+" "+str(i)+(". "+self.readout[i].cls_name))
-                self.readout[i].print_info(
-                    num_retraction=num_retraction, num_gap=num_gap, char=char)
-            print(ret+" Output dimension: "+str(self.dim_output))
-            print(ret+" Total output dimension: "+str(self.tot_out_dim))
-        else:
-            print(ret+" Readout network: "+self.readout.cls_name)
-            print('-'*80)
-            self.readout.print_info(
+        print(ret+" With "+str(self.num_readouts)+" readout networks: ")
+        print('-'*80)
+        for i in range(self.num_readouts):
+            print(ret+" "+str(i)+(". "+self.readout[i].cls_name))
+            self.readout[i].print_info(
                 num_retraction=num_retraction, num_gap=num_gap, char=char)
-            print(ret+" Output dimension: "+str(self.dim_output))
+       
         print(ret+" Output unit for Cybertron: "+self.units.energy_unit_name)
         print(ret+" Output unit scale: "+str(self.output_unit_scale))
         print("================================================================================")
 
-    def get_multi_scaleshift(self,
-                             scale: float = 1,
-                             shift: float = 0,
-                             type_ref: Tensor = None,
-                             atomwise_scaleshift: bool = None,
-                             readout_id: int = None
-                             ):
-        """get the scale and shift of multiple readouts"""
-
-        if readout_id is None:
-            readout_id = list(range(self.num_readout))
-            num_scale = self.num_readout
-            dim_scale = self.dim_output.asnumpy().tolist()
-        elif isinstance(readout_id, (int)):
-            num_scale = 1
-            dim_scale = [self.readout[readout_id].dim_output,]
-            readout_id = [readout_id,]
-        elif isinstance(readout_id, (list, tuple)):
-            num_scale = len(readout_id)
-            if num_scale >= self.num_readout:
-                raise ValueError('The number of "readout_id" ({:d}) is out of range of readout function ({:d})'
-                                 .format(num_scale, self.num_readout))
-            dim_scale = []
-            for r in readout_id:
-                dim_scale.append(int(self.dim_output[r].asnumpy()))
-        else:
-            raise TypeError(
-                'The type of "readout_id" must be int, list or tuple but got type "'+str(type(readout_id))+').')
-
-        split_index = []
-        dim_output = 0
-        for i in range(num_scale):
-            dim_output += dim_scale[i]
-            split_index.append(dim_output)
-        split_index.pop()
-
-        def _get_multi_argument(argument, name, dtype, shape=None):
-            if argument is None:
-                return [None,] * num_scale
-            if isinstance(argument, (list, tuple)):
-                if len(argument) != num_scale:
-                    if len(argument) == 1:
-                        argument *= num_scale
-                    else:
-                        raise ValueError('The number of "'+name+'" ('+str(len(argument)) +
-                                         ') does not match the number of readout_id ('+str(num_scale)+').')
-            else:
-                argument = Tensor(argument, dtype)
-                if shape is not None:
-                    argument = F.reshape(argument, shape)
-                if argument.shape[-1] == 1:
-                    argument = [argument,] * num_scale
-                elif argument.shape[-1] == dim_output:
-                    argument = msnp.split(argument, split_index, axis=-1)
-                else:
-                    raise ValueError('The size of "'+name+
-                                     '" ({:d}) does not match the output number ({:d}).'.
-                                     format(argument.shape[-1], dim_output))
-            return argument
-
-        scale = _get_multi_argument(scale, 'scale', ms.float32, (-1,))
-        shift = _get_multi_argument(shift, 'shift', ms.float32, (-1,))
-        type_ref = _get_multi_argument(type_ref, 'type_ref', ms.float32)
-        atomwise_scaleshift = _get_multi_argument(
-            atomwise_scaleshift, 'atomwise_scaleshift', ms.bool_, (-1,))
-
-        return scale, shift, type_ref, atomwise_scaleshift, readout_id
-
     def set_scaleshift(self,
                        scale: float = 1,
                        shift: float = 0,
-                       type_ref: Tensor = None,
-                       atomwise_scaleshift: bool = None,
                        unit: str = None,
                        readout_id: int = None
                        ):
         """set the scale and shift"""
 
-        if self.num_readout == 1:
-            self.readout.set_scaleshift(
-                scale=scale, shift=shift, type_ref=type_ref, atomwise_scaleshift=atomwise_scaleshift, unit=unit)
-            self.atomwise_scaleshift = self.readout.atomwise_scaleshift
-        else:
-            scale, shift, type_ref, atomwise_scaleshift, readout_id = \
-                self.get_multi_scaleshift(
-                    scale, shift, type_ref, atomwise_scaleshift, readout_id)
-            for i, r in enumerate(readout_id):
-                if r >= self.num_readout:
-                    raise ValueError('readout_id[{:d}]={:d} is out of the range of readout function ({:d})'
-                                     .format(i, r, self.num_readout))
-                self.readout[r].set_scaleshift(
-                    scale=scale[i],
-                    shift=shift[i],
-                    type_ref=type_ref[i],
-                    atomwise_scaleshift=atomwise_scaleshift[i],
-                    unit=unit
-                )
-        if unit is not None:
-            self.set_energy_unit(unit)
+        self.readout[readout_id].set_scaleshift(scale=scale, shift=shift, unit=unit)
+        self.output_unit_scale[readout_id] = \
+            Tensor(self.readout[readout_id].convert_length_to(self.units), ms.float32)
         return self
 
     def construct(self,
@@ -511,31 +410,22 @@ class Cybertron(Cell):
 
         if self.readout is None:
             return node_rep, node_rep
+    
+        outputs = (self.readout[i](node_rep=node_rep,
+                                   edge_rep=edge_rep,
+                                   node_emb=node_emb,
+                                   atom_types=atom_types,
+                                   atom_mask=atom_mask,
+                                   distances=distances,
+                                   neighbours=neighbours,
+                                   neighbour_mask=neighbour_mask,
+                                   ) * self.output_unit_scale[i]
+                                   for i in range(self.num_readouts))
 
-        if self.multi_readouts:
-            ytuple = ()
-            for i in range(self.num_readout):
-                yi = self.readout[i](node_rep=node_rep,
-                                     edge_rep=edge_rep,
-                                     node_emb=node_emb,
-                                     atom_types=atom_types,
-                                     atom_mask=atom_mask,
-                                     distances=distances,
-                                     neighbours=neighbours,
-                                     neighbour_mask=neighbour_mask,
-                                     )
-                ytuple = ytuple + (yi,)
-            return concat_last_dim(ytuple) * self.output_unit_scale
-
-        return self.readout(node_rep=node_rep,
-                            edge_rep=edge_rep,
-                            node_emb=node_emb,
-                            atom_types=atom_types,
-                            atom_mask=atom_mask,
-                            distances=distances,
-                            neighbours=neighbours,
-                            neighbour_mask=neighbour_mask,
-                            ) * self.output_unit_scale
+        if self.concat_outputs:
+            outputs = self.concat(outputs)
+        
+        return outputs
 
 
 class CybertronFF(PotentialCell):
@@ -586,7 +476,7 @@ class CybertronFF(PotentialCell):
                  use_pbc: bool = None,
                  length_unit: str = None,
                  energy_unit: str = None,
-                 hyper_param: dict = None,
+                 **kwargs
                  ):
 
         super().__init__(
