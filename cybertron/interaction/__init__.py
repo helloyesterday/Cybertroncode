@@ -79,4 +79,4 @@ def get_interaction(cls_name: Union[Interaction, str, dict],
                 **kwargs
             )
         raise ValueError("The Interaction corresponding to '{}' was not found.".format(cls_name))
-    raise TypeError("Unsupported MolecularGNN type '{}'.".format(type(cls_name)))
+    raise TypeError("Unsupported Interaction type '{}'.".format(type(cls_name)))
