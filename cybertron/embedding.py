@@ -47,13 +47,30 @@ __all__ = [
     'ConformationEmbedding',
 ]
 
+_EMBEDDING_BY_KEY = dict()
+
+
+def _embedding_register(*aliases):
+    """Return the alias register."""
+    def alias_reg(cls):
+        name = cls.__name__
+        name = name.lower()
+        if name not in _EMBEDDING_BY_KEY:
+            _EMBEDDING_BY_KEY[name] = cls
+
+        for alias in aliases:
+            if alias not in _EMBEDDING_BY_KEY:
+                _EMBEDDING_BY_KEY[alias] = cls
+        return cls
+    return alias_reg
+
 
 class GraphEmbedding(nn.Cell):
     def __init__(self,
                  dim_node: int,
                  dim_edge: int,
                  activation: Cell = None,
-                 length_unit: str = GLOBAL_UNITS.length_unit,
+                 length_unit: Union[str, Units] = GLOBAL_UNITS.length_unit,
                  **kwargs,
                  ):
         super().__init__()
@@ -77,8 +94,17 @@ class GraphEmbedding(nn.Cell):
     def dim_edge(self) -> int:
         r"""dimension of edge embedding vectors"""
         return self._dim_edge
+    
+    def convert_length_from(self, unit: Union[str, Units]) -> float:
+        """returns a scale factor that converts the length from a specified unit."""
+        return self.units.convert_length_from(unit)
+    
+    def convert_length_to(self, unit: Union[str, Units]) -> float:
+        """returns a scale factor that converts the length to a specified unit."""
+        return self.units.convert_length_to(unit)
 
 
+@_embedding_register('molecule')
 class MolEmbedding(GraphEmbedding):
     def __init__(self,
                  dim_node: int,
@@ -267,6 +293,7 @@ class MolEmbedding(GraphEmbedding):
         return node_emb, node_mask, edge_emb, edge_mask, edge_cutoff, edge_self
 
 
+@_embedding_register('conformation')
 class ConformationEmbedding(MolEmbedding):
     def __init__(self,
                  dim_feature: int,
@@ -287,7 +314,7 @@ class ConformationEmbedding(MolEmbedding):
                  length_unit: str = None,
                  **kwargs,
                  ):
-    
+
         super().__init__(
             dim_feature=dim_feature,
             emb_dis=True,
@@ -308,3 +335,47 @@ class ConformationEmbedding(MolEmbedding):
             length_unit=length_unit,
         )
         self._kwargs = get_arguments(locals(), kwargs)
+
+
+_EMBEDDING_BY_NAME = {filter.__name__: filter for filter in _EMBEDDING_BY_KEY.values()}
+
+
+def get_embedding(cls_name: Union[GraphEmbedding, str],
+                  dim_node: int,
+                  dim_edge: int,
+                  activation: Cell = None,
+                  length_unit: str = GLOBAL_UNITS.length_unit,
+                  **kwargs,
+                  ) -> GraphEmbedding:
+    """get graph embedding by name"""
+
+    if isinstance(cls_name, GraphEmbedding):
+        return cls_name
+
+    if cls_name is None:
+        return None
+
+    if isinstance(cls_name, dict):
+        return get_embedding(**cls_name)
+
+    if isinstance(cls_name, str):
+        if cls_name.lower() == 'none':
+            return None
+        if cls_name.lower() in _EMBEDDING_BY_KEY.keys():
+            return _EMBEDDING_BY_KEY[cls_name.lower()](dim_node=dim_node,
+                                                       dim_edge=dim_edge,
+                                                       activation=activation,
+                                                       length_unit=length_unit,
+                                                       **kwargs
+                                                       )
+        if cls_name in _EMBEDDING_BY_NAME.keys():
+            return _EMBEDDING_BY_NAME[cls_name](dim_node=dim_node,
+                                                dim_edge=dim_edge,
+                                                activation=activation,
+                                                length_unit=length_unit,
+                                                **kwargs
+                                                )
+
+        raise ValueError(
+            "The filter corresponding to '{}' was not found.".format(cls_name))
+    raise TypeError("Unsupported filter type '{}'.".format(type(cls_name)))
