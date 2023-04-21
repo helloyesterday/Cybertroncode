@@ -23,7 +23,7 @@
 Readout functions
 """
 
-from typing import Union
+from typing import Union, Tuple
 from numpy import ndarray
 
 import mindspore as ms
@@ -95,13 +95,14 @@ class Readout(Cell):
 
     """
     def __init__(self,
-                 dim_output: int = 1,
                  dim_node_rep: int = None,
                  dim_edge_rep: int = None,
                  activation: Cell = None,
                  scale: Union[float, Tensor, ndarray] = 1,
                  shift: Union[float, Tensor, ndarray] = 0,
                  unit: str = None,
+                 ndim: int = 1,
+                 shape: Tuple[int] = (1,),
                  **kwargs,
                  ):
         super().__init__()
@@ -114,9 +115,11 @@ class Readout(Cell):
             self.output_unit = unit
             self.units = Units(energy_unit=None)
 
-        self.dim_output = get_integer(dim_output)
         self.dim_node_rep = get_integer(dim_node_rep)
         self.dim_edge_rep = get_integer(dim_edge_rep)
+
+        self._ndim = ndim
+        self._shape = shape
 
         self.activation = None
         if activation is not None:
@@ -124,6 +127,16 @@ class Readout(Cell):
 
         self.scale = Parameter(get_ms_array(scale, ms.float32), name='scale', requires_grad=False)
         self.shift = Parameter(get_ms_array(shift, ms.float32), name='scale', requires_grad=False)
+
+    @property
+    def ndim (self) -> int:
+        """rank (ndim) of output Tensor (without batch size)"""
+        return self._ndim
+
+    @property
+    def shape(self) -> Tuple[int]:
+        """shape of output Tensor (without batch size)"""
+        return self._shape
 
     @property
     def energy_unit(self) -> str:
@@ -174,18 +187,18 @@ class Readout(Cell):
             self.set_unit(unit)
 
         scale: Tensor = get_ms_array(scale, ms.float32).reshape(-1)
-        if scale.shape[-1] != self.dim_output and scale.shape[-1] != 1:
-            raise ValueError(f'The dimension of "scale" ({scale.shape[-1]}) does not match the '
-                             f'output dimension ({self.dim_output})')
+        if scale.shape != self.shape and scale.size != 1:
+            raise ValueError(f'The shape of "scale" ({scale.shape}) does not match'
+                             f'the shape of output tensor ({self.shape})')
         if scale.shape == self.scale.shape:
             F.assign(self.scale, scale)
         else:
             self.scale = Parameter(scale, name='scale', requires_grad=False)
 
         shift: Tensor = get_ms_array(shift, ms.float32).reshape(-1)
-        if shift.shape[-1] != self.dim_output and shift.shape[-1] != 1:
-            raise ValueError(f'The dimension of "shift" ({self.shift.shape[-1]}) does not match the '
-                             f'output dimension ({self.dim_output})')
+        if shift.shape != self.shape and shift.size != 1:
+            raise ValueError(f'The shape of "shift" ({shift.shape}) does not match'
+                             f'the shape of output tensor ({self.shape})')
         if shift.shape == self.shift.shape:
             F.assign(self.shift, shift)
         else:
@@ -290,30 +303,30 @@ class NodeReadout(Readout):
     def __init__(self,
                  dim_output: int = 1,
                  dim_node_rep: int = None,
-                 activation: Cell = None,
-                 decoder: Decoder = 'halve',
-                 aggregator: Aggregator = 'default',
+                 activation: Union[Cell, str] = None,
+                 decoder: Union[Decoder, dict, str] = 'halve',
+                 aggregator: Union[Aggregator, dict, str] = 'default',
                  scale: float = 1,
                  shift: float = 0,
                  type_ref: Tensor = None,
                  axis: int = -2,
-                 n_decoder_layers: int = 1,
                  mode: str = 'atomwise',
                  energy_unit: str = None,
                  **kwargs,
                  ):
         super().__init__(
-            dim_output=dim_output,
             dim_node_rep=dim_node_rep,
             dim_edge_rep=None,
             activation=activation,
             scale=scale,
             shift=shift,
+            ndim=1,
+            shape=(dim_output,),
             energy_unit=energy_unit,
         )
         self._kwargs = get_arguments(locals(), kwargs)
 
-        self.n_decoder_layers = get_integer(n_decoder_layers)
+        self.dim_output = get_integer(dim_output)
 
         if mode.lower() in ['atomwise', 'a']:
             self.atomwise_readout = True
@@ -325,8 +338,8 @@ class NodeReadout(Readout):
 
         self.decoder = decoder
         if isinstance(decoder, (Decoder, dict)) or self.dim_edge_rep is not None:
-            self.decoder = get_decoder(decoder, self.dim_node_rep, self.dim_output,
-                                       self.activation, self.n_decoder_layers)
+            self.decoder = get_decoder(self.decoder, self.dim_node_rep, self.dim_output,
+                                       self.activation)
             if self.decoder is None:
                 self.dim_node_rep = None
             else:
@@ -349,7 +362,7 @@ class NodeReadout(Readout):
         super().set_dimension(dim_node_rep, dim_edge_rep)
         if self.dim_node_rep is not None and isinstance(self.decoder, str):
             self.decoder = get_decoder(self.decoder, self.dim_node_rep, self.dim_output,
-                                       self.activation, self.n_decoder_layers)
+                                       self.activation)
 
     def set_type_ref(self, type_ref: Union[Tensor, ndarray]):
         type_ref: Tensor = get_ms_array(type_ref, ms.float32)
