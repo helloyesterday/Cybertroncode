@@ -213,6 +213,8 @@ class Residual(Cell):
         super().__init__()
         self._kwargs = get_arguments(locals(), kwargs)
 
+        dim = get_integer(dim)
+        n_hidden = get_integer(n_hidden)
         if n_hidden > 0:
             hidden_layers = [dim] * n_hidden
             self.nonlinear = MLP(dim, dim, hidden_layers,
@@ -258,7 +260,7 @@ class PreActDense(Cell):
         self._kwargs = get_arguments(locals(), kwargs)
 
         self.activation = get_activation(activation)
-        self.dense = Dense(dim_in, dim_out, activation=None)
+        self.dense = Dense(get_integer(dim_in), get_integer(dim_out), activation=None)
 
     def construct(self, x):
         r"""Compute neural network.
@@ -291,6 +293,7 @@ class PreActResidual(Cell):
         super().__init__()
         self._kwargs = get_arguments(locals(), kwargs)
 
+        dim = get_integer(dim)
         self.preact_dense1 = PreActDense(dim, dim, activation)
         self.preact_dense2 = PreActDense(dim, dim, activation)
 
@@ -334,7 +337,7 @@ class SeqPreActResidual(Cell):
         self._kwargs = get_arguments(locals(), kwargs)
 
         self.sequential = nn.SequentialCell(
-            [PreActResidual(dim, activation) for _ in range(n_res)]
+            [PreActResidual(get_integer(dim), activation) for _ in range(get_integer(n_res))]
         )
 
     def construct(self, x):

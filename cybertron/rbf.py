@@ -95,7 +95,7 @@ class RadicalBasisFunctions(Cell):
                  ):
 
         super().__init__()
-        self._kwargs = get_arguments(locals(), kwargs)
+        self._kwargs = kwargs
 
         if length_unit is None:
             length_unit = GLOBAL_UNITS.length_unit
@@ -183,7 +183,6 @@ class GaussianBasis(RadicalBasisFunctions):
             num_basis=num_basis,
             clip_distance=clip_distance,
             length_unit=length_unit,
-            **kwargs,
         )
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -293,7 +292,6 @@ class LogGaussianBasis(RadicalBasisFunctions):
             r_min=r_min,
             clip_distance=clip_distance,
             length_unit=length_unit,
-            **kwargs,
         )
         self._kwargs = get_arguments(locals(), kwargs)
 

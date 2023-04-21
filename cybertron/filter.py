@@ -71,7 +71,7 @@ class Filter(Cell):
                  **kwargs,
                  ):
         super().__init__()
-        self._kwargs = get_arguments(locals(), kwargs)
+        self._kwargs = kwargs
 
         self.dim_in = get_integer(dim_in)
         self.dim_out = get_integer(dim_out)

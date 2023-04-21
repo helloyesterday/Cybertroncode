@@ -33,6 +33,8 @@ from mindspore.ops import functional as F
 from mindspore.common.parameter import Parameter
 from mindspore.common.initializer import Initializer, initializer, Constant
 
+from mindsponge.function import get_integer, get_arguments
+
 from .block import Dense, Residual
 from .cutoff import SmoothCutoff
 
@@ -71,14 +73,18 @@ class GraphNorm(Cell):
                  alpha_init: Initializer = 'one',
                  beta_init: Initializer = 'zero',
                  gamma_init: Initializer = 'one',
+                 **kwargs,
                  ):
-
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
+
+        dim_feature = get_integer(dim_feature)
+
         self.alpha = Parameter(initializer(alpha_init, dim_feature), name="alpha")
         self.beta = Parameter(initializer(beta_init, dim_feature), name="beta")
         self.gamma = Parameter(initializer(gamma_init, dim_feature), name="gamma")
 
-        self.axis = axis
+        self.axis = get_integer(axis)
 
         self.reduce_mean = P.ReduceMean(True)
 
@@ -121,12 +127,14 @@ class Aggregate(Cell):
     """
     def __init__(self,
                  axis: int,
-                 mean: bool = False
+                 mean: bool = False,
+                 **kwargs,
                  ):
-
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
+
         self.average = mean
-        self.axis = axis
+        self.axis = get_integer(axis)
         self.reduce_sum = P.ReduceSum()
         self.maximum = P.Maximum()
 
@@ -173,9 +181,11 @@ class SmoothReciprocal(Cell):
     def __init__(self,
                  dmax: float,
                  cutoff_network: Cell = None,
+                 **kwargs,
                  ):
 
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
         if cutoff_network is None:
             self.cutoff_network = SmoothCutoff(dmax)
@@ -215,9 +225,11 @@ class SoftmaxWithMask(Cell):
         axis (int): Axis of Tensor to do softmax. Default: -1
 
     """
-    def __init__(self, axis: int = -1):
+    def __init__(self, axis: int = -1, **kwargs):
         super().__init__()
-        self.softmax = P.Softmax(axis)
+        self._kwargs = get_arguments(locals(), kwargs)
+
+        self.softmax = P.Softmax(get_integer(axis))
 
         self.large_neg = -5e4
 
@@ -253,10 +265,14 @@ class PositionalEmbedding(Cell):
     """
     def __init__(self,
                  dim: int,
-                 use_public_layer_norm: bool = True
+                 use_public_layer_norm: bool = True,
+                 **kwargs,
                  ):
 
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
+
+        dim = get_integer(dim)
 
         if use_public_layer_norm:
             self.norm = nn.LayerNorm((dim,), -1, -1)
@@ -375,20 +391,23 @@ class MultiheadAttention(Cell):
     def __init__(self,
                  dim_feature: int,
                  n_heads: int = 8,
-                 dim_tensor: int = 4
+                 dim_tensor: int = 4,
+                 **kwargs,
                  ):
-
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
         # D
+        dim_tensor =get_integer(dim_tensor)
         if dim_tensor < 2:
             raise ValueError('dim_tensor must be larger than 1')
 
         # h
-        self.n_heads = n_heads
+        self.n_heads = get_integer(n_heads)
+        dim_feature = get_integer(dim_feature)
 
         # f = F / h
-        self.size_per_head = dim_feature // n_heads
+        self.size_per_head = dim_feature // self.n_heads
         # 1.0 / sqrt(f)
         self.scores_mul = 1.0 / msnp.sqrt(float(self.size_per_head))
 
@@ -539,13 +558,15 @@ class FeedForward(Cell):
     def __init__(self,
                  dim: int,
                  activation: Cell,
-                 n_hidden: int = 1
+                 n_hidden: int = 1,
+                 **kwargs
                  ):
-
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
+        dim = get_integer(dim)
         self.norm = nn.LayerNorm((dim,), -1, -1)
-        self.residual = Residual(dim, activation=activation, n_hidden=n_hidden)
+        self.residual = Residual(dim, activation=activation, n_hidden=get_integer(n_hidden))
 
     def construct(self, x: Tensor):
         """Compute feed forward network.
@@ -578,10 +599,14 @@ class Pondering(Cell):
     def __init__(self,
                  n_in: int,
                  n_hidden: int = 0,
-                 bias_const: float = 1.
+                 bias_const: float = 1.,
+                 **kwargs,
                  ):
-
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
+
+        n_in = get_integer(n_in)
+        n_hidden = get_integer(n_hidden)
 
         if n_hidden == 0:
             self.dense = nn.Dense(n_in, 1, has_bias=True, weight_init='xavier_uniform', bias_init=Constant(
@@ -625,9 +650,10 @@ class ACTWeight(Cell):
         bias_const (float): Initial value for bias. Default: 1
 
     """
-    def __init__(self, threshold: float = 0.9):
-
+    def __init__(self, threshold: float = 0.9, **kwargs):
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
+
         self.threshold = threshold
 
         self.zeros_like = P.ZerosLike()

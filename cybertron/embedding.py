@@ -43,12 +43,15 @@ from .filter import Filter, get_filter
 
 __all__ = [
     'GraphEmbedding',
+    'MolEmbedding',
+    'ConformationEmbedding',
 ]
 
 
 class GraphEmbedding(nn.Cell):
     def __init__(self,
-                 dim_feature: int = None,
+                 dim_node: int,
+                 dim_edge: int,
                  activation: Cell = None,
                  length_unit: str = GLOBAL_UNITS.length_unit,
                  **kwargs,
@@ -60,26 +63,26 @@ class GraphEmbedding(nn.Cell):
             length_unit = GLOBAL_UNITS.length_unit
         self.units = Units(length_unit)
 
-        self.dim_feature = get_integer(dim_feature)
+        self._dim_node = get_integer(dim_node)
+        self._dim_edge = get_integer(dim_edge)
 
         self.activation = get_activation(activation)
 
     @property
     def dim_node(self) -> int:
-        return self.dim_feature
+        r"""dimension of node embedding vectors"""
+        return self._dim_node
 
     @property
     def dim_edge(self) -> int:
-        return self.dim_feature
-    
-    def set_dim_feature(self, dim_feature: int):
-        self.dim_feature = get_integer(dim_feature)
-        return self
+        r"""dimension of edge embedding vectors"""
+        return self._dim_edge
 
 
 class MolEmbedding(GraphEmbedding):
     def __init__(self,
-                 dim_feature: int = None,
+                 dim_node: int,
+                 dim_edge: int = None,
                  emb_dis: bool = True,
                  emb_bond: bool = False,
                  cutoff: Length = Length(1, 'nm'),
@@ -100,12 +103,12 @@ class MolEmbedding(GraphEmbedding):
                  ):
 
         super().__init__(
-            dim_feature=dim_feature,
+            dim_node=dim_node,
+            dim_edge=(dim_node if dim_edge is None else dim_edge),
             activation=activation,
             length_unit=length_unit,
-            **kwargs,
         )
-        self._kwargs = get_arguments(locals())
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.emb_dis = emb_dis
         self.emb_bond = emb_bond
@@ -113,11 +116,10 @@ class MolEmbedding(GraphEmbedding):
         self.num_atom_types = get_integer(num_atom_types)
         self.initializer = get_initializer(initializer)
         self.atom_embedding = None
-        if self.dim_feature is not None:
-            self.atom_embedding = nn.Embedding(vocab_size=self.num_atom_types,
-                                               embedding_size=self.dim_feature,
-                                               use_one_hot=True,
-                                               embedding_table=self.initializer)
+        self.atom_embedding = nn.Embedding(vocab_size=self.num_atom_types,
+                                           embedding_size=self.dim_node,
+                                           use_one_hot=True,
+                                           embedding_table=self.initializer)
 
         cutoff = get_length(cutoff, self.units)
         self.cutoff_fn = get_cutoff(cutoff_fn, cutoff)
@@ -132,11 +134,8 @@ class MolEmbedding(GraphEmbedding):
 
         self.num_bond_types = get_integer(num_bond_types)
 
-        if self.dim_feature is not None or isinstance(atom_filter, (Filter, dict)):
-            self.atom_filter = get_filter(atom_filter, self.dim_feature,
-                                          self.dim_feature, activation)
-        else:
-            self.atom_filter = atom_filter
+        self.atom_filter = get_filter(atom_filter, self.dim_node,
+                                      self.dim_node, activation)
 
         self.rbf_fn = None
         self.dis_filter = None
@@ -147,18 +146,18 @@ class MolEmbedding(GraphEmbedding):
 
             self.dis_filter = get_filter(cls_name=dis_filter,
                                          dim_in=self.num_basis,
-                                         dim_out=self.dim_edge,
+                                         dim_out=self._dim_edge,
                                          activation=activation)
 
         self.bond_embedding = None
         self.bond_filter = None
         if self.emb_bond:
             self.bond_embedding = nn.Embedding(
-                self.num_bond_types, self.dim_edge,
+                self.num_bond_types, self._dim_edge,
                 use_one_hot=True, embedding_table=initializer)
             self.bond_filter = get_filter(cls_name=bond_filter,
-                                          dim_in=self.dim_edge,
-                                          dim_out=self.dim_edge,
+                                          dim_in=self._dim_edge,
+                                          dim_out=self._dim_edge,
                                           activation=activation)
         
         if self.emb_dis and self.emb_bond:
@@ -176,22 +175,7 @@ class MolEmbedding(GraphEmbedding):
         """dimension of edge vector"""
         if self.emb_dis and self.dis_filter is None:
             return self.num_basis
-        return self.dim_edge
-    
-    def set_dim_feature(self, dim_feature: int):
-        self.dim_feature = get_integer(dim_feature)
-        self.atom_embedding = nn.Embedding(vocab_size=self.num_atom_types,
-                                           embedding_size=self.dim_feature,
-                                           use_one_hot=True,
-                                           embedding_table=self.initializer)
-        if isinstance(self.atom_filter, Filter):
-            if self.atom_filter.dim_in != self.dim_feature:
-                raise ValueError(f'The input dimension of atom_filter ({self.atom_filter.dim_in}) '
-                                 f'must be equal to the feature dimension ({self.dim_feature})!')
-        else:
-            self.atom_filter = get_filter(self.atom_filter, self.dim_feature,
-                                          self.dim_feature, self.activation)
-        return self
+        return self._dim_edge
 
     def get_rbf(self, distances: Tensor):
         """get radical basis function"""
@@ -322,6 +306,5 @@ class ConformationEmbedding(MolEmbedding):
             initializer=initializer,
             activation=activation,
             length_unit=length_unit,
-            **kwargs,
         )
-        self._kwargs = get_arguments(locals())
+        self._kwargs = get_arguments(locals(), kwargs)

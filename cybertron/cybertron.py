@@ -31,7 +31,6 @@ from mindspore import Tensor
 from mindspore.nn import Cell, CellList
 from mindspore.ops import functional as F
 from mindspore.ops import operations as P
-from mindspore.common.initializer import Normal
 
 from mindsponge.function import concat_last_dim
 from mindsponge.function import Units, GLOBAL_UNITS
@@ -121,7 +120,7 @@ class Cybertron(Cell):
         if isinstance(embedding, Cell):
             self.embedding = embedding
         elif isinstance(embedding, dict):
-            self.embedding = Embedding(**embedding)
+            self.embedding = GraphEmbedding(**embedding)
 
         self.activation = self.model.activation
         self.input_unit_scale = self.units.convert_energy_to(self.model.units)

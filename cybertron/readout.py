@@ -71,9 +71,9 @@ class Readout(Cell):
 
         dim_output (int): Dimension of outputs. Default: 1
 
-        dim_node (int): Dimension of node vectors. Default: None
+        dim_node_rep (int): Dimension of node vectors. Default: None
 
-        dim_edge (int): Dimension of edge vectors. Default: None
+        dim_edge_rep (int): Dimension of edge vectors. Default: None
 
         activation (Cell): Activation function, Default: None
 
@@ -96,8 +96,8 @@ class Readout(Cell):
     """
     def __init__(self,
                  dim_output: int = 1,
-                 dim_node: int = None,
-                 dim_edge: int = None,
+                 dim_node_rep: int = None,
+                 dim_edge_rep: int = None,
                  activation: Cell = None,
                  scale: Union[float, Tensor, ndarray] = 1,
                  shift: Union[float, Tensor, ndarray] = 0,
@@ -115,8 +115,8 @@ class Readout(Cell):
             self.units = Units(energy_unit=None)
 
         self.dim_output = get_integer(dim_output)
-        self.dim_node = get_integer(dim_node)
-        self.dim_edge = get_integer(dim_edge)
+        self.dim_node_rep = get_integer(dim_node_rep)
+        self.dim_edge_rep = get_integer(dim_edge_rep)
 
         self.activation = None
         if activation is not None:
@@ -129,22 +129,19 @@ class Readout(Cell):
     def energy_unit(self) -> str:
         return self.units.energy_unit
 
-    def check_and_set(self, dim_node: int, dim_edge: int, activation: Union[Cell, str] = None):
+    def set_dimension(self, dim_node_rep: int, dim_edge_rep: int):
         """check and set dimension of representation vectors"""
-        if self.dim_node is None:
-            self.dim_node = get_integer(dim_node)
-        elif self.dim_node != dim_node:
-            raise ValueError(f'The `dim_node` ({self.dim_node}) of Readout cannot match '
-                             f'the dimension of node representation vector ({dim_node}).')
+        if self.dim_node_rep is None:
+            self.dim_node_rep = get_integer(dim_node_rep)
+        elif self.dim_node_rep != dim_node_rep:
+            raise ValueError(f'The `dim_node_rep` ({self.dim_node_rep}) of Readout cannot match '
+                             f'the dimension of node representation vector ({dim_node_rep}).')
 
-        if self.dim_edge is None:
-            self.dim_edge = get_integer(dim_edge)
-        elif self.dim_edge != dim_edge:
-            raise ValueError(f'The `dim_edge` ({self.dim_edge}) of Readout cannot match '
-                             f'the dimension of edge representation vector ({dim_edge}).')
-
-        if activation is not None:
-            self.activation = get_activation(activation)
+        if self.dim_edge_rep is None:
+            self.dim_edge_rep = get_integer(dim_edge_rep)
+        elif self.dim_edge_rep != dim_edge_rep:
+            raise ValueError(f'The `dim_edge_rep` ({self.dim_edge_rep}) of Readout cannot match '
+                             f'the dimension of edge representation vector ({dim_edge_rep}).')
 
         return self
     
@@ -292,7 +289,7 @@ class NodeReadout(Readout):
 
     def __init__(self,
                  dim_output: int = 1,
-                 dim_node: int = None,
+                 dim_node_rep: int = None,
                  activation: Cell = None,
                  decoder: Decoder = 'halve',
                  aggregator: Aggregator = 'default',
@@ -307,15 +304,14 @@ class NodeReadout(Readout):
                  ):
         super().__init__(
             dim_output=dim_output,
-            dim_node=dim_node,
-            dim_edge=None,
+            dim_node_rep=dim_node_rep,
+            dim_edge_rep=None,
             activation=activation,
             scale=scale,
             shift=shift,
             energy_unit=energy_unit,
-            **kwargs,
         )
-        self._kwargs = get_arguments(locals())
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.n_decoder_layers = get_integer(n_decoder_layers)
 
@@ -328,13 +324,13 @@ class NodeReadout(Readout):
             raise ValueError(f'Unknown mode: {mode}')
 
         self.decoder = decoder
-        if isinstance(decoder, (Decoder, dict)) or self.dim_edge is not None:
-            self.decoder = get_decoder(decoder, self.dim_node, self.dim_output,
+        if isinstance(decoder, (Decoder, dict)) or self.dim_edge_rep is not None:
+            self.decoder = get_decoder(decoder, self.dim_node_rep, self.dim_output,
                                        self.activation, self.n_decoder_layers)
             if self.decoder is None:
-                self.dim_node = None
+                self.dim_node_rep = None
             else:
-                self.dim_node = self.decoder.dim_in
+                self.dim_node_rep = self.decoder.dim_in
 
         if isinstance(aggregator, str) and aggregator.lower() == 'default':
             aggregator = 'sum' if self.atomwise_readout else 'mean'
@@ -349,10 +345,10 @@ class NodeReadout(Readout):
         if self.type_ref is not None:
             self.type_ref = Parameter(self.type_ref, name='type_ref', requires_grad=False)
 
-    def check_and_set(self, dim_node: int, dim_edge: int, activation: Cell = None):
-        super().check_and_set(dim_node, dim_edge, activation)
-        if self.dim_node is not None and isinstance(self.decoder, str):
-            self.decoder = get_decoder(self.decoder, self.dim_node, self.dim_output,
+    def check_and_set(self, dim_node_rep: int, dim_edge_rep: int):
+        super().set_dimension(dim_node_rep, dim_edge_rep)
+        if self.dim_node_rep is not None and isinstance(self.decoder, str):
+            self.decoder = get_decoder(self.decoder, self.dim_node_rep, self.dim_output,
                                        self.activation, self.n_decoder_layers)
 
     def set_type_ref(self, type_ref: Union[Tensor, ndarray]):
@@ -383,7 +379,7 @@ class NodeReadout(Readout):
             print(ret+gap+" Decoder: "+str(self.decoder.cls_name))
         if self.aggregator is not None:
             print(ret+gap+" Aggregator: "+str(self.aggregator.cls_name))
-        print(ret+gap+" Representation dimension: "+str(self.dim_node))
+        print(ret+gap+" Representation dimension: "+str(self.dim_node_rep))
         print(ret+gap+" Readout dimension: "+str(self.dim_output))
         print(ret+gap+" Scale: "+str(self.scale.asnumpy()))
         print(ret+gap+" Shift: "+str(self.shift.asnumpy()))
@@ -482,8 +478,8 @@ _READOUT_BY_NAME = {out.__name__: out for out in _READOUT_BY_KEY.values()}
 
 def get_readout(cls_name: Union[Readout, str],
                 dim_output=1,
-                dim_node=None,
-                dim_edge=None,
+                dim_node_rep=None,
+                dim_edge_rep=None,
                 activation=None,
                 scale=1,
                 shift=0,
@@ -513,8 +509,8 @@ def get_readout(cls_name: Union[Readout, str],
         if cls_name.lower() in _READOUT_BY_KEY.keys():
             return _READOUT_BY_KEY[cls_name.lower()](
                 dim_output=dim_output,
-                dim_node=dim_node,
-                dim_edge=dim_edge,
+                dim_node_rep=dim_node_rep,
+                dim_edge_rep=dim_edge_rep,
                 activation=activation,
                 scale=scale,
                 shift=shift,
@@ -524,8 +520,8 @@ def get_readout(cls_name: Union[Readout, str],
         if cls_name in _READOUT_BY_NAME.keys():
             return _READOUT_BY_NAME[cls_name](
                 dim_output=dim_output,
-                dim_node=dim_node,
-                dim_edge=dim_edge,
+                dim_node_rep=dim_node_rep,
+                dim_edge_rep=dim_edge_rep,
                 activation=activation,
                 scale=scale,
                 shift=shift,

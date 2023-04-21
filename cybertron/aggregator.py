@@ -119,7 +119,7 @@ class Aggregator(nn.Cell):
                  ):
 
         super().__init__()
-        #pylint: disable=unused-argument
+        self._kwargs = kwargs
 
         self.reg_key = 'aggregator'
         self.name = 'aggregator'
@@ -224,7 +224,6 @@ class TensorSummation(Aggregator):
         super().__init__(
             dim=dim,
             axis=axis,
-            **kwargs,
         )
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -288,7 +287,6 @@ class TensorMean(Aggregator):
         super().__init__(
             dim=dim,
             axis=axis,
-            **kwargs
         )
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -359,7 +357,6 @@ class SoftmaxGeneralizedAggregator(Aggregator):
         super().__init__(
             dim=dim,
             axis=axis,
-            **kwargs,
         )
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -442,7 +439,6 @@ class PowermeanGeneralizedAggregator(Aggregator):
         super().__init__(
             dim=dim,
             axis=axis,
-            **kwargs
         )
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -516,7 +512,6 @@ class TransformerAggregator(Aggregator):
         super().__init__(
             dim=dim,
             axis=axis,
-            **kwargs,
         )
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -639,7 +634,7 @@ class InteractionMean(InteractionAggregator):
     """
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__()
         self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'mean'
@@ -743,7 +738,6 @@ class MultipleChannelRepresentation(InteractionAggregator):
             num_agg=num_agg,
             n_hidden=n_hidden,
             activation=activation,
-            **kwargs,
         )
         self._kwargs = get_arguments(locals(), kwargs)
 

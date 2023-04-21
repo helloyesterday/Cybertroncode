@@ -82,7 +82,7 @@ class Decoder(Cell):
                  ):
 
         super().__init__()
-        self._kwargs = get_arguments(locals(), kwargs)
+        self._kwargs = kwargs
 
         self.reg_key = 'none'
         self.name = 'decoder'
@@ -127,7 +127,6 @@ class HalveDecoder(Decoder):
             dim_out=dim_out,
             activation=activation,
             n_layers=n_layers,
-            **kwargs,
         )
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -171,6 +170,7 @@ class ResidualOutputBlock(Decoder):
                  dim_out: int = 1,
                  activation: Cell = None,
                  n_layers: int = 1,
+                 **kwargs,
                  ):
 
         super().__init__(
@@ -179,6 +179,7 @@ class ResidualOutputBlock(Decoder):
             activation=activation,
             n_layers=n_layers,
         )
+        self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'residual'
         self.name = 'residual'

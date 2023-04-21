@@ -79,7 +79,7 @@ class Cutoff(nn.Cell):
                  **kwargs
                  ):
         super().__init__()
-        self._kwargs = get_arguments(locals(), kwargs)
+        self._kwargs = kwargs
 
         if length_unit is None:
             length_unit = GLOBAL_UNITS.length_unit
@@ -136,7 +136,6 @@ class CosineCutoff(Cutoff):
         super().__init__(
             cutoff=cutoff,
             length_unit=length_unit,
-            **kwargs
             )
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -192,7 +191,6 @@ class MollifierCutoff(Cutoff):
         super().__init__(
             cutoff=cutoff,
             length_unit=length_unit,
-            **kwargs
             )
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -245,7 +243,6 @@ class HardCutoff(Cutoff):
         super().__init__(
             cutoff=cutoff,
             length_unit=length_unit,
-            **kwargs
             )
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -306,7 +303,6 @@ class SmoothCutoff(Cutoff):
         super().__init__(
             cutoff=cutoff,
             length_unit=length_unit,
-            **kwargs
             )
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -355,7 +351,6 @@ class GaussianCutoff(Cutoff):
         super().__init__(
             cutoff=cutoff,
             length_unit=length_unit,
-            **kwargs
             )
         self._kwargs = get_arguments(locals(), kwargs)
 
