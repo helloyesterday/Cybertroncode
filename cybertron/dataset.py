@@ -36,7 +36,7 @@ class DatasetProcessor:
 
             name (str):             Name of dataset
 
-            atom_types (ndarray):   Numpy array of shape (N, A) or (A). Data type is int
+            atom_type (ndarray):   Numpy array of shape (N, A) or (A). Data type is int
                                     Atom types (atomic number).
 
             position (ndarray):     Numpy array of shape (N, A, D). Data type is float
@@ -69,7 +69,7 @@ class DatasetProcessor:
 
     def __init__(self,
                  name: str,
-                 atom_types: ndarray,     # (N,A) or (A)
+                 atom_type: ndarray,     # (N,A) or (A)
                  position: ndarray,       # (N,A,D)
                  label: ndarray,          # (N,X)
                  force: ndarray = None,     # (N,A,D)
@@ -79,7 +79,7 @@ class DatasetProcessor:
                  ):
 
         self.name = name
-        self.atom_types = None
+        self.atom_type = None
         self.single_molecule = False
 
         self.units = Units(length_unit, energy_unit)
@@ -90,22 +90,22 @@ class DatasetProcessor:
             raise ValueError('The length unit cannot be None!')
 
         # (N,A)
-        self.atom_types = np.array(atom_types, np.int32)
-        if self.atom_types.ndim == 1:
-            self.atom_types = np.expand_dims(self.atom_types, 0)
-        if self.atom_types.ndim != 2:
+        self.atom_type = np.array(atom_type, np.int32)
+        if self.atom_type.ndim == 1:
+            self.atom_type = np.expand_dims(self.atom_type, 0)
+        if self.atom_type.ndim != 2:
             raise ValueError(
-                'The shape of atom_types must be (N_data,N_atoms) or (N_atoms)!')
-        self.n_atom = self.atom_types.shape[-1]
-        self.max_atomic_id = np.max(self.atom_types)
+                'The shape of atom_type must be (N_data,N_atoms) or (N_atoms)!')
+        self.n_atom = self.atom_type.shape[-1]
+        self.max_atomic_id = np.max(self.atom_type)
         # (N,A)
-        self.atom_mask = self.atom_types > 0
+        self.atom_mask = self.atom_type > 0
         # (N,1)
         self.num_atoms = np.sum(self.atom_mask.astype(int), -1, keepdims=True)
         # ()
         self.tot_atoms = np.sum(self.num_atoms)
         self.single_molecule = False
-        if self.atom_types.shape[0] == 1:
+        if self.atom_type.shape[0] == 1:
             self.single_molecule = True
 
         # (N,A,D)
@@ -115,21 +115,21 @@ class DatasetProcessor:
             raise ValueError(
                 'The shape of position must be (N_data,N_atoms,Dim) but got '+str(self.position.shape)+'!')
         if self.position.shape[-2] != self.n_atom:
-            raise ValueError('The number of in posiition ({:d}) does not match that in atom_types ({:d})!'
+            raise ValueError('The number of in posiition ({:d}) does not match that in atom_type ({:d})!'
                              .format(self.position.shape[-2], self.n_atom))
         self.n_data = self.position.shape[0]
         if self.single_molecule:
             self.tot_atoms *= self.n_data
-        elif self.atom_types.shape[0] != self.n_data:
-            raise ValueError('The number of atom_types ({:d}) does not match the number of position ({:d})!'
-                             .format(self.atom_types.shape[0], self.n_data))
+        elif self.atom_type.shape[0] != self.n_data:
+            raise ValueError('The number of atom_type ({:d}) does not match the number of position ({:d})!'
+                             .format(self.atom_type.shape[0], self.n_data))
         self.n_dim = self.position.shape[-1]
 
         print('Number of atoms: '+str(self.n_atom))
         print('Number of data: '+str(self.n_data))
         print('Dimension of space: '+str(self.n_dim))
         print('Total number of effective atoms: '+str(self.tot_atoms))
-        print('Shape of atom types (Z): '+str(self.atom_types.shape))
+        print('Shape of atom types (Z): '+str(self.atom_type.shape))
         print('Shape of position (R): '+str(self.position.shape))
 
         # np.random.seed(seed)
@@ -229,24 +229,24 @@ class DatasetProcessor:
 
         self.data_index = np.arange(self.n_data, dtype=np.int32)
 
-    def set_atom_types(self, atom_types: ndarray):
+    def set_atom_types(self, atom_type: ndarray):
         """set atom types"""
-        self.atom_types = np.array(atom_types, np.int32)
-        if self.atom_types.ndim == 1:
-            self.atom_types = np.expand_dims(self.atom_types, 0)
-        if self.atom_types.ndim != 2:
+        self.atom_type = np.array(atom_type, np.int32)
+        if self.atom_type.ndim == 1:
+            self.atom_type = np.expand_dims(self.atom_type, 0)
+        if self.atom_type.ndim != 2:
             raise ValueError(
-                'The shape of atom_types must be (N_data,N_atoms) or (N_atoms)!')
-        self.n_atom = self.atom_types.shape[-1]
-        self.max_atomic_id = np.max(self.atom_types)
+                'The shape of atom_type must be (N_data,N_atoms) or (N_atoms)!')
+        self.n_atom = self.atom_type.shape[-1]
+        self.max_atomic_id = np.max(self.atom_type)
         # (N,A)
-        self.atom_mask = self.atom_types > 0
+        self.atom_mask = self.atom_type > 0
         # (N,1)
         self.num_atoms = np.sum(self.atom_mask.astype(int), -1, keepdims=True)
         # ()
         self.tot_atoms = np.sum(self.num_atoms)
         self.single_molecule = False
-        if self.atom_types.shape[0] == 1:
+        if self.atom_type.shape[0] == 1:
             self.single_molecule = True
             self.tot_atoms *= self.n_atom
         return self
@@ -262,7 +262,7 @@ class DatasetProcessor:
     def _gather_dataset(self, index: ndarray):
         """gather data by index"""
         if not self.single_molecule:
-            self.set_atom_types(self.atom_types[index])
+            self.set_atom_types(self.atom_type[index])
         self.position = self.position[index]
         self.label = self.label[index]
         if self.force is not None:
@@ -358,13 +358,13 @@ class DatasetProcessor:
         if self.type_ref is not None:
             dataset['type_ref'] = self.type_ref.astype(dtype)
 
-        atom_types = self.atom_types if self.single_molecule else self.atom_types[index]
-        dataset['Z'] = atom_types
+        atom_type = self.atom_type if self.single_molecule else self.atom_type[index]
+        dataset['Z'] = atom_type
         dataset['R'] = self.position[index].astype(dtype)
 
-        atom_mask = atom_types > 0
+        atom_mask = atom_type > 0
         num_atoms = np.sum(atom_mask.astype(int), -1, keepdims=True)
-        label = self.label[index] - self.get_label_ref(atom_types, atom_mask)
+        label = self.label[index] - self.get_label_ref(atom_type, atom_mask)
         label = self.label_normalization(mode, label, scale, shift, num_atoms)
         dataset['E'] = label.astype(dtype)
 
@@ -399,7 +399,7 @@ class DatasetProcessor:
         if self.type_ref is not None:
             dataset['type_ref'] = self.type_ref.astype(dtype)
 
-        dataset['Z'] = self.atom_types if self.single_molecule else self.atom_types[index]
+        dataset['Z'] = self.atom_type if self.single_molecule else self.atom_type[index]
         dataset['R'] = self.position[index].astype(dtype)
         dataset['E'] = self.label[index].astype(dtype)
 
@@ -669,7 +669,7 @@ class DatasetProcessor:
     def _do_data_analysis(self):
         """analyse label"""
         label = self.label - \
-            self.get_label_ref(self.atom_types, self.atom_mask)
+            self.get_label_ref(self.atom_type, self.atom_mask)
         mol_info, atom_info = self.label_analysis(label, self.num_atoms)
         (self.mol_avg, self.mol_std, self.mol_min,
          self.mol_max, self.mol_mid) = mol_info
@@ -682,15 +682,15 @@ class DatasetProcessor:
         print('='*105)
         return self
 
-    def get_label_ref(self, atom_types: ndarray, atom_mask: ndarray = None) -> ndarray:
+    def get_label_ref(self, atom_type: ndarray, atom_mask: ndarray = None) -> ndarray:
         """get reference of each label"""
         if self.type_ref is None:
             return 0
 
         if atom_mask is None:
-            atom_mask = atom_types > 0
+            atom_mask = atom_type > 0
         # (N,A,E) = (N,A,E) * (N,A,1)
-        ref = self.type_ref[atom_types] * np.expand_dims(atom_mask, -1)
+        ref = self.type_ref[atom_type] * np.expand_dims(atom_mask, -1)
         # (N,E)
         return np.sum(ref, axis=-2)
 
