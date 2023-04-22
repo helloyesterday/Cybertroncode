@@ -25,7 +25,7 @@ Decoder networks for readout function
 
 from mindspore import nn
 from mindspore import Tensor
-from mindspore.nn import Cell, get_activation
+from mindspore.nn import Cell
 
 from mindsponge.function import get_ms_array, get_arguments
 
@@ -33,6 +33,7 @@ from .block import MLP, Dense
 from .block import PreActResidual
 from .block import SeqPreActResidual
 from .block import PreActDense
+from .activation import get_activation
 
 __all__ = [
     "Decoder",

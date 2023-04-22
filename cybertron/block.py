@@ -27,10 +27,12 @@ from typing import Union
 
 from mindspore import nn
 from mindspore import Tensor
-from mindspore.nn import Cell, get_activation
+from mindspore.nn import Cell
 from mindspore.common.initializer import Initializer
 
 from mindsponge.function import get_integer, get_arguments
+
+from .activation import get_activation
 
 
 __all__ = [
