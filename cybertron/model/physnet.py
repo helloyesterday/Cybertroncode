@@ -49,12 +49,6 @@ class PhysNet(MolecularGNN):
 
         n_interaction (int):        Number of interaction layers. Default: 5
 
-        cutoff (Length):            Cutoff distance. Default: Length(1, 'nm')
-
-        cutoff_fn (Cell):           Cutoff function. Default: 'smooth'
-
-        rbf (Cell):                 Radical baiss function. Default: 'log_gaussian'
-
         coupled_interaction (bool): Whether to use coupled (shared) interaction layer. Default: False
 
         use_graph_norm (bool):      Whether to use graph normalization. Default: False
@@ -91,7 +85,7 @@ class PhysNet(MolecularGNN):
                  n_interaction: int = 5,
                  coupled_interaction: bool = False,
                  dim_edge_emb: int = None,
-                 activation: Union[Cell, str] = 'silu',
+                 activation: Union[Cell, str] = 'ssp',
                  n_inter_residual: int = 3,
                  n_outer_residual: int = 2,
                  **kwargs,

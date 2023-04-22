@@ -50,7 +50,7 @@ class SchNet(MolecularGNN):
 
         n_interaction (int):        Number of interaction layers. Default: 3
 
-        activation (Cell):          Activation function. Default: 'silu'
+        activation (Cell):          Activation function. Default: 'ssp'
 
         cutoff (Length):            Cutoff distance. Default: Length(1, 'nm')
 
@@ -92,7 +92,7 @@ class SchNet(MolecularGNN):
                  dim_edge_emb: int = None,
                  interaction: Union[Interaction, List[Interaction]] = None,
                  n_interaction: int = 3,
-                 activation: Union[Cell, str] = 'silu',
+                 activation: Union[Cell, str] = 'ssp',
                  normalize_filter: bool = False,
                  coupled_interaction: bool = False,
                  **kwargs,

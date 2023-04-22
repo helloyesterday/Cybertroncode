@@ -49,7 +49,7 @@ class PhysNetModule(Interaction):
 
         dim_feature (int):          Feature dimension.
 
-        activation (Cell):          Activation function. Default: 'silu'
+        activation (Cell):          Activation function. Default: 'ssp'
 
         n_inter_residual (int):     Number of inter residual blocks. Default: 3
 
@@ -61,7 +61,7 @@ class PhysNetModule(Interaction):
                  dim_edge_emb: int = None,
                  n_inter_residual: int = 3,
                  n_outer_residual: int = 2,
-                 activation: Union[Cell, str] = 'silu',
+                 activation: Union[Cell, str] = 'ssp',
                  **kwargs,
                  ):
 

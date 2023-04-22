@@ -49,7 +49,7 @@ class SchNetInteraction(Interaction):
 
         filter_net (Cell):          Filter network for distance
 
-        activation (Cell):          Activation function. Default: 'silu'
+        activation (Cell):          Activation function. Default: 'ssp'
 
         normalize_filter (bool):    Whether to nomalize filter network. Default: False
 
@@ -59,7 +59,7 @@ class SchNetInteraction(Interaction):
                  dim_feature: int,
                  dim_edge_emb: int,
                  dim_filter: int,
-                 activation: Union[Cell, str] = 'silu',
+                 activation: Union[Cell, str] = 'ssp',
                  normalize_filter: bool = False,
                  **kwargs,
                  ):

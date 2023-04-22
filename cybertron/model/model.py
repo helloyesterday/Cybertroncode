@@ -27,7 +27,6 @@ from typing import Union, List
 
 import mindspore.numpy as msnp
 from mindspore.nn import Cell, CellList
-from mindspore.nn import get_activation
 from mindspore import Tensor
 from mindspore.ops import functional as F
 from mindspore.ops import operations as P
@@ -35,6 +34,7 @@ from mindspore.ops import operations as P
 from mindsponge.function import get_integer, get_ms_array
 
 from ..interaction import Interaction
+from ..activation import get_activation
 
 _MODEL_BY_KEY = dict()
 
@@ -95,8 +95,6 @@ class MolecularGNN(Cell):
         num_bond_types (int):       Maximum number of bond types. Default: 16
 
         length_unit (bool):         Unit of position coordinates. Default: 'nm'
-
-        hyper_param (dict):         Hyperparameter for molecular model. Default: None
 
     Symbols:
 

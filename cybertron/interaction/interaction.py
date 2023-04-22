@@ -26,10 +26,11 @@ Interaction layers
 from typing import Union
 
 from mindspore import Tensor
-from mindspore.nn import Cell, get_activation
+from mindspore.nn import Cell
 
 from mindsponge.function import get_integer
 
+from ..activation import get_activation
 
 _INTERACTION_BY_KEY = dict()
 
