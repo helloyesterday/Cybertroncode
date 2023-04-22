@@ -26,10 +26,10 @@ Interaction module
 from typing import Union
 from mindspore.nn import Cell
 
-from interaction import Interaction, _INTERACTION_BY_KEY
-from schnet import SchNetInteraction
-from physnet import PhysNetModule
-from niu import NeuralInteractionUnit
+from .interaction import Interaction, _INTERACTION_BY_KEY
+from .schnet import SchNetInteraction
+from .physnet import PhysNetModule
+from .niu import NeuralInteractionUnit
 
 __all__ = [
     'Interaction',

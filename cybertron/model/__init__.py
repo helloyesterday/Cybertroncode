@@ -27,10 +27,10 @@ from typing import Union
 from mindspore.nn import Cell
 from mindsponge.function import Units
 
-from model import MolecularGNN, _MODEL_BY_KEY
-from schnet import SchNet
-from physnet import PhysNet
-from molct import MolCT
+from .model import MolecularGNN, _MODEL_BY_KEY
+from .schnet import SchNet
+from .physnet import PhysNet
+from .molct import MolCT
 
 __all__ = [
     'SchNet',
