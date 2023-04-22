@@ -29,7 +29,7 @@ import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import nn
 from mindspore import Tensor
-from mindspore.nn import Cell, get_activation
+from mindspore.nn import Cell
 from mindspore.ops import functional as F
 from mindspore.common.initializer import Initializer, Normal
 
@@ -40,6 +40,7 @@ from mindsponge.function import get_integer, get_ms_array, get_arguments, get_in
 from .cutoff import Cutoff, get_cutoff
 from .rbf import get_rbf
 from .filter import Filter, get_filter
+from .activation import get_activation
 
 __all__ = [
     'GraphEmbedding',
@@ -69,6 +70,9 @@ class GraphEmbedding(nn.Cell):
     def __init__(self,
                  dim_node: int,
                  dim_edge: int,
+                 emb_dis: bool,
+                 emb_bond: bool,
+                 cutoff: Union[Length, float, Tensor] = None,
                  activation: Cell = None,
                  length_unit: Union[str, Units] = GLOBAL_UNITS.length_unit,
                  **kwargs,
@@ -80,8 +84,13 @@ class GraphEmbedding(nn.Cell):
             length_unit = GLOBAL_UNITS.length_unit
         self.units = Units(length_unit)
 
+        self.emb_dis = emb_dis
+        self.emb_bond = emb_bond
+
         self._dim_node = get_integer(dim_node)
         self._dim_edge = get_integer(dim_edge)
+
+        self.cutoff = get_ms_array(get_length(cutoff, self.units), ms.float32)
 
         self.activation = get_activation(activation)
 
@@ -116,7 +125,7 @@ class MolEmbedding(GraphEmbedding):
                  rbf_fn: Cell = 'log_gaussian',
                  num_basis: int = None,
                  atom_filter: Union[Filter, str] = None,
-                 dis_filter: Union[Filter, str] = 'residual',
+                 dis_filter: Union[Filter, str] = None,
                  bond_filter: Union[Filter, str] = 'residual',
                  interaction: Cell = None,
                  dis_self: Length = Length(0.05, 'nm'),
@@ -130,14 +139,14 @@ class MolEmbedding(GraphEmbedding):
 
         super().__init__(
             dim_node=dim_node,
-            dim_edge=(dim_node if dim_edge is None else dim_edge),
+            dim_edge=dim_node if dim_edge is None else dim_edge,
+            emb_dis=emb_dis,
+            emb_bond=emb_bond,
+            cutoff=cutoff,
             activation=activation,
             length_unit=length_unit,
         )
         self._kwargs = get_arguments(locals(), kwargs)
-
-        self.emb_dis = emb_dis
-        self.emb_bond = emb_bond
 
         self.num_atom_types = get_integer(num_atom_types)
         self.initializer = get_initializer(initializer)
@@ -147,11 +156,8 @@ class MolEmbedding(GraphEmbedding):
                                            use_one_hot=True,
                                            embedding_table=self.initializer)
 
-        cutoff = get_length(cutoff, self.units)
         self.cutoff_fn = get_cutoff(cutoff_fn, cutoff)
-        if self.cutoff_fn is None:
-            self.cutoff = get_ms_array(cutoff, ms.float32)
-        else:
+        if self.cutoff_fn is not None:
             self.cutoff = self.cutoff_fn.cutoff
 
         dis_self = get_length(dis_self, self.units)
@@ -185,7 +191,7 @@ class MolEmbedding(GraphEmbedding):
                                           dim_in=self._dim_edge,
                                           dim_out=self._dim_edge,
                                           activation=activation)
-        
+
         if self.emb_dis and self.emb_bond:
             self.interaction = interaction
 
@@ -212,7 +218,7 @@ class MolEmbedding(GraphEmbedding):
         return self.rbf_fn(distances)
 
     def construct(self,
-                  atom_types: Tensor,
+                  atom_type: Tensor,
                   atom_mask: Tensor,
                   neigh_list: Tensor,
                   distance: Tensor,
@@ -229,12 +235,12 @@ class MolEmbedding(GraphEmbedding):
             batch_size = bond.shape[0]
             num_atoms = bond.shape[-2]
 
-        node_emb = self.atom_embedding(atom_types)
+        node_emb = self.atom_embedding(atom_type)
         if self.atom_filter is not None:
             node_emb = self.atom_filter(node_emb)
 
         node_mask = atom_mask
-        if batch_size > 1 and atom_types.shape[0] != batch_size:
+        if batch_size > 1 and atom_type.shape[0] != batch_size:
             node_emb = msnp.broadcast_to(node_emb, (batch_size,) + node_emb.shape[1:])
             if atom_mask is not None:
                 node_mask = msnp.broadcast_to(atom_mask, (batch_size,)+atom_mask.shape[1:])

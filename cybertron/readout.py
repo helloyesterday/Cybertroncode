@@ -28,7 +28,7 @@ from numpy import ndarray
 
 import mindspore as ms
 from mindspore import Tensor, Parameter
-from mindspore.nn import Cell, get_activation
+from mindspore.nn import Cell
 from mindspore.numpy import count_nonzero
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
@@ -38,6 +38,7 @@ from mindsponge.function import get_integer, get_ms_array, get_arguments
 
 from .aggregator import Aggregator, get_aggregator
 from .decoder import Decoder, get_decoder
+from .activation import get_activation
 
 __all__ = [
     "Readout",
@@ -211,9 +212,9 @@ class Readout(Cell):
                   edge_rep: Tensor,
                   node_emb: Tensor = None,
                   edge_emb: Tensor = None,
-                  atom_types: Tensor = None,
+                  atom_type: Tensor = None,
                   atom_mask: Tensor = None,
-                  distances: Tensor = None,
+                  distance: Tensor = None,
                   neighbours: Tensor = None,
                   neighbour_mask: Tensor = None,
                   **kwargs,
@@ -229,12 +230,12 @@ class Readout(Cell):
                 Atomic (node) embedding vector.
             edge_emb (Tensor): Tensor of shape (B, A, F). Data type is float.
                 Edge embedding vector.
-            atom_types (Tensor): Tensor of shape (B, A). Data type is int.
+            atom_type (Tensor): Tensor of shape (B, A). Data type is int.
                 Index of atom types. Default: None
             atom_mask (Tensor): Tensor of shape (B, A). Data type is bool
                 Mask for atom types
-            distances (Tensor): Tensor of shape (B, A, N). Data type is float.
-                Distances between atoms
+            distance (Tensor): Tensor of shape (B, A, N). Data type is float.
+                distances between atoms
             neighbours (Tensor): Tensor of shape (B, A, N). Data type is int.
                 Indices of other near neighbour atoms around a atom
             neighbour_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
@@ -345,6 +346,8 @@ class NodeReadout(Readout):
             else:
                 self.dim_node_rep = self.decoder.dim_in
 
+        if aggregator is None and not self.atomwise_readout:
+            raise ValueError('The aggreator cannot be None under Graph mode!')
         if isinstance(aggregator, str) and aggregator.lower() == 'default':
             aggregator = 'sum' if self.atomwise_readout else 'mean'
 
@@ -354,11 +357,12 @@ class NodeReadout(Readout):
 
         self.reduce_sum = P.ReduceSum()
 
-        self.type_ref = get_ms_array(type_ref, ms.float32)
-        if self.type_ref is not None:
-            self.type_ref = Parameter(self.type_ref, name='type_ref', requires_grad=False)
+        self.type_ref = None
+        if type_ref is not None:
+            type_ref = get_ms_array(type_ref, ms.float32)
+            self.type_ref = Parameter(type_ref, name='type_ref', requires_grad=False)
 
-    def check_and_set(self, dim_node_rep: int, dim_edge_rep: int):
+    def set_dimension(self, dim_node_rep: int, dim_edge_rep: int):
         super().set_dimension(dim_node_rep, dim_edge_rep)
         if self.dim_node_rep is not None and isinstance(self.decoder, str):
             self.decoder = get_decoder(self.decoder, self.dim_node_rep, self.dim_output,
@@ -412,9 +416,9 @@ class NodeReadout(Readout):
                   edge_rep: Tensor,
                   node_emb: Tensor = None,
                   edge_emb: Tensor = None,
-                  atom_types: Tensor = None,
+                  atom_type: Tensor = None,
                   atom_mask: Tensor = None,
-                  distances: Tensor = None,
+                  distance: Tensor = None,
                   neighbours: Tensor = None,
                   neighbour_mask: Tensor = None,
                   **kwargs,
@@ -430,12 +434,12 @@ class NodeReadout(Readout):
                 Atomic (node) embedding vector.
             edge_emb (Tensor): Tensor of shape (B, A, F). Data type is float.
                 Edge embedding vector.
-            atom_types (Tensor): Tensor of shape (B, A). Data type is int.
+            atom_type (Tensor): Tensor of shape (B, A). Data type is int.
                 Index of atom types. Default: None
             atom_mask (Tensor): Tensor of shape (B, A). Data type is bool
                 Mask for atom types
-            distances (Tensor): Tensor of shape (B, A, N). Data type is float.
-                Distances between atoms
+            distance (Tensor): Tensor of shape (B, A, N). Data type is float.
+                distances between atoms
             neighbours (Tensor): Tensor of shape (B, A, N). Data type is int.
                 Indices of other near neighbour atoms around a atom
             neighbour_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
@@ -459,6 +463,7 @@ class NodeReadout(Readout):
             num_atoms = count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
 
         if self.atomwise_readout:
+            y = node_rep
             if self.decoder is not None:
                 # (B, A, Y) <- (B, A, F)
                 y = self.decoder(node_rep)
@@ -467,7 +472,7 @@ class NodeReadout(Readout):
                 # (B, A, Y)
                 y = y * self.scale + self.shift
                 if self.type_ref is not None:
-                    y += F.gather(self.type_ref, atom_types, 0)
+                    y += F.gather(self.type_ref, atom_type, 0)
                 # (B, Y) <- (B, A, Y)
                 y = self.aggregator(y, atom_mask, num_atoms)
 
@@ -480,7 +485,7 @@ class NodeReadout(Readout):
             y = y * self.scale + self.shift
 
             if self.type_ref is not None:
-                ref = F.gather(self.type_ref, atom_types, 0)
+                ref = F.gather(self.type_ref, atom_type, 0)
                 y += self.reduce_sum(ref, self.axis)
 
         return y
