@@ -217,6 +217,7 @@ class MolCT(MolecularGNN):
 
         node_vec = node_emb
         edge_vec = self.filter_net(edge_emb)
+        edge_self = self.filter_net(edge_self)
         for i in range(len(self.interaction)):
             node_vec, edge_vec = self.interaction[i](
                 node_vec=node_vec,
