@@ -128,13 +128,13 @@ class OutputScaleShift(Cell):
         self.reduce_sum = P.ReduceSum()
         self.keep_sum = P.ReduceSum(True)
 
-    def construct(self, outputs: Tensor, num_atoms: Tensor, atom_types: Tensor = None):
+    def construct(self, outputs: Tensor, num_atoms: Tensor, atom_type: Tensor = None):
         """Scale and shift output.
 
         Args:
             outputs (Tensor):       Tensor with shape (B, E). Data type is float.
             num_atoms (Tensor):     Tensor with shape (B, 1). Data type is int.
-            atom_types (Tensor):    Tensor with shape (B, A). Data type is float.
+            atom_type (Tensor):    Tensor with shape (B, A). Data type is float.
                                     Default: None
 
         Returns:
@@ -144,7 +144,7 @@ class OutputScaleShift(Cell):
         ref = 0
         if self.type_ref is not None:
             # (B,A,E)
-            ref = F.gather(self.type_ref, atom_types, 0)
+            ref = F.gather(self.type_ref, atom_type, 0)
             # (B,E)
             ref = self.reduce_sum(ref, self.axis)
 
@@ -225,13 +225,13 @@ class DatasetNormalization(Cell):
         self.reduce_sum = P.ReduceSum()
         self.keep_sum = P.ReduceSum(True)
 
-    def construct(self, label: Tensor, num_atoms: Tensor, atom_types: Tensor = None):
+    def construct(self, label: Tensor, num_atoms: Tensor, atom_type: Tensor = None):
         """Normalize outputs.
 
         Args:
             outputs (Tensor):       Tensor with shape (B, E). Data type is float.
             num_atoms (Tensor):     Tensor with shape (B, 1). Data type is int.
-            atom_types (Tensor):    Tensor with shape (B, A). Data type is float.
+            atom_type (Tensor):    Tensor with shape (B, A). Data type is float.
                                     Default: None
 
         Returns:
@@ -240,7 +240,7 @@ class DatasetNormalization(Cell):
         """
         ref = 0
         if self.type_ref is not None:
-            ref = F.gather(self.type_ref, atom_types, 0)
+            ref = F.gather(self.type_ref, atom_type, 0)
             ref = self.reduce_sum(ref, self.axis)
 
         label -= ref
@@ -508,7 +508,7 @@ class WithCell(Cell):
                  datatypes: str,
                  network: Cybertron,
                  loss_fn: Cell,
-                 fulltypes: str = 'RZCDNnBbE',
+                 fulltypes: str = 'RZCNnBbE',
                  ):
 
         super().__init__(auto_prefix=False)
@@ -531,10 +531,9 @@ class WithCell(Cell):
                 raise ValueError('There are '+str(num)+' "' + datatype +
                                  '" in datatype "' + self.datatypes + '".')
 
-        self.R = self.datatypes.find('R')  # positions
-        self.Z = self.datatypes.find('Z')  # atom_types
+        self.R = self.datatypes.find('R')  # coordinate
+        self.Z = self.datatypes.find('Z')  # atom_type
         self.C = self.datatypes.find('C')  # pbcbox
-        self.D = self.datatypes.find('D')  # distances
         self.N = self.datatypes.find('N')  # neighbours
         self.n = self.datatypes.find('n')  # neighbour_mask
         self.B = self.datatypes.find('B')  # bonds
@@ -547,16 +546,12 @@ class WithCell(Cell):
         self._network = network
         self._loss_fn = loss_fn
 
-        self.hyper_param = None
-        if 'hyper_param' in self._network.__dict__.keys():
-            self.hyper_param = self._network.hyper_param
-
-        self.atom_types = None
+        self.atom_type = None
         if (context.get_context("mode") == context.PYNATIVE_MODE and
-                'atom_types' in self._network.__dict__['_tensor_list'].keys()) or \
+                'atom_type' in self._network.__dict__['_tensor_list'].keys()) or \
                 (context.get_context("mode") == context.GRAPH_MODE and
-                 'atom_types' in self._network.__dict__.keys()):
-            self.atom_types = self._network.atom_types
+                 'atom_type' in self._network.__dict__.keys()):
+            self.atom_type = self._network.atom_type
 
         print(self.cls_name + ' with input type: ' + self.datatypes)
 
@@ -585,7 +580,7 @@ class WithForceLossCell(WithCell):
             datatypes=datatypes,
             network=network,
             loss_fn=loss_fn,
-            fulltypes='RZCDNnBbFE'
+            fulltypes='RZCNnBbFE'
         )
 
         #pylint: disable=invalid-name
@@ -609,10 +604,9 @@ class WithForceLossCell(WithCell):
         """
         inputs = inputs + (None,)
 
-        positions = inputs[self.R]
-        atom_types = inputs[self.Z]
+        coordinate = inputs[self.R]
+        atom_type = inputs[self.Z]
         pbc_box = inputs[self.C]
-        distances = inputs[self.D]
         neighbours = inputs[self.N]
         neighbour_mask = inputs[self.n]
         bonds = inputs[self.B]
@@ -620,10 +614,9 @@ class WithForceLossCell(WithCell):
 
         energy = inputs[self.E]
         out = self._network(
-            positions=positions,
-            atom_types=atom_types,
+            coordinate=coordinate,
+            atom_type=atom_type,
             pbc_box=pbc_box,
-            distances=distances,
             neighbours=neighbours,
             neighbour_mask=neighbour_mask,
             bonds=bonds,
@@ -632,25 +625,24 @@ class WithForceLossCell(WithCell):
 
         forces = inputs[self.F]
         fout = -1 * self.grad_op(self._network)(
-            positions,
-            atom_types,
+            coordinate,
+            atom_type,
             pbc_box,
-            distances,
             neighbours,
             neighbour_mask,
             bonds,
             bond_mask,
         )
 
-        if atom_types is None:
-            atom_types = self.atom_types
+        if atom_type is None:
+            atom_type = self.atom_type
 
-        num_atoms = F.cast(atom_types > 0, out.dtype)
+        num_atoms = F.cast(atom_type > 0, out.dtype)
         num_atoms = self.keep_sum(num_atoms, -1)
 
-        if atom_types is None:
+        if atom_type is None:
             return self._loss_fn(out, energy, fout, forces)
-        atom_mask = atom_types > 0
+        atom_mask = atom_type > 0
         return self._loss_fn(out, energy, fout, forces, num_atoms, atom_mask)
 
     @property
@@ -695,20 +687,18 @@ class WithLabelLossCell(WithCell):
         """
         inputs = inputs + (None,)
 
-        positions = inputs[self.R]
-        atom_types = inputs[self.Z]
+        coordinate = inputs[self.R]
+        atom_type = inputs[self.Z]
         pbc_box = inputs[self.C]
-        distances = inputs[self.D]
         neighbours = inputs[self.N]
         neighbour_mask = inputs[self.n]
         bonds = inputs[self.B]
         bond_mask = inputs[self.b]
 
         out = self._network(
-            positions=positions,
-            atom_types=atom_types,
+            coordinate=coordinate,
+            atom_type=atom_type,
             pbc_box=pbc_box,
-            distances=distances,
             neighbours=neighbours,
             neighbour_mask=neighbour_mask,
             bonds=bonds,
@@ -717,10 +707,10 @@ class WithLabelLossCell(WithCell):
 
         label = inputs[self.E]
 
-        if atom_types is None:
-            atom_types = self.atom_types
+        if atom_type is None:
+            atom_type = self.atom_type
 
-        num_atoms = F.cast(atom_types > 0, out.dtype)
+        num_atoms = F.cast(atom_type > 0, out.dtype)
         num_atoms = self.keep_sum(num_atoms, -1)
 
         return self._loss_fn(out, label)
@@ -763,7 +753,7 @@ class WithEvalCell(WithCell):
                  atomwise_scaleshift: Tensor = None,
                  eval_data_is_normed: bool = True,
                  add_cast_fp32: bool = False,
-                 fulltypes: str = 'RZCDNnBbE'
+                 fulltypes: str = 'RZCNnBbE'
                  ):
 
         super().__init__(
@@ -898,7 +888,7 @@ class WithLabelEvalCell(WithEvalCell):
             atomwise_scaleshift=atomwise_scaleshift,
             eval_data_is_normed=eval_data_is_normed,
             add_cast_fp32=add_cast_fp32,
-            fulltypes='RZCDNnBbE',
+            fulltypes='RZCNnBbE',
         )
 
     def construct(self, *inputs):
@@ -920,20 +910,18 @@ class WithLabelEvalCell(WithEvalCell):
         """
         inputs = inputs + (None,)
 
-        positions = inputs[self.R]
-        atom_types = inputs[self.Z]
+        coordinate = inputs[self.R]
+        atom_type = inputs[self.Z]
         pbc_box = inputs[self.C]
-        distances = inputs[self.D]
         neighbours = inputs[self.N]
         neighbour_mask = inputs[self.n]
         bonds = inputs[self.B]
         bond_mask = inputs[self.b]
 
         output = self._network(
-            positions=positions,
-            atom_types=atom_types,
+            coordinate=coordinate,
+            atom_type=atom_type,
             pbc_box=pbc_box,
-            distances=distances,
             neighbours=neighbours,
             neighbour_mask=neighbour_mask,
             bonds=bonds,
@@ -945,24 +933,24 @@ class WithLabelEvalCell(WithEvalCell):
             label = F.mixed_precision_cast(ms.float32, label)
             output = F.cast(output, ms.float32)
 
-        if atom_types is None:
-            atom_types = self.atom_types
+        if atom_type is None:
+            atom_type = self.atom_type
 
-        num_atoms = F.cast(atom_types > 0, ms.int32)
-        num_atoms = msnp.sum(atom_types > 0, -1, keepdims=True)
+        num_atoms = F.cast(atom_type > 0, ms.int32)
+        num_atoms = msnp.sum(atom_type > 0, -1, keepdims=True)
 
         loss = 0
         if self._loss_fn is not None:
             if self.normalize_eval:
-                normed_label = self.normalization(label, num_atoms, atom_types)
+                normed_label = self.normalization(label, num_atoms, atom_type)
                 loss = self._loss_fn(output, normed_label)
             else:
                 loss = self._loss_fn(output, label)
 
         if self.scaleshift is not None:
-            output = self.scaleshift(output, num_atoms, atom_types)
+            output = self.scaleshift(output, num_atoms, atom_type)
             if self.scaleshift_eval:
-                label = self.scaleshift(label, num_atoms, atom_types)
+                label = self.scaleshift(label, num_atoms, atom_type)
 
         return loss, output, label, num_atoms
 
@@ -1014,7 +1002,7 @@ class WithForceEvalCell(WithEvalCell):
             atomwise_scaleshift=atomwise_scaleshift,
             eval_data_is_normed=eval_data_is_normed,
             add_cast_fp32=add_cast_fp32,
-            fulltypes='RZCDNnBbFE',
+            fulltypes='RZCNnBbFE',
         )
         #pylint: disable=invalid-name
 
@@ -1045,20 +1033,18 @@ class WithForceEvalCell(WithEvalCell):
         """
         inputs = inputs + (None,)
 
-        positions = inputs[self.R]
-        atom_types = inputs[self.Z]
+        coordinate = inputs[self.R]
+        atom_type = inputs[self.Z]
         pbc_box = inputs[self.C]
-        distances = inputs[self.D]
         neighbours = inputs[self.N]
         neighbour_mask = inputs[self.n]
         bonds = inputs[self.B]
         bond_mask = inputs[self.b]
 
         output_energy = self._network(
-            positions=positions,
-            atom_types=atom_types,
+            coordinate=coordinate,
+            atom_type=atom_type,
             pbc_box=pbc_box,
-            distances=distances,
             neighbours=neighbours,
             neighbour_mask=neighbour_mask,
             bonds=bonds,
@@ -1066,10 +1052,9 @@ class WithForceEvalCell(WithEvalCell):
         )
 
         output_forces = -1 * self.grad_op(self._network)(
-            positions,
-            atom_types,
+            coordinate,
+            atom_type,
             pbc_box,
-            distances,
             neighbours,
             neighbour_mask,
             bonds,
@@ -1084,18 +1069,18 @@ class WithForceEvalCell(WithEvalCell):
             label_energy = F.mixed_precision_cast(ms.float32, label_energy)
             output_energy = F.cast(output_energy, ms.float32)
 
-        if atom_types is None:
-            atom_types = self.atom_types
+        if atom_type is None:
+            atom_type = self.atom_type
 
-        num_atoms = F.cast(atom_types > 0, ms.int32)
-        num_atoms = msnp.sum(atom_types > 0, -1, keepdims=True)
+        num_atoms = F.cast(atom_type > 0, ms.int32)
+        num_atoms = msnp.sum(atom_type > 0, -1, keepdims=True)
 
         loss = 0
         if self._loss_fn is not None:
-            atom_mask = atom_types > 0
+            atom_mask = atom_type > 0
             if self.normalize_eval:
                 normed_label_energy = self.normalization(
-                    label_energy, num_atoms, atom_types)
+                    label_energy, num_atoms, atom_type)
                 normed_label_forces = label_forces / self.scale
                 loss = self._loss_fn(output_energy, normed_label_energy,
                                      output_forces, normed_label_forces, num_atoms, atom_mask)
@@ -1105,11 +1090,11 @@ class WithForceEvalCell(WithEvalCell):
 
         if self.scaleshift is not None:
             output_energy = self.scaleshift(
-                output_energy, num_atoms, atom_types)
+                output_energy, num_atoms, atom_type)
             output_forces = output_forces * self.scale
             if self.scaleshift_eval:
                 label_energy = self.scaleshift(
-                    label_energy, num_atoms, atom_types)
+                    label_energy, num_atoms, atom_type)
                 label_forces = label_forces * self.scale
 
         return loss, output_energy, label_energy, output_forces, label_forces, num_atoms
@@ -1229,8 +1214,6 @@ class TrainMonitor(Callback):
         self.last_loss = 0
         self.record = []
 
-        self.hyper_param = None
-
         self.output_title = True
         filename = os.path.join(self._directory, self._filename)
         if os.path.exists(filename):
@@ -1250,8 +1233,6 @@ class TrainMonitor(Callback):
         cb_params: InternalCallbackParam = run_context.original_args()
         train_network: TrainOneStepCell = cb_params.train_network
         cells = train_network._cells
-        if 'network' in cells.keys() and 'hyper_param' in cells['network'].__dict__.keys():
-            self.hyper_param = cells['network'].hyper_param
 
     def _write_ckpt_file(self, filename: str, info: str, network: TrainOneStepCell):
         """write checkpoint (.ckpt) file"""
@@ -1262,7 +1243,7 @@ class TrainMonitor(Callback):
         if os.path.exists(ckptfile):
             os.rename(ckptfile, ckptbck)
 
-        save_checkpoint(network, ckptfile, append_dict=self.hyper_param)
+        save_checkpoint(network, ckptfile)
         with open(ckptdata, "a") as f:
             f.write(info + os.linesep)
 
