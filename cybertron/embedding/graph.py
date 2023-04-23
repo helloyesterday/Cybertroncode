@@ -23,7 +23,7 @@
 Embedding
 """
 
-from typing import Union, List
+from typing import Union, Tuple
 
 import mindspore as ms
 import mindspore.numpy as msnp
@@ -37,16 +37,10 @@ from mindspore.common.initializer import Initializer, Normal
 from mindsponge.function import Units, GLOBAL_UNITS, Length, get_length
 from mindsponge.function import get_integer, get_ms_array, get_arguments, get_initializer
 
-from .cutoff import Cutoff, get_cutoff
-from .rbf import get_rbf
-from .filter import Filter, get_filter
-from .activation import get_activation
-
-__all__ = [
-    'GraphEmbedding',
-    'MolEmbedding',
-    'ConformationEmbedding',
-]
+from ..cutoff import Cutoff, get_cutoff
+from ..rbf import get_rbf
+from ..filter import Filter, get_filter
+from ..activation import get_activation
 
 _EMBEDDING_BY_KEY = dict()
 
@@ -67,13 +61,31 @@ def _embedding_register(*aliases):
 
 
 class GraphEmbedding(nn.Cell):
+    r"""Base class of graph embedding network
+
+    Args:
+        dim_node (int): Dimension of node embedding vector.
+
+        dim_edge (int): Dimension of edge embedding vector.
+
+        emb_dis (bool): Whether to embed the distance.
+
+        emb_bond (bool): Whether to embed the bond.
+
+        cutoff (Union[Length, float, Tensor]): Cut-off distance. Default: None
+
+        activation: Union[Cell, str]: Activation function. Default: None
+
+        length_unit: Union[str, Units]: Length unit. Default: Global length unit
+
+    """
     def __init__(self,
                  dim_node: int,
                  dim_edge: int,
                  emb_dis: bool,
                  emb_bond: bool,
                  cutoff: Union[Length, float, Tensor] = None,
-                 activation: Cell = None,
+                 activation: Union[Cell, str] = None,
                  length_unit: Union[str, Units] = GLOBAL_UNITS.length_unit,
                  **kwargs,
                  ):
@@ -103,18 +115,92 @@ class GraphEmbedding(nn.Cell):
     def dim_edge(self) -> int:
         r"""dimension of edge embedding vectors"""
         return self._dim_edge
-    
+
     def convert_length_from(self, unit: Union[str, Units]) -> float:
         """returns a scale factor that converts the length from a specified unit."""
         return self.units.convert_length_from(unit)
-    
+
     def convert_length_to(self, unit: Union[str, Units]) -> float:
         """returns a scale factor that converts the length to a specified unit."""
         return self.units.convert_length_to(unit)
 
+    def construct(self,
+                  atom_type: Tensor,
+                  atom_mask: Tensor,
+                  neigh_dis: Tensor,
+                  neigh_vec: Tensor,
+                  neigh_list: Tensor,
+                  neigh_mask: Tensor,
+                  bond: Tensor,
+                  bond_mask: Tensor,
+                  **kwargs,
+                  ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Compute the properties of the molecules.
+
+        Args:
+            atom_type (Tensor): Tensor of shape (B, A). Data type is int.
+                Index of atom types. Default: None
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool
+                Mask for atom types
+            neigh_dis (Tensor): Tensor of shape (B, A, N). Data type is float.
+                Distances between central atom and its neighouring atoms.
+            neigh_vec (Tensor): Tensor of shape (B, A, N, D). Data type is bool.
+                Vectors from central atom to its neighouring atoms.
+            neigh_list (Tensor): Tensor of shape (B, A, N). Data type is int.
+                Indices of neighbouring atoms.
+            neigh_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
+                Mask for neighbour list.
+            bond_types (Tensor): Tensor of shape (B, A, N). Data type is int.
+                Types index of bond connected with two atoms
+            bond_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
+                Mask for bonds
+
+        Returns:
+            node_emb (Tensor): Tensor of shape (B, A, E). Data type is float.
+                Node embedding vector.
+            node_mask (Tensor): Tensor of shape (B, A, E). Data type is float.
+                Mask for Node embedding vector.
+            edge_emb (Tensor): Tensor of shape (B, A, N, K). Data type is float.
+                Edge embedding vector.
+            edge_mask (Tensor): Tensor of shape (B, A, N, K). Data type is float.
+                Mask for edge embedding vector.
+            edge_cutoff (Tensor): Tensor of shape (B, A, N). Data type is float.
+                Cutoff for edge.
+            edge_self (Tensor): Tensor of shape (1, K). Data type is float.
+                The edge embedding vector of the atom itself.
+
+        Symbols:
+            B:  Batch size.
+            A:  Number of atoms in system.
+            E:  Dimension of node embedding vector
+            K:  Dimension of edge embedding vector
+            D:  Spatial dimension of the simulation system. Usually is 3.
+
+        """
+
+        raise NotImplementedError
+
 
 @_embedding_register('molecule')
 class MolEmbedding(GraphEmbedding):
+    r"""Embedding for molecule
+
+    Args:
+        dim_node (int): Dimension of node embedding vector.
+
+        dim_edge (int): Dimension of edge embedding vector.
+
+        emb_dis (bool): Whether to embed the distance.
+
+        emb_bond (bool): Whether to embed the bond.
+
+        cutoff (Union[Length, float, Tensor]): Cut-off distance. Default: None
+
+        activation: Union[Cell, str]: Activation function. Default: None
+
+        length_unit: Union[str, Units]: Length unit. Default: Global length unit
+
+    """
     def __init__(self,
                  dim_node: int,
                  dim_edge: int = None,
@@ -174,7 +260,7 @@ class MolEmbedding(GraphEmbedding):
         if self.emb_dis:
             num_basis = get_integer(num_basis)
             self.rbf_fn = get_rbf(rbf_fn, r_max=self.cutoff, num_basis=num_basis,
-                                length_unit=self.units.length_unit)
+                                  length_unit=self.units.length_unit)
 
             self.dis_filter = get_filter(cls_name=dis_filter,
                                          dim_in=self.num_basis,
@@ -220,17 +306,61 @@ class MolEmbedding(GraphEmbedding):
     def construct(self,
                   atom_type: Tensor,
                   atom_mask: Tensor,
+                  neigh_dis: Tensor,
+                  neigh_vec: Tensor,
                   neigh_list: Tensor,
-                  distance: Tensor,
-                  dis_mask: Tensor,
+                  neigh_mask: Tensor,
                   bond: Tensor,
                   bond_mask: Tensor,
                   **kwargs,
-                  ):
-        
+                  ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Compute the properties of the molecules.
+
+        Args:
+            atom_type (Tensor): Tensor of shape (B, A). Data type is int.
+                Index of atom types. Default: None
+            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool
+                Mask for atom types
+            neigh_dis (Tensor): Tensor of shape (B, A, N). Data type is float.
+                Distances between central atom and its neighouring atoms.
+            neigh_vec (Tensor): Tensor of shape (B, A, N, D). Data type is bool.
+                Vectors from central atom to its neighouring atoms.
+            neigh_list (Tensor): Tensor of shape (B, A, N). Data type is int.
+                Indices of neighbouring atoms.
+            neigh_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
+                Mask for neighbour list.
+            bond_types (Tensor): Tensor of shape (B, A, N). Data type is int.
+                Types index of bond connected with two atoms
+            bond_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
+                Mask for bonds
+
+        Returns:
+            node_emb (Tensor): Tensor of shape (B, A, E). Data type is float.
+                Node embedding vector.
+            node_mask (Tensor): Tensor of shape (B, A, E). Data type is float.
+                Mask for Node embedding vector.
+            edge_emb (Tensor): Tensor of shape (B, A, N, K). Data type is float.
+                Edge embedding vector.
+            edge_mask (Tensor): Tensor of shape (B, A, N, K). Data type is float.
+                Mask for edge embedding vector.
+            edge_cutoff (Tensor): Tensor of shape (B, A, N). Data type is float.
+                Cutoff for edge.
+            edge_self (Tensor): Tensor of shape (1, K). Data type is float.
+                The edge embedding vector of the atom itself.
+
+        Symbols:
+            B:  Batch size.
+            A:  Number of atoms in system.
+            E:  Dimension of node embedding vector
+            K:  Dimension of edge embedding vector
+            D:  Spatial dimension of the simulation system. Usually is 3.
+
+        """
+        #pylint: disable=unused-argument
+
         if self.emb_dis:
-            batch_size = distance.shape[0]
-            num_atoms = distance.shape[-2]
+            batch_size = neigh_dis.shape[0]
+            num_atoms = neigh_dis.shape[-2]
         else:
             batch_size = bond.shape[0]
             num_atoms = bond.shape[-2]
@@ -246,12 +376,12 @@ class MolEmbedding(GraphEmbedding):
                 node_mask = msnp.broadcast_to(atom_mask, (batch_size,)+atom_mask.shape[1:])
 
         dis_emb = None
-        dis_mask = None
+        neigh_mask = None
         dis_cutoff = None
         dis_self = None
         if self.emb_dis:
             # (B, A, N, K)
-            dis_emb = self.get_rbf(distance)
+            dis_emb = self.get_rbf(neigh_dis)
             # (1, K)
             dis_self = self.get_rbf(self.dis_self)
             if self.dis_filter is not None:
@@ -262,9 +392,9 @@ class MolEmbedding(GraphEmbedding):
 
             # (B, A, N)
             if self.cutoff_fn is None:
-                dis_cutoff = F.ones_like(distance)
+                dis_cutoff = F.ones_like(neigh_dis)
             else:
-                dis_cutoff, dis_mask = self.cutoff_fn(distance, dis_mask)
+                dis_cutoff, neigh_mask = self.cutoff_fn(neigh_dis, neigh_mask)
 
         bond_emb = None
         bond_mask = None
@@ -283,7 +413,7 @@ class MolEmbedding(GraphEmbedding):
                 bond_self = self.bond_filter(bond_self)
 
         edge_cutoff = dis_cutoff
-        edge_mask = dis_mask
+        edge_mask = neigh_mask
         edge_self = dis_self
         if not self.emb_dis:
             edge_emb = bond_emb
@@ -297,91 +427,3 @@ class MolEmbedding(GraphEmbedding):
                                                   bond_mask, bond_cutoff, bond_self)
 
         return node_emb, node_mask, edge_emb, edge_mask, edge_cutoff, edge_self
-
-
-@_embedding_register('conformation')
-class ConformationEmbedding(MolEmbedding):
-    def __init__(self,
-                 dim_feature: int,
-                 emb_bond: bool = False,
-                 cutoff: Length = Length(1, 'nm'),
-                 cutoff_fn: Cutoff = None,
-                 rbf_fn: Cell = None,
-                 num_basis: int = None,
-                 atom_filter: Union[Filter, str] = None, 
-                 dis_filter: Union[Filter, str] = 'residual',
-                 bond_filter: Union[Filter, str] = 'residual',
-                 interaction: Cell = None,
-                 dis_self: Length = Length(0.05, 'nm'),
-                 num_atom_types: int = 64,
-                 num_bond_types: int = 16,
-                 initializer: Union[Initializer, str] = Normal(1.0),
-                 activation: Cell = 'swish',
-                 length_unit: str = None,
-                 **kwargs,
-                 ):
-
-        super().__init__(
-            dim_feature=dim_feature,
-            emb_dis=True,
-            emb_bond=emb_bond,
-            cutoff=cutoff,
-            cutoff_fn=cutoff_fn,
-            rbf_fn=rbf_fn,
-            num_basis=num_basis,
-            atom_filter=atom_filter,
-            dis_filter=dis_filter,
-            bond_filter=bond_filter,
-            interaction=interaction,
-            dis_self=dis_self,
-            num_atom_types=num_atom_types,
-            num_bond_types=num_bond_types,
-            initializer=initializer,
-            activation=activation,
-            length_unit=length_unit,
-        )
-        self._kwargs = get_arguments(locals(), kwargs)
-
-
-_EMBEDDING_BY_NAME = {filter.__name__: filter for filter in _EMBEDDING_BY_KEY.values()}
-
-
-def get_embedding(cls_name: Union[GraphEmbedding, str],
-                  dim_node: int,
-                  dim_edge: int,
-                  activation: Cell = None,
-                  length_unit: str = GLOBAL_UNITS.length_unit,
-                  **kwargs,
-                  ) -> GraphEmbedding:
-    """get graph embedding by name"""
-
-    if isinstance(cls_name, GraphEmbedding):
-        return cls_name
-
-    if cls_name is None:
-        return None
-
-    if isinstance(cls_name, dict):
-        return get_embedding(**cls_name)
-
-    if isinstance(cls_name, str):
-        if cls_name.lower() == 'none':
-            return None
-        if cls_name.lower() in _EMBEDDING_BY_KEY.keys():
-            return _EMBEDDING_BY_KEY[cls_name.lower()](dim_node=dim_node,
-                                                       dim_edge=dim_edge,
-                                                       activation=activation,
-                                                       length_unit=length_unit,
-                                                       **kwargs
-                                                       )
-        if cls_name in _EMBEDDING_BY_NAME.keys():
-            return _EMBEDDING_BY_NAME[cls_name](dim_node=dim_node,
-                                                dim_edge=dim_edge,
-                                                activation=activation,
-                                                length_unit=length_unit,
-                                                **kwargs
-                                                )
-
-        raise ValueError(
-            "The filter corresponding to '{}' was not found.".format(cls_name))
-    raise TypeError("Unsupported filter type '{}'.".format(type(cls_name)))
