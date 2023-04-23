@@ -36,7 +36,7 @@ from mindspore.ops import operations as P
 from mindsponge.function import Units, GLOBAL_UNITS
 from mindsponge.function import get_integer, get_ms_array, get_arguments
 from mindsponge.function import GetVector, gather_vector
-from mindsponge.partition import FullConnectNeighbours
+from mindsponge.partition import FullConnectNeighbours, IndexDistances
 from mindsponge.potential import PotentialCell
 
 from .embedding import GraphEmbedding, get_embedding
@@ -92,9 +92,9 @@ class Cybertron(Cell):
     """
 
     def __init__(self,
-                 embedding: Union[GraphEmbedding, dict, str],
                  model: Union[MolecularGNN, dict, str],
-                 readout: Union[Readout, dict, str, List[Readout]],
+                 embedding: Union[GraphEmbedding, dict, str] = 'molecule',
+                 readout: Union[Readout, dict, str, List[Readout]] = 'node',
                  num_atoms: int = None,
                  atom_type: Union[Tensor, ndarray, List[int]] = None,
                  bond_types: Union[Tensor, ndarray, List[int]] = None,
@@ -102,7 +102,6 @@ class Cybertron(Cell):
                  use_pbc: bool = None,
                  concat_outputs: bool = None,
                  concat_axis: int = -1,
-                 large_dis: float = 5e4,
                  length_unit: Union[str, Units] = None,
                  energy_unit: Union[str, Units] = None,
                  **kwargs
@@ -172,7 +171,7 @@ class Cybertron(Cell):
         self.use_pbc = use_pbc
         self.num_neighbours = None
         self.cutoff = None
-        self.large_dis = get_ms_array(large_dis, ms.float32)
+        self.large_dis = 5e4
 
         if self.calc_distance:
             self.cutoff = self.embedding.cutoff
@@ -190,8 +189,7 @@ class Cybertron(Cell):
                 self.use_pbc = True
 
             self.get_vector = GetVector(self.use_pbc)
-
-            self.large_dis = self.cutoff * 100
+            self.large_dis = self.cutoff * 10
 
         self.norm_last_dim = Norm(-1, False)
 
@@ -203,17 +201,24 @@ class Cybertron(Cell):
         # [(A, F), (A, N, F)]
         self.output_shape = ((self.num_atoms, self.dim_node_rep),
                              (self.num_atoms, self.num_neighbours, self.dim_edge_rep))
+        self.readout = None
         if readout is not None:
-            if isinstance(readout, Readout):
+            if isinstance(readout, (Readout, str, dict)):
+                self.num_readouts = 1
+                self.num_outputs = 1
                 readout = [readout]
             if isinstance(readout, (list, tuple)):
-                readout = CellList(readout)
-            if isinstance(readout, CellList):
                 self.num_readouts = len(readout)
                 self.num_outputs = len(readout)
-                self.readout = readout
+                readout = [get_readout(cls_name=r,
+                                       dim_node_rep=self.dim_node_rep,
+                                       dim_edge_rep=self.dim_edge_rep,
+                                       activation=self.activation,
+                                       ) for r in readout]
             else:
+                readout = None
                 raise TypeError(f'Unsupported `readout` type: {type(readout)}')
+            self.readout = CellList(readout)
 
             self.output_ndim = []
             self.output_shape = []
@@ -356,22 +361,38 @@ class Cybertron(Cell):
             print(ret+" "+str(i)+(". "+self.readout[i].cls_name))
             self.readout[i].print_info(
                 num_retraction=num_retraction, num_gap=num_gap, char=char)
-        print(ret+" Output unit for Cybertron: "+self._units.energy_unit_name)
-        print(ret+" Output unit scale: "+str(self.output_unit_scale))
+        print(ret+f" Output unit for Cybertron: {self._units.energy_unit_name}")
+        print(ret+f" Output unit scale:")
+        for i in range(self.num_readouts):
+            print(ret+gap+f" Readout {i}: {self.output_unit_scale[i]}")
         print("================================================================================")
 
     def set_scaleshift(self,
                        scale: float = 1,
                        shift: float = 0,
                        unit: str = None,
-                       readout_id: int = None
+                       readout_id: int = None,
                        ):
         """set the scale and shift"""
-        if readout_id >= self.num_readouts:
-            raise ValueError(f'The index ({readout_id}) exceeds the number of readouts ({self.num_readouts})')
-        self.readout[readout_id].set_scaleshift(scale=scale, shift=shift, unit=unit)
-        self.output_unit_scale[readout_id] = \
-            Tensor(self.readout[readout_id].convert_energy_to(self._units), ms.float32)
+        
+        def _set_scaleshift(scale_: float = 1,
+                            shift_: float = 0,
+                            unit_: str = None,
+                            idx: int = None,
+                            ):
+            self.readout[idx].set_scaleshift(scale=scale_, shift=shift_, unit=unit_)
+            self.output_unit_scale[idx] = \
+                Tensor(self.readout[idx].convert_energy_to(self._units), ms.float32)
+
+        if readout_id is None:
+            for i in range(self.num_readouts):
+                _set_scaleshift(scale, shift, unit, i)
+        else:
+            if readout_id >= self.num_readouts:
+                raise ValueError(f'The index ({readout_id}) exceeds '
+                                 f'the number of readouts ({self.num_readouts})')
+            _set_scaleshift(scale, shift, unit, readout_id)
+
         return self
 
     def construct(self,
@@ -409,16 +430,17 @@ class Cybertron(Cell):
         """
 
         if self.atom_type is None:
-            # (1,A)
+            # (1, A)
             atom_mask = atom_type > 0
         else:
-            # (1,A)
+            # (1, A)
             atom_type = self.atom_type
             atom_mask = self.atom_mask
 
         neigh_dis = None
         neigh_vec = None
         if coordinate is not None:
+            coordinate *= self.input_unit_scale
             if neighbours is None:
                 neighbours = self.neighbours
                 neighbour_mask = self.neighbour_mask
@@ -436,10 +458,10 @@ class Cybertron(Cell):
             # to prevent them from becoming zero values after Norm operation,
             # which could lead to auto-differentiation errors
             if neighbour_mask is not None:
-                # (B,A,N)
+                # (B, A, N)
                 large_dis = msnp.broadcast_to(self.large_dis, neighbour_mask.shape)
                 large_dis = F.select(neighbour_mask, F.zeros_like(large_dis), large_dis)
-                # (B,A,N,D) = (B,A,N,D) + (B,A,N,1)
+                # (B, A, N, D) = (B, A, N, D) + (B, A, N, 1)
                 neigh_vec += F.expand_dims(large_dis, -1)
 
             neigh_dis = self.norm_last_dim(neigh_vec)
