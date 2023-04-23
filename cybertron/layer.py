@@ -20,10 +20,10 @@
 # limitations under the License.
 # ============================================================================
 """
-Basic Neural network module
+Basic Neural network layer
 """
 
-from typing import Union
+from typing import Union, List
 
 from mindspore import nn
 from mindspore import Tensor
@@ -49,21 +49,17 @@ class Dense(nn.Dense):
     r"""Full connected neural network layer.
 
     Args:
-        in_channels (int):          The number of channels in the input space.
+        in_channels (int): The number of channels in the input space.
 
-        out_channels (int):         The number of channels in the output space.
+        out_channels (int): The number of channels in the output space.
 
-        weight_init (Initializer):  The trainable weight_init parameter.
-                                    Default: 'xavier_uniform'
+        weight_init (Union[Initializer, str]): The trainable weight_init parameter. Default: 'xavier_uniform'
 
-        bias_init (Initializer):    The trainable bias_init parameter.
-                                    Default: 'zeros'
+        bias_init (Union[Initializer, str]): The trainable bias_init parameter. Default: 'zeros'
 
-        has_bias (bool):            Specifies whether the layer uses a bias vector.
-                                    Default: True
+        has_bias (bool): Specifies whether the layer uses a bias vector. Default: True
 
-        activation (Cell):          Activate function.
-                                    Default: None.
+        activation (Union[Cell, str]): Activation function. Default: None.
 
     """
 
@@ -92,31 +88,26 @@ class MLP(Cell):
     r"""Multi-layer perceptron
 
     Args:
-        n_in (int):                 The number of channels in the input space.
+        n_in (int): The number of channels in the input space.
 
-        n_out (int):                The number of channels in the output space.
+        n_out (int): The number of channels in the output space.
 
-        activation (Cell):          Activation function.
-                                    Default: None.
+        layer_dims (List[int]): Dimension of hidden layers.Default: None
 
-        layer_dims (list):          Dimension of hidden layers.
-                                    Default: None
+        activation (Cell): Activation function. Default: None.
 
-        weight_init (Initializer):  The trainable weight_init parameter.
-                                    Default: 'xavier_uniform'
+        weight_init (Union[Initializer, str]): The trainable weight_init parameter. Default: 'xavier_uniform'
 
-        bias_init (Initializer):    The trainable bias_init parameter.
-                                    Default: 'zeros'
+        bias_init (Union[Initializer, str]): The trainable bias_init parameter. Default: 'zeros'
 
-        use_last_activation (bool): Whether to use activation function at the last layer.
-                                    Default: False
+        use_last_activation (bool): Whether to use activation function at the last layer. Default: False
 
     """
 
     def __init__(self,
                  n_in: int,
                  n_out: int,
-                 layer_dims: list = None,
+                 layer_dims: List[int] = None,
                  activation: Union[Cell, str] = None,
                  weight_init: Union[Initializer, str] = 'xavier_uniform',
                  bias_init: Union[Initializer, str] = 'zero',
@@ -199,16 +190,16 @@ class Residual(Cell):
     r"""Residual block
 
     Args:
-        dim (int):          The number of channels in the input space.
+        dim (int): The number of channels in the input space.
 
-        activation (Cell):  Activation function.
+        activation (Union[Cell, str]): Activation function.
 
-        n_hidden (int):     Number of hidden layers. Default: 1
+        n_hidden (int): Number of hidden layers. Default: 1
 
     """
     def __init__(self,
                  dim: int,
-                 activation: Cell,
+                 activation: Union[Cell, str],
                  n_hidden: int = 1,
                  **kwargs
                  ):
@@ -245,17 +236,17 @@ class PreActDense(Cell):
     r"""Pre-activated dense layer
 
     Args:
-        dim_in (int):       Input dimension.
+        dim_in (int):  Input dimension.
 
-        dim_out (int):      output dimension.
+        dim_out (int): Output dimension.
 
-        activation (Cell):  Activation function.
+        activation (Union[Cell, str]): Activation function.
 
     """
     def __init__(self,
                  dim_in: int,
                  dim_out: int,
-                 activation: Cell,
+                 activation: Union[Cell, str],
                  **kwargs
                  ):
         super().__init__()
@@ -286,12 +277,12 @@ class PreActResidual(Cell):
     r"""Pre-activated residual block
 
     Args:
-        dim (int):          Dimension.
+        dim (int): Dimension.
 
-        activation (Cell):  Activation function.
+        activation (Union[Cell, str]): Activation function.
 
     """
-    def __init__(self, dim: int, activation: Cell, **kwargs):
+    def __init__(self, dim: int, activation: Union[Cell, str], **kwargs):
         super().__init__()
         self._kwargs = get_arguments(locals(), kwargs)
 
@@ -322,16 +313,16 @@ class SeqPreActResidual(Cell):
     r"""Sequential of pre-activated residual block
 
     Args:
-        dim (int):          The number of channels in the input space.
+        dim (int): The number of channels in the input space.
 
-        activation (Cell):  Activation function.
+        activation (Union[Cell, str]): Activation function.
 
-        n_res (int):        Number of residual blocks.
+        n_res (int): Number of residual blocks.
 
     """
     def __init__(self,
                  dim: int,
-                 activation: Cell,
+                 activation: Union[Cell, str],
                  n_res: int,
                  **kwargs
                  ):
