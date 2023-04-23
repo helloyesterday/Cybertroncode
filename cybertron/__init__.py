@@ -40,6 +40,7 @@ def _mindspore_version_check():
        Raise:
            ImportError: If the MindSpore can not be imported.
        """
+    #pylint: disable=import-outside-toplevel
 
     try:
         import mindspore
