@@ -36,9 +36,9 @@ from mindspore.common.initializer import Normal
 from mindsponge.function import get_integer, gather_vector, get_arguments
 
 from .interaction import Interaction, _interaction_register
-from ..block import Dense
-from ..block import PreActDense
-from ..block import SeqPreActResidual
+from ..layer import Dense
+from ..layer import PreActDense
+from ..layer import SeqPreActResidual
 
 
 @_interaction_register('physnet')

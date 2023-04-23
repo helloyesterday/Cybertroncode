@@ -32,7 +32,7 @@ from mindspore.ops import functional as F
 from mindsponge.function import get_integer, gather_vector, get_arguments
 
 from .interaction import Interaction, _interaction_register
-from ..block import Dense, MLP
+from ..layer import Dense, MLP
 from ..base import Aggregate
 from ..filter import DenseFilter
 

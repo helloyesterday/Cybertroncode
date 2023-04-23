@@ -1229,10 +1229,6 @@ class TrainMonitor(Callback):
         Args:
             run_context (RunContext): Include some information of the model.
         """
-        #pylint: disable=protected-access
-        cb_params: InternalCallbackParam = run_context.original_args()
-        train_network: TrainOneStepCell = cb_params.train_network
-        cells = train_network._cells
 
     def _write_ckpt_file(self, filename: str, info: str, network: TrainOneStepCell):
         """write checkpoint (.ckpt) file"""

@@ -35,7 +35,7 @@ from mindspore.common.initializer import Initializer, initializer, Constant
 
 from mindsponge.function import get_integer, get_arguments
 
-from .block import Dense, Residual
+from .layer import Dense, Residual
 from .cutoff import SmoothCutoff
 
 __all__ = [
@@ -398,7 +398,7 @@ class MultiheadAttention(Cell):
         self._kwargs = get_arguments(locals(), kwargs)
 
         # D
-        dim_tensor =get_integer(dim_tensor)
+        dim_tensor = get_integer(dim_tensor)
         if dim_tensor < 2:
             raise ValueError('dim_tensor must be larger than 1')
 

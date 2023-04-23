@@ -24,7 +24,6 @@ Extra activation function
 """
 
 import mindspore.numpy as msnp
-from mindspore import nn
 from mindspore.nn import Cell
 from mindspore.nn.layer import activation
 from mindspore.ops import operations as P
@@ -98,7 +97,7 @@ def get_activation(cls_name, **kwargs) -> Cell:
         return None
 
     if isinstance(cls_name, (Cell, Primitive, PrimitiveWithCheck,
-                                PrimitiveWithInfer, PrimitiveWithCheck)):
+                             PrimitiveWithInfer, PrimitiveWithCheck)):
         return cls_name
     if isinstance(cls_name, str):
         if cls_name.lower() == 'none':

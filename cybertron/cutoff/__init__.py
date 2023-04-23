@@ -45,6 +45,7 @@ __all__ = [
     'HardCutoff',
     'MollifierCutoff',
     'SmoothCutoff',
+    'get_cutoff',
 ]
 
 
