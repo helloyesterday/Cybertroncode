@@ -27,6 +27,7 @@ from typing import Union, Tuple
 from numpy import ndarray
 
 import mindspore as ms
+import mindspore.numpy as msnp
 from mindspore import Tensor, Parameter
 from mindspore.nn import Cell
 from mindspore.ops import functional as F
@@ -90,7 +91,7 @@ class Readout(Cell):
     def __init__(self,
                  dim_node_rep: int = None,
                  dim_edge_rep: int = None,
-                 activation: Cell = None,
+                 activation: Union[Cell, str] = None,
                  scale: Union[float, Tensor, ndarray] = 1,
                  shift: Union[float, Tensor, ndarray] = 0,
                  unit: str = None,
@@ -118,8 +119,10 @@ class Readout(Cell):
         if activation is not None:
             self.activation = get_activation(activation)
 
-        self.scale = Parameter(get_ms_array(scale, ms.float32), name='scale', requires_grad=False)
-        self.shift = Parameter(get_ms_array(shift, ms.float32), name='shift', requires_grad=False)
+        scale = msnp.broadcast_to(get_ms_array(scale, ms.float32), self.shape)
+        self.scale = Parameter(scale, name='scale', requires_grad=False)
+        shift = msnp.broadcast_to(get_ms_array(shift, ms.float32), self.shape)
+        self.shift = Parameter(shift, name='shift', requires_grad=False)
 
     @property
     def ndim(self) -> int:
@@ -183,19 +186,13 @@ class Readout(Cell):
         if scale.shape != self.shape and scale.size != 1:
             raise ValueError(f'The shape of "scale" ({scale.shape}) does not match'
                              f'the shape of output tensor ({self.shape})')
-        if scale.shape == self.scale.shape:
-            F.assign(self.scale, scale)
-        else:
-            self.scale = Parameter(scale, name='scale', requires_grad=False)
+        F.assign(self.scale, scale)
 
         shift: Tensor = get_ms_array(shift, ms.float32).reshape(-1)
-        if shift.shape != self.shape and shift.size != 1:
+        if shift.shape != self.shape:
             raise ValueError(f'The shape of "shift" ({shift.shape}) does not match'
                              f'the shape of output tensor ({self.shape})')
-        if shift.shape == self.shift.shape:
-            F.assign(self.shift, shift)
-        else:
-            self.shift = Parameter(shift, name='shift', requires_grad=False)
+        F.assign(self.shift, shift)
 
         return self
 

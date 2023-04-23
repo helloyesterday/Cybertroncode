@@ -24,9 +24,10 @@ Deep molecular model
 """
 
 from typing import Union
+from mindspore import Tensor
 from mindspore.nn import Cell
 
-from mindsponge.function import Units, GLOBAL_UNITS
+from mindsponge.function import Units, GLOBAL_UNITS, Length
 
 from .graph import GraphEmbedding, _EMBEDDING_BY_KEY
 from .molecule import MolEmbedding
@@ -46,7 +47,10 @@ _EMBEDDING_BY_NAME = {filter.__name__: filter for filter in _EMBEDDING_BY_KEY.va
 def get_embedding(cls_name: Union[GraphEmbedding, str],
                   dim_node: int,
                   dim_edge: int,
-                  activation: Cell = None,
+                  emb_dis: bool = True,
+                  emb_bond: bool = False,
+                  cutoff: Union[Length, float, Tensor] = Length(1, 'nm'),
+                  activation: Union[Cell, str] = None,
                   length_unit: Union[str, Units] = GLOBAL_UNITS.length_unit,
                   **kwargs,
                   ) -> GraphEmbedding:
@@ -67,6 +71,9 @@ def get_embedding(cls_name: Union[GraphEmbedding, str],
         if cls_name.lower() in _EMBEDDING_BY_KEY.keys():
             return _EMBEDDING_BY_KEY[cls_name.lower()](dim_node=dim_node,
                                                        dim_edge=dim_edge,
+                                                       emb_dis=emb_dis,
+                                                       emb_bond=emb_bond,
+                                                       cutoff=cutoff,
                                                        activation=activation,
                                                        length_unit=length_unit,
                                                        **kwargs

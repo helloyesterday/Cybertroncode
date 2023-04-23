@@ -24,6 +24,11 @@ Deep molecular model
 """
 
 from typing import Union
+from numpy import ndarray
+from mindspore import Tensor
+from mindspore.nn import Cell
+
+from mindsponge.function import Units
 
 from .readout import Readout, _READOUT_BY_KEY
 from .node import NodeReadout
@@ -39,13 +44,12 @@ _READOUT_BY_NAME = {out.__name__: out for out in _READOUT_BY_KEY.values()}
 
 
 def get_readout(cls_name: Union[Readout, str],
-                dim_output=1,
-                dim_node_rep=None,
-                dim_edge_rep=None,
-                activation=None,
-                scale=1,
-                shift=0,
-                unit=None,
+                dim_node_rep: int = None,
+                dim_edge_rep: int = None,
+                activation: Union[Cell, str] = None,
+                scale: Union[float, Tensor, ndarray] = 1,
+                shift: Union[float, Tensor, ndarray] = 0,
+                unit: Union[str, Units] = None,
                 **kwargs,
                 ) -> Readout:
     """get readout function
@@ -70,7 +74,6 @@ def get_readout(cls_name: Union[Readout, str],
             return None
         if cls_name.lower() in _READOUT_BY_KEY.keys():
             return _READOUT_BY_KEY[cls_name.lower()](
-                dim_output=dim_output,
                 dim_node_rep=dim_node_rep,
                 dim_edge_rep=dim_edge_rep,
                 activation=activation,
@@ -81,7 +84,6 @@ def get_readout(cls_name: Union[Readout, str],
             )
         if cls_name in _READOUT_BY_NAME.keys():
             return _READOUT_BY_NAME[cls_name](
-                dim_output=dim_output,
                 dim_node_rep=dim_node_rep,
                 dim_edge_rep=dim_edge_rep,
                 activation=activation,

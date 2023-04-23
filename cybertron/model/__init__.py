@@ -43,12 +43,6 @@ _MODEL_BY_NAME = {model.__name__: model for model in _MODEL_BY_KEY.values()}
 
 
 def get_molecular_model(cls_name: Union[MolecularGNN, str, dict],
-                        dim_feature: int = 64,
-                        n_interaction: int = 3,
-                        coupled_interaction: bool = False,
-                        use_graph_norm: bool = False,
-                        activation: Cell = None,
-                        length_unit: Union[str, Units] = None,
                         **kwargs) -> MolecularGNN:
     """get molecular model"""
     if cls_name is None or isinstance(cls_name, MolecularGNN):
@@ -61,24 +55,8 @@ def get_molecular_model(cls_name: Union[MolecularGNN, str, dict],
         if cls_name.lower() == 'none':
             return None
         if cls_name.lower() in _MODEL_BY_KEY.keys():
-            return _MODEL_BY_KEY[cls_name.lower()](
-                dim_feature=dim_feature,
-                n_interaction=n_interaction,
-                activation=activation,
-                coupled_interaction=coupled_interaction,
-                use_graph_norm=use_graph_norm,
-                length_unit=length_unit,
-                **kwargs
-            )
+            return _MODEL_BY_KEY[cls_name.lower()](**kwargs)
         if cls_name in _MODEL_BY_NAME.keys():
-            return _MODEL_BY_NAME[cls_name](
-                dim_feature=dim_feature,
-                n_interaction=n_interaction,
-                activation=activation,
-                coupled_interaction=coupled_interaction,
-                use_graph_norm=use_graph_norm,
-                length_unit=length_unit,
-                **kwargs
-            )
+            return _MODEL_BY_NAME[cls_name](**kwargs)
         raise ValueError("The MolecularGNN corresponding to '{}' was not found.".format(cls_name))
     raise TypeError("Unsupported MolecularGNN type '{}'.".format(type(cls_name)))

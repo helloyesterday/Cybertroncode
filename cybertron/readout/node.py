@@ -89,6 +89,7 @@ class NodeReadout(Readout):
     def __init__(self,
                  dim_output: int = 1,
                  dim_node_rep: int = None,
+                 dim_edge_rep: int = None,
                  activation: Union[Cell, str] = None,
                  decoder: Union[Decoder, dict, str] = 'halve',
                  aggregator: Union[NodeAggregator, dict, str] = 'default',
@@ -102,7 +103,7 @@ class NodeReadout(Readout):
                  ):
         super().__init__(
             dim_node_rep=dim_node_rep,
-            dim_edge_rep=None,
+            dim_edge_rep=(dim_node_rep if dim_edge_rep is None else dim_edge_rep),
             activation=activation,
             scale=scale,
             shift=shift,
