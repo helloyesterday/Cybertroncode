@@ -29,14 +29,13 @@ from numpy import ndarray
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import Tensor
-from mindspore.nn import Cell, CellList
+from mindspore.nn import Cell, CellList, Norm
 from mindspore.ops import functional as F
 from mindspore.ops import operations as P
 
-from mindsponge.function import concat_last_dim
 from mindsponge.function import Units, GLOBAL_UNITS
 from mindsponge.function import get_integer, get_ms_array, get_arguments
-from mindsponge.partition import IndexDistances
+from mindsponge.function import GetVector, gather_vector
 from mindsponge.partition import FullConnectNeighbours
 from mindsponge.potential import PotentialCell
 
@@ -103,6 +102,7 @@ class Cybertron(Cell):
                  use_pbc: bool = None,
                  concat_outputs: bool = None,
                  concat_axis: int = -1,
+                 large_dis: float = 5e4,
                  length_unit: Union[str, Units] = None,
                  energy_unit: Union[str, Units] = None,
                  **kwargs
@@ -170,9 +170,9 @@ class Cybertron(Cell):
         self.get_neigh_list = None
         self.pbc_box = None
         self.use_pbc = use_pbc
-        self.get_distance = None
         self.num_neighbours = None
         self.cutoff = None
+        self.large_dis = get_ms_array(large_dis, ms.float32)
 
         if self.calc_distance:
             self.cutoff = self.embedding.cutoff
@@ -189,11 +189,11 @@ class Cybertron(Cell):
                 self.pbc_box = Tensor(pbc_box, ms.float32).reshape(1, -1)
                 self.use_pbc = True
 
-            self.get_distance = IndexDistances(
-                use_pbc=self.use_pbc,
-                large_dis=self.cutoff*100,
-                keepdims=False
-            )
+            self.get_vector = GetVector(self.use_pbc)
+
+            self.large_dis = self.cutoff * 100
+
+        self.norm_last_dim = Norm(-1, False)
 
         self.activation = self.model.activation
 
@@ -241,7 +241,7 @@ class Cybertron(Cell):
                 cdim += shape_[self.concat_axis]
                 shape_[self.concat_axis] = -1
                 rest_shape.append(tuple(shape_))
-            
+
             if len(set(rest_shape)) != 1:
                 raise ValueError(f'The shape of outputs cannot be concatenated '
                                  f'with axis {self.concat_axis}: {self.output_shape}.')
@@ -262,7 +262,7 @@ class Cybertron(Cell):
     @property
     def units(self) -> Units:
         return self._units
-    
+
     @units.setter
     def units(self, units_: Units):
         self._units = units_
@@ -270,7 +270,7 @@ class Cybertron(Cell):
         if self.readout is not None:
             self.output_unit_scale = \
                 (Tensor(self.readout[i].convert_energy_to(self._units), ms.float32)
-                    for i in range(self.num_readouts))
+                 for i in range(self.num_readouts))
     @property
     def length_unit(self) -> str:
         return self._units.length_unit
@@ -287,7 +287,6 @@ class Cybertron(Cell):
     def energy_unit(self, energy_unit_: Union[str, Units]):
         self.set_energy_unit(energy_unit_)
 
-    
     @property
     def model_name(self) -> str:
         return self.model.cls_name
@@ -357,7 +356,6 @@ class Cybertron(Cell):
             print(ret+" "+str(i)+(". "+self.readout[i].cls_name))
             self.readout[i].print_info(
                 num_retraction=num_retraction, num_gap=num_gap, char=char)
-       
         print(ret+" Output unit for Cybertron: "+self._units.energy_unit_name)
         print(ret+" Output unit scale: "+str(self.output_unit_scale))
         print("================================================================================")
@@ -418,25 +416,44 @@ class Cybertron(Cell):
             atom_type = self.atom_type
             atom_mask = self.atom_mask
 
-        distance = None
+        neigh_dis = None
+        neigh_vec = None
         if coordinate is not None:
             if neighbours is None:
                 neighbours = self.neighbours
                 neighbour_mask = self.neighbour_mask
                 if self.atom_type is None:
-                    neighbours, neighbour_mask = self.get_neigh_list(atom_mask)    
+                    neighbours, neighbour_mask = self.get_neigh_list(atom_mask)
             if self.pbc_box is not None:
                 pbc_box = self.pbc_box
-            distance = self.get_distance(coordinate, neighbours, neighbour_mask, pbc_box) * self.input_unit_scale
+
+            # (B, A, N, D) <- (B, A, N, D)
+            neigh_pos = gather_vector(coordinate, neighbours)
+            # (B, A, N, D) = (B, A, N, D) - (B, A, 1, D)
+            neigh_vec = self.get_vector(F.expand_dims(coordinate, -2), neigh_pos, pbc_box)
+
+            # Add a non-zero value to the neighbour_vector whose mask value is False
+            # to prevent them from becoming zero values after Norm operation,
+            # which could lead to auto-differentiation errors
+            if neighbour_mask is not None:
+                # (B,A,N)
+                large_dis = msnp.broadcast_to(self.large_dis, neighbour_mask.shape)
+                large_dis = F.select(neighbour_mask, F.zeros_like(large_dis), large_dis)
+                # (B,A,N,D) = (B,A,N,D) + (B,A,N,1)
+                neigh_vec += F.expand_dims(large_dis, -1)
+
+            neigh_dis = self.norm_last_dim(neigh_vec)
 
         node_emb, node_mask, edge_emb, \
             edge_mask, edge_cutoff, edge_self = self.embedding(atom_type=atom_type,
                                                                atom_mask=atom_mask,
+                                                               neigh_dis=neigh_dis,
+                                                               neigh_vec=neigh_vec,
                                                                neigh_list=neighbours,
-                                                               distance=distance,
-                                                               dis_mask=neighbour_mask,
+                                                               neigh_mask=neighbour_mask,
                                                                bond=bonds,
-                                                               bond_mask=bond_mask)
+                                                               bond_mask=bond_mask,
+                                                               )
 
         node_rep, edge_rep = self.model(node_emb=node_emb,
                                         node_mask=node_mask,
@@ -444,7 +461,8 @@ class Cybertron(Cell):
                                         edge_emb=edge_emb,
                                         edge_mask=edge_mask,
                                         edge_cutoff=edge_cutoff,
-                                        edge_self=edge_self)
+                                        edge_self=edge_self,
+                                        )
 
         if self.readout is None:
             return node_rep, node_rep
@@ -452,25 +470,28 @@ class Cybertron(Cell):
         outputs = ()
         for i in range(self.num_readouts):
             outputs += (self.readout[i](node_rep=node_rep,
-                                edge_rep=edge_rep,
-                                node_emb=node_emb,
-                                atom_type=atom_type,
-                                atom_mask=atom_mask,
-                                distance=distance,
-                                neighbours=neighbours,
-                                neighbour_mask=neighbour_mask,
-                                ) * self.output_unit_scale[i]
-                                ,)
+                                        edge_rep=edge_rep,
+                                        node_emb=node_emb,
+                                        atom_type=atom_type,
+                                        atom_mask=atom_mask,
+                                        neigh_dis=neigh_dis,
+                                        neigh_vec=neigh_vec,
+                                        neigh_list=neighbours,
+                                        neigh_mask=neighbour_mask,
+                                        bond=bonds,
+                                        bond_mask=bond_mask,
+                                        ) * self.output_unit_scale[i],
+                        )
 
         if self.concat_outputs:
             outputs = self.concat(outputs)
         elif self.num_readouts == 1:
             outputs = outputs[0]
-        
+
         return outputs
 
 
-class CybertronFF(Cybertron, PotentialCell):
+class CybertronFF(PotentialCell):
     """Cybertron as potential for Mindmindsponge.
 
     Args:
@@ -505,8 +526,6 @@ class CybertronFF(Cybertron, PotentialCell):
         N:  Number of neighbour atoms.
 
         D:  Dimension of position coordinates, usually is 3.
-
-        O:  Output dimension of the predicted properties.
 
     """
     def __init__(self,
