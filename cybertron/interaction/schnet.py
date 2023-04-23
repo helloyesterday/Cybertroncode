@@ -113,18 +113,13 @@ class SchNetInteraction(Interaction):
         # (B, A, N, W)
         x_ij = gather_vector(ax, neigh_list)
 
-        # (B, A, N, K)
-        g_ij = edge_vec
         # (B, A, N, W) <- (B, A, N, K)
         g_ij = self.filter_net(edge_vec)
-
-        # CFconv: pass expanded interactomic distances through filter block
         # (B, A, N, W) * (B, A, N, 1)
         w_ij = g_ij * F.expand_dims(edge_cutoff, -1)
         # (B, A, N, W) * (B, A, N, W)
         y = x_ij * w_ij
 
-        # atom-wise multiplication, aggregating and Dense layer
         # (B, A, W) <- (B, A, N, W)
         y = self.agg(y, edge_mask)
         # (B, A, F) <- (B, A, W)
