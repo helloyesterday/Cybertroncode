@@ -118,7 +118,7 @@ class NodeReadout(Readout):
         if mode.lower() in ['atomwise', 'a']:
             self.atomwise_readout = True
         elif mode.lower() in ['graph', 'set2set', 'g']:
-            self.atomwise_readout = True
+            self.atomwise_readout = False
         else:
             self.atomwise_readout = None
             raise ValueError(f'Unknown mode: {mode}')
@@ -140,8 +140,6 @@ class NodeReadout(Readout):
         self.aggregator = get_node_aggregator(aggregator, self.dim_output, axis)
 
         self.axis = get_integer(axis)
-
-        self.reduce_sum = P.ReduceSum()
 
         self.type_ref = None
         if type_ref is not None:
@@ -275,7 +273,6 @@ class NodeReadout(Readout):
                     y += F.gather(self.type_ref, atom_type, 0)
                 # (B, Y) <- (B, A, Y)
                 y = self.aggregator(y, atom_mask, num_atoms)
-
         else:
             y = self.aggregator(node_rep, atom_mask, num_atoms)
 
@@ -286,6 +283,158 @@ class NodeReadout(Readout):
 
             if self.type_ref is not None:
                 ref = F.gather(self.type_ref, atom_type, 0)
-                y += self.reduce_sum(ref, self.axis)
+                y += F.reduce_sum(ref, self.axis)
 
         return y
+
+
+@_readout_register('atomwise')
+class AtomwiseReadout(NodeReadout):
+    r"""
+    Readout function
+
+    Args:
+
+        dim_output (int):           Output dimension.
+
+        activation (Cell):          Activation function
+
+        decoder (str):              Decoder network for atom representation. Default: 'halve'
+
+        aggregator (str):           Aggregator network for atom representation. Default: 'sum'
+
+        scale (float):              Scale value for output. Default: 1
+
+        shift (float):              Shift value for output. Default: 0
+
+        type_ref (Tensor):          Tensor of shape `(T, Y)`. Data type is float.
+                                    Reference value for atom types. Default: None
+
+        atomwise_scaleshift (bool): To use atomwise scaleshift (True) or graph scaleshift (False).
+                                    Default: False
+
+        axis (int):                 Axis to readout. Default: -2
+
+        n_decoder_layers (list):    number of neurons in each hidden layer of the decoder network.
+                                    Default: 1
+
+        energy_unit (str):          Energy unit of output. Default: None
+
+        hyper_param (dict):         Hyperparameter. Default: None
+
+    Symbols:
+
+        B:  Batch size.
+
+        A:  Number of atoms.
+
+        T:  Number of atom types.
+
+        Y:  Output dimension.
+
+    """
+
+    def __init__(self,
+                 dim_output: int = 1,
+                 dim_node_rep: int = None,
+                 activation: Union[Cell, str] = None,
+                 decoder: Union[Decoder, dict, str] = 'halve',
+                 aggregator: Union[NodeAggregator, dict, str] = 'sum',
+                 scale: float = 1,
+                 shift: float = 0,
+                 type_ref: Tensor = None,
+                 axis: int = -2,
+                 energy_unit: str = None,
+                 **kwargs,
+                 ):
+        super().__init__(
+            dim_output=dim_output,
+            dim_node_rep=dim_node_rep,
+            dim_edge_rep=dim_node_rep,
+            activation=activation,
+            decoder=decoder,
+            aggregator=aggregator,
+            scale=scale,
+            shift=shift,
+            type_ref=type_ref,
+            axis=axis,
+            mode='atomwsie',
+            energy_unit=energy_unit,
+        )
+        self._kwargs = get_arguments(locals(), kwargs)
+
+
+@_readout_register('graph')
+class GraphReadout(NodeReadout):
+    r"""
+    Readout function
+
+    Args:
+
+        dim_output (int):           Output dimension.
+
+        activation (Cell):          Activation function
+
+        decoder (str):              Decoder network for atom representation. Default: 'halve'
+
+        aggregator (str):           Aggregator network for atom representation. Default: 'sum'
+
+        scale (float):              Scale value for output. Default: 1
+
+        shift (float):              Shift value for output. Default: 0
+
+        type_ref (Tensor):          Tensor of shape `(T, Y)`. Data type is float.
+                                    Reference value for atom types. Default: None
+
+        atomwise_scaleshift (bool): To use atomwise scaleshift (True) or graph scaleshift (False).
+                                    Default: False
+
+        axis (int):                 Axis to readout. Default: -2
+
+        n_decoder_layers (list):    number of neurons in each hidden layer of the decoder network.
+                                    Default: 1
+
+        energy_unit (str):          Energy unit of output. Default: None
+
+        hyper_param (dict):         Hyperparameter. Default: None
+
+    Symbols:
+
+        B:  Batch size.
+
+        A:  Number of atoms.
+
+        T:  Number of atom types.
+
+        Y:  Output dimension.
+
+    """
+
+    def __init__(self,
+                 dim_output: int = 1,
+                 dim_node_rep: int = None,
+                 activation: Union[Cell, str] = None,
+                 decoder: Union[Decoder, dict, str] = 'halve',
+                 aggregator: Union[NodeAggregator, dict, str] = 'mean',
+                 scale: float = 1,
+                 shift: float = 0,
+                 type_ref: Tensor = None,
+                 axis: int = -2,
+                 energy_unit: str = None,
+                 **kwargs,
+                 ):
+        super().__init__(
+            dim_output=dim_output,
+            dim_node_rep=dim_node_rep,
+            dim_edge_rep=dim_node_rep,
+            activation=activation,
+            decoder=decoder,
+            aggregator=aggregator,
+            scale=scale,
+            shift=shift,
+            type_ref=type_ref,
+            axis=axis,
+            mode='graph',
+            energy_unit=energy_unit,
+        )
+        self._kwargs = get_arguments(locals(), kwargs)

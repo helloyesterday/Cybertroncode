@@ -31,11 +31,13 @@ from mindspore.nn import Cell
 from mindsponge.function import Units
 
 from .readout import Readout, _READOUT_BY_KEY
-from .node import NodeReadout
+from .node import NodeReadout, AtomwiseReadout, GraphReadout
 
 __all__ = [
     'Readout',
     'NodeReadout',
+    'AtomwiseReadout',
+    'GraphReadout',
     'get_readout'
 ]
 
