@@ -31,12 +31,12 @@ import mindspore.numpy as msnp
 from mindspore import Tensor
 from mindspore.nn import Cell, CellList, Norm
 from mindspore.ops import functional as F
-from mindspore.ops import operations as P
+from mindspore import ops
 
 from mindsponge.function import Units, GLOBAL_UNITS
-from mindsponge.function import get_integer, get_ms_array, get_arguments
+from mindsponge.function import get_integer, get_arguments
 from mindsponge.function import GetVector, gather_vector
-from mindsponge.partition import FullConnectNeighbours, IndexDistances
+from mindsponge.partition import FullConnectNeighbours
 from mindsponge.potential import PotentialCell
 
 from .embedding import GraphEmbedding, get_embedding
@@ -93,7 +93,7 @@ class Cybertron(Cell):
 
     def __init__(self,
                  model: Union[MolecularGNN, dict, str],
-                 embedding: Union[GraphEmbedding, dict, str] = 'molecule',
+                 embedding: Union[GraphEmbedding, dict, str] = None,
                  readout: Union[Readout, dict, str, List[Readout]] = 'node',
                  num_atoms: int = None,
                  atom_type: Union[Tensor, ndarray, List[int]] = None,
@@ -147,17 +147,21 @@ class Cybertron(Cell):
         dim_edge_emb = model.dim_edge_emb
         self.activation = model.activation
 
+        if embedding is None:
+            embedding = model.default_embedding
+
         self.embedding = get_embedding(embedding,
                                        dim_node=dim_node_emb,
                                        dim_edge=dim_edge_emb,
                                        activation=self.activation,
                                        length_unit=length_unit
                                        )
+
         self.dim_node_emb = self.embedding.dim_node
         self.dim_edge_emb = self.embedding.dim_edge
 
+        model.set_dimension(self.dim_node_emb, self.dim_edge_emb)
         self.model = model
-        self.model.set_dimension(self.dim_node_emb, self.dim_edge_emb)
 
         self.dim_node_rep = self.model.dim_node_rep
         self.dim_edge_rep = self.model.dim_edge_rep
@@ -218,14 +222,15 @@ class Cybertron(Cell):
             else:
                 readout = None
                 raise TypeError(f'Unsupported `readout` type: {type(readout)}')
-            self.readout = CellList(readout)
 
             self.output_ndim = []
             self.output_shape = []
             for i in range(self.num_outputs):
-                self.readout[i].set_dimension(self.dim_node_rep, self.dim_edge_rep)
-                self.output_ndim.append(self.readout[i].ndim)
-                self.output_shape.append(self.readout[i].shape)
+                readout[i].set_dimension(self.dim_node_rep, self.dim_edge_rep)
+                self.output_ndim.append(readout[i].ndim)
+                self.output_shape.append(readout[i].shape)
+
+            self.readout = CellList(readout)
 
         self.concat_outputs = concat_outputs
         self.concat_axis = get_integer(concat_axis)
@@ -262,7 +267,7 @@ class Cybertron(Cell):
         self.output_unit_scale = [Tensor(self.readout[i].convert_energy_to(self._units), ms.float32)
                                   for i in range(self.num_readouts)]
 
-        self.concat = P.Concat(self.concat_axis)
+        self.concat = ops.Concat(self.concat_axis)
 
     @property
     def units(self) -> Units:
@@ -338,9 +343,9 @@ class Cybertron(Cell):
         print("================================================================================")
         print("Cybertron Engine, Ride-on!")
         print('-'*80)
-        print(f'{ret} Length unit: {self._units.length_unit_name}')
-        print(f'{ret} Input unit scale: {self.input_unit_scale}')
-        if self.atom_type is not None:
+        if self.atom_type is None:
+            print(f'{ret} Using variable atom types with maximum number of atoms: {self.num_atoms}')
+        else:
             print(f'{ret} Using fixed atom type index:')
             for i, atom in enumerate(self.atom_type[0]):
                 print(ret+gap+' Atom {: <7}'.format(str(i))+f': {atom.asnumpy()}')
@@ -352,6 +357,8 @@ class Cybertron(Cell):
             for m in self.bond_mask[0]:
                 print(ret+gap+' '+str(m.asnumpy()))
         print('-'*80)
+        self.embedding.print_info(num_retraction=num_retraction,
+                                  num_gap=num_gap, char=char)
         self.model.print_info(num_retraction=num_retraction,
                               num_gap=num_gap, char=char)
 
@@ -361,8 +368,11 @@ class Cybertron(Cell):
             print(ret+" "+str(i)+(". "+self.readout[i].cls_name))
             self.readout[i].print_info(
                 num_retraction=num_retraction, num_gap=num_gap, char=char)
-        print(ret+f" Output unit for Cybertron: {self._units.energy_unit_name}")
-        print(ret+f" Output unit scale:")
+            
+        print(f'{ret} Input unit: {self._units.length_unit_name}')
+        print(f'{ret} Output unit: {self._units.energy_unit_name}')
+        print(f'{ret} Input unit scale: {self.input_unit_scale}')
+        print(f'{ret} output unit scale:')
         for i in range(self.num_readouts):
             print(ret+gap+f" Readout {i}: {self.output_unit_scale[i]}")
         print("================================================================================")
