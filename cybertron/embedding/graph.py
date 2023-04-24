@@ -78,7 +78,6 @@ class GraphEmbedding(nn.Cell):
                  dim_edge: int,
                  emb_dis: bool = True,
                  emb_bond: bool = False,
-                 cutoff: Union[Length, float, Tensor] = Length(1, 'nm'),
                  activation: Union[Cell, str] = None,
                  length_unit: Union[str, Units] = GLOBAL_UNITS.length_unit,
                  **kwargs,
@@ -96,7 +95,7 @@ class GraphEmbedding(nn.Cell):
         self._dim_node = get_integer(dim_node)
         self._dim_edge = get_integer(dim_edge)
 
-        self.cutoff = get_ms_array(get_length(cutoff, self.units), ms.float32)
+        self.cutoff = None
 
         self.activation = get_activation(activation)
 
@@ -109,6 +108,19 @@ class GraphEmbedding(nn.Cell):
     def dim_edge(self) -> int:
         r"""dimension of edge embedding vectors"""
         return self._dim_edge
+    
+    def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
+        """print the information of molecular model"""
+        ret = char * num_retraction
+        gap = char * num_gap
+        print(ret+f' Graph Embedding: {self.cls_name}')
+        print('-'*80)
+        print(ret+gap+f' Length unit: {self.units.length_unit}')
+        print(ret+gap+f' Embedding distance: {self.emb_dis}')
+        print(ret+gap+f' Embedding Bond: {self.emb_bond}')
+        print(ret+gap+f' Dimension of node embedding vector: {self.dim_node}')
+        print(ret+gap+f' Dimension of edge embedding vector: {self.dim_edge}')
+        print('-'*80)
 
     def convert_length_from(self, unit: Union[str, Units]) -> float:
         """returns a scale factor that converts the length from a specified unit."""

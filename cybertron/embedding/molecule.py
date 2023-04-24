@@ -90,7 +90,6 @@ class MolEmbedding(GraphEmbedding):
             dim_edge=dim_node if dim_edge is None else dim_edge,
             emb_dis=emb_dis,
             emb_bond=emb_bond,
-            cutoff=cutoff,
             activation=activation,
             length_unit=length_unit,
         )
@@ -104,9 +103,12 @@ class MolEmbedding(GraphEmbedding):
                                            use_one_hot=True,
                                            embedding_table=self.initializer)
 
-        self.cutoff_fn = get_cutoff(cutoff_fn, cutoff)
+        self.cutoff = get_length(cutoff, self.units)
+        self.cutoff_fn = get_cutoff(cutoff_fn, self.cutoff)
         if self.cutoff_fn is not None:
             self.cutoff = self.cutoff_fn.cutoff
+        if self.cutoff is not None:
+            self.cutoff = get_ms_array(self.cutoff, ms.float32)
 
         dis_self = get_length(dis_self, self.units)
         # (1)
@@ -156,6 +158,25 @@ class MolEmbedding(GraphEmbedding):
         if self.emb_dis and self.dis_filter is None:
             return self.num_basis
         return self._dim_edge
+    
+    def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
+        """print the information of molecular model"""
+        ret = char * num_retraction
+        gap = char * num_gap
+        print(ret+f' Graph Embedding: {self.cls_name}')
+        print('-'*80)
+        print(ret+gap+f' Length unit: {self.units.length_unit}')
+        print(ret+gap+f' Atom embedding size: {self.num_atom_types}')
+        print(ret+gap+f' Cutoff distance: {self.cutoff} {self.units.length_unit}')
+        print(ret+gap+f' Cutoff function: {self.cutoff_fn.cls_name}')
+        print(ret+gap+f' Radical basis functions: {self.rbf_fn.cls_name}')
+        self.rbf_fn.print_info(num_retraction=num_retraction +
+                               num_gap, num_gap=num_gap, char=char)
+        print(ret+gap+f' Embedding distance: {self.emb_dis}')
+        print(ret+gap+f' Embedding Bond: {self.emb_bond}')
+        print(ret+gap+f' Dimension of node embedding vector: {self.dim_node}')
+        print(ret+gap+f' Dimension of edge embedding vector: {self.dim_edge}')
+        print('-'*80)
 
     def get_rbf(self, distances: Tensor):
         """get radical basis function"""
