@@ -33,6 +33,7 @@ from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 
 from mindsponge.function import get_integer, gather_vector, get_arguments
+from mindsponge.function import concat_last_dim, squeeze_penulti
 
 from .interaction import Interaction, _interaction_register
 from ..base import PositionalEmbedding
@@ -122,10 +123,6 @@ class NeuralInteractionUnit(Interaction):
             self.pondering = Pondering(dim_feature*3, bias_const=3)
             self.act_weight = ACTWeight(self.act_threshold)
 
-        self.concat = P.Concat(-1)
-        self.zeros_like = P.ZerosLike()
-        self.zeros = P.Zeros()
-
     @staticmethod
     def get_time_signal(length, channels, min_timescale=1.0, max_timescale=1.0e4) -> Tensor:
         """
@@ -164,7 +161,6 @@ class NeuralInteractionUnit(Interaction):
             print(ret+gap+' Cycle mode: ' +
                   ('Fixed' if self.fixed_cycles else 'Fixible'))
             print(ret+gap+' Threshold for ACT: '+str(self.act_threshold))
-        print('-'*80)
         return self
 
     def construct(self,
@@ -195,7 +191,7 @@ class NeuralInteractionUnit(Interaction):
                 node_vec, node_mat, edge_self, edge_vec, time_signal)
             dv = self.multi_head_attention(
                 query, key, value, mask=edge_mask, cutoff=edge_cutoff)
-            dv = F.squeeze(dv, -2)
+            dv = squeeze_penulti(dv)
 
             node_new = node_vec + dv
 
@@ -204,63 +200,80 @@ class NeuralInteractionUnit(Interaction):
 
             return node_new
 
-        edge_vec0 = edge_vec
-
         if self.do_act:
-            xx = node_vec
-            node_new = self.zeros_like(node_vec)
+            def _act_encoder(node_new: Tensor,
+                             node_vec: Tensor,
+                             node_emb: Tensor,
+                             neigh_list: Tensor,
+                             edge_vec: Tensor,
+                             edge_mask: Tensor,
+                             edge_cutoff: Tensor,
+                             edge_self: Tensor,
+                             halting_prob: Tensor,
+                             n_updates: Tensor,
+                             cycle: int,
+                             ) -> Tensor:
 
-            halting_prob = self.zeros((node_vec.shape[0], node_vec.shape[1]), ms.float32)
-            n_updates = self.zeros((node_vec.shape[0], node_vec.shape[1]), ms.float32)
+                time_signal = self.time_embedding[cycle]
+                vt = F.zeros_like(node_emb) + time_signal
 
-            broad_zeros = self.zeros_like(node_emb)
+                xp = concat_last_dim((node_vec, node_emb, vt))
+                p = self.pondering(xp)
+                w, dp, dn = self.act_weight(p, halting_prob)
+                halting_prob = halting_prob + dp
+                n_updates = n_updates + dn
+
+                node_vec = _encoder(
+                    node_vec=node_vec,
+                    neigh_list=neigh_list,
+                    edge_vec=edge_vec,
+                    edge_mask=edge_mask,
+                    edge_cutoff=edge_cutoff,
+                    edge_self=edge_self,
+                    time_signal=time_signal
+                    )
+
+                node_new = node_vec * w + node_new * (1.0 - w)
+
+                return node_new, node_vec, halting_prob, n_updates
+
+            node_new = F.zeros_like(node_vec)
+
+            halting_prob = F.zeros((node_vec.shape[0], node_vec.shape[1]), ms.float32)
+            n_updates = F.zeros((node_vec.shape[0], node_vec.shape[1]), ms.float32)
 
             if self.fixed_cycles:
                 for cycle in range(self.max_cycles):
-                    time_signal = self.time_embedding[cycle]
-                    vt = broad_zeros + time_signal
-
-                    xp = self.concat((xx, node_emb, vt))
-                    p = self.pondering(xp)
-                    w, dp, dn = self.act_weight(p, halting_prob)
-                    halting_prob = halting_prob + dp
-                    n_updates = n_updates + dn
-
-                    xx = _encoder(node_vec=xx,
-                                  neigh_list=neigh_list,
-                                  edge_vec=edge_vec,
-                                  edge_mask=edge_mask,
-                                  edge_cutoff=edge_cutoff,
-                                  edge_self=edge_self,
-                                  time_signal=time_signal
-                                  )
-
-                    cycle = cycle + 1
-
-                    node_new = xx * w + node_new * (1.0 - w)
+                    node_new, node_vec, halting_prob, n_updates = _act_encoder(
+                        node_new=node_new,
+                        node_vec=node_vec,
+                        node_emb=node_emb,
+                        neigh_list=neigh_list,
+                        edge_vec=edge_vec,
+                        edge_mask=edge_mask,
+                        edge_cutoff=edge_cutoff,
+                        edge_self=edge_self,
+                        halting_prob=halting_prob,
+                        n_updates=n_updates,
+                        cycle=cycle,
+                        )
             else:
-                cycle = self.zeros((), ms.int32)
+                cycle = F.zeros((), ms.int32)
                 while((halting_prob < self.act_threshold).any() and (cycle < self.max_cycles)):
-                    time_signal = self.time_embedding[cycle]
-                    vt = broad_zeros + time_signal
-                    xp = self.concat((xx, node_emb, vt))
-                    p = self.pondering(xp)
-                    w, dp, dn = self.act_weight(p, halting_prob)
-                    halting_prob = halting_prob + dp
-                    n_updates = n_updates + dn
-
-                    xx = _encoder(node_vec=xx,
-                                  neigh_list=neigh_list,
-                                  edge_vec=edge_vec,
-                                  edge_mask=edge_mask,
-                                  edge_cutoff=edge_cutoff,
-                                  edge_self=edge_self,
-                                  time_signal=time_signal
-                                  )
-
+                    node_new, node_vec, halting_prob, n_updates = _act_encoder(
+                        node_new=node_new,
+                        node_vec=node_vec,
+                        node_emb=node_emb,
+                        neigh_list=neigh_list,
+                        edge_vec=edge_vec,
+                        edge_mask=edge_mask,
+                        edge_cutoff=edge_cutoff,
+                        edge_self=edge_self,
+                        halting_prob=halting_prob,
+                        n_updates=n_updates,
+                        cycle=cycle,
+                        )
                     cycle = cycle + 1
-
-                    node_new = xx * w + node_new * (1.0 - w)
         else:
             time_signal = self.time_embedding[0]
             node_new = _encoder(node_vec=node_vec,
@@ -272,4 +285,4 @@ class NeuralInteractionUnit(Interaction):
                                 time_signal=time_signal
                                 )
 
-        return node_new, edge_vec0
+        return node_new, edge_vec
