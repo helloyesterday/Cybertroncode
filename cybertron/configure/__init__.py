@@ -2,9 +2,10 @@
 #                       Peking University &
 #                       Huawei Technologies Co., Ltd
 #
-# This code is a part of Cybertron package.
+# This code is a part of MindSPONGE:
+# MindSpore Simulation Package tOwards Next Generation molecular modelling.
 #
-# The Cybertron is open-source software based on the AI-framework:
+# MindSPONGE is open-source software based on the AI-framework:
 # MindSpore (https://www.mindspore.cn/)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,5 +21,13 @@
 # limitations under the License.
 # ============================================================================
 """
-Template files
+Configure
 """
+
+from .configure import get_configure
+from .embedding import get_embedding_config
+
+__all__ = [
+    'get_configure',
+    'get_embedding_config',
+]
