@@ -26,7 +26,7 @@ Loss functions
 import mindspore as ms
 from mindspore import Tensor
 from mindspore.nn.loss.loss import LossBase
-from mindspore.ops import operations as P
+from mindspore import ops
 from mindspore.ops import functional as F
 
 
@@ -73,9 +73,6 @@ class LossWithEnergyAndForces(LossBase):
         self.norm = 1
         if self.ratio_normlize:
             self.norm = ratio_energy + ratio_forces
-
-        self.reduce_mean = P.ReduceMean()
-        self.reduce_sum = P.ReduceSum()
 
     def _calc_loss(self, diff: Tensor) -> Tensor:
         """calculate loss function"""
@@ -134,19 +131,19 @@ class LossWithEnergyAndForces(LossBase):
             fdiff = (pred_forces - label_forces) * self.force_dis
             fdiff = self._calc_loss(fdiff)
             # (B,A)
-            fdiff = self.reduce_sum(fdiff, -1)
+            fdiff = F.reduce_sum(fdiff, -1)
 
             if atom_mask is None:
-                floss = self.reduce_mean(fdiff, -1)
+                floss = F.reduce_mean(fdiff, -1)
             else:
                 fdiff = fdiff * atom_mask
-                floss = self.reduce_sum(fdiff, -1)
+                floss = F.reduce_sum(fdiff, -1)
                 floss = floss / num_atoms
 
         y = (eloss * self.ratio_energy + floss * self.ratio_forces) / self.norm
 
         natoms = F.cast(num_atoms, pred_energy.dtype)
-        weights = natoms / self.reduce_mean(natoms)
+        weights = natoms / F.reduce_mean(natoms)
 
         return self.get_loss(y, weights)
 
@@ -184,10 +181,8 @@ class MAELoss(LossWithEnergyAndForces):
             reduction=reduction,
         )
 
-        self.abs = P.Abs()
-
     def _calc_loss(self, diff: Tensor) -> Tensor:
-        return self.abs(diff)
+        return F.abs(diff)
 
 
 class MSELoss(LossWithEnergyAndForces):
@@ -223,10 +218,8 @@ class MSELoss(LossWithEnergyAndForces):
             reduction=reduction,
         )
 
-        self.square = P.Square()
-
     def _calc_loss(self, diff: Tensor) -> Tensor:
-        return self.square(diff)
+        return F.square(diff)
 
 
 class CrossEntropyLoss(LossBase):
@@ -247,10 +240,9 @@ class CrossEntropyLoss(LossBase):
         super().__init__(reduction)
 
         self.sigmoid = None
-        if use_sigmoid:
-            self.sigmoid = P.Sigmoid()
+        self.use_sigmoid = self.use_sigmoid
 
-        self.cross_entropy = P.BinaryCrossEntropy(reduction)
+        self.cross_entropy = ops.BinaryCrossEntropy(reduction)
 
     def construct(self, pos_pred: Tensor, neg_pred: Tensor):
         """calculate cross entropy loss function
@@ -263,9 +255,9 @@ class CrossEntropyLoss(LossBase):
             loss (Tensor):      Loss function with same shape of samples
 
         """
-        if self.sigmoid is not None:
-            pos_pred = self.sigmoid(pos_pred)
-            neg_pred = self.sigmoid(neg_pred)
+        if self.use_sigmoid:
+            pos_pred = F.sigmoid(pos_pred)
+            neg_pred = F.sigmoid(neg_pred)
 
         pos_loss = self.cross_entropy(pos_pred, F.ones_like(pos_pred))
         neg_loss = self.cross_entropy(neg_pred, F.zeros_like(neg_pred))

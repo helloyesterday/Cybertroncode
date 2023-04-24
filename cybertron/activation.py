@@ -26,7 +26,7 @@ Extra activation function
 import mindspore.numpy as msnp
 from mindspore.nn import Cell
 from mindspore.nn.layer import activation
-from mindspore.ops import operations as P
+from mindspore import ops
 from mindspore.ops.primitive import Primitive, PrimitiveWithInfer, PrimitiveWithCheck
 
 __all__ = [
@@ -51,9 +51,7 @@ class ShiftedSoftplus(Cell):
 
     def __init__(self):
         super().__init__()
-        # self.softplus = P.Softplus()
-        self.log1p = P.Log1p()
-        self.exp = P.Exp()
+        # self.softplus = ops.Softplus()
         self.log2 = msnp.log(2.0)
 
     def __str__(self):
@@ -61,7 +59,7 @@ class ShiftedSoftplus(Cell):
 
     def construct(self, x):
         # return self.softplus(x) - self.log2
-        return self.log1p(self.exp(x)) - self.log2
+        return ops.log1p(ops.exp(x)) - self.log2
 
 
 _ACTIVATIONS_BY_KEY = {

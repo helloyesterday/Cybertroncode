@@ -30,9 +30,10 @@ from numpy import ndarray
 import mindspore as ms
 from mindspore import Tensor
 from mindspore.ops import operations as P
+from mindspore.ops import functional as F
 
 from mindsponge.function import get_arguments
-from mindsponge.function import Units, Length
+from mindsponge.function import Units, Length, PI
 
 from .cutoff import Cutoff, _cutoff_register
 
@@ -64,9 +65,7 @@ class CosineCutoff(Cutoff):
             )
         self._kwargs = get_arguments(locals(), kwargs)
 
-        self.pi = Tensor(math.pi, ms.float32)
-        self.cos = P.Cos()
-        self.logical_and = P.LogicalAnd()
+        self.pi = Tensor(PI, ms.float32)
 
     def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
         """Compute cutoff.
@@ -80,11 +79,11 @@ class CosineCutoff(Cutoff):
 
         """
 
-        cuts = 0.5 * (self.cos(distances * self.pi * self.inv_cutoff) + 1.0)
+        cuts = 0.5 * (F.cos(distances * self.pi * self.inv_cutoff) + 1.0)
 
         mask = distances < self.cutoff
         if neighbour_mask is not None:
-            mask = self.logical_and(mask, neighbour_mask)
+            mask = F.logical_and(mask, neighbour_mask)
 
         # Remove contributions beyond the cutoff radius
         cutoffs = cuts * mask

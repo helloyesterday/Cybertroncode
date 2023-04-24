@@ -28,6 +28,8 @@ from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.ops import composite as C
 
+from mindsponge.function import keepdims_sum
+
 from .cell import WithCell
 from ..cybertron import Cybertron
 
@@ -118,7 +120,7 @@ class WithForceLossCell(WithCell):
             atom_type = self.atom_type
 
         num_atoms = F.cast(atom_type > 0, out.dtype)
-        num_atoms = self.keep_sum(num_atoms, -1)
+        num_atoms = keepdims_sum(num_atoms, -1)
 
         if atom_type is None:
             return self._loss_fn(out, energy, fout, forces)
@@ -191,6 +193,6 @@ class WithLabelLossCell(WithCell):
             atom_type = self.atom_type
 
         num_atoms = F.cast(atom_type > 0, out.dtype)
-        num_atoms = self.keep_sum(num_atoms, -1)
+        num_atoms = keepdims_sum(num_atoms, -1)
 
         return self._loss_fn(out, label)

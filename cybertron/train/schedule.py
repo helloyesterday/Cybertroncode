@@ -61,11 +61,8 @@ class TransformerLR(LearningRateSchedule):
 
         self.learning_rate = learning_rate
 
-        self.pow = P.Pow()
         self.warmup_steps = F.cast(warmup_steps, ms.float32)
         self.dimension = F.cast(dimension, ms.float32)
-
-        self.min = P.Minimum()
 
     def construct(self, global_step: int):
         """Calculate the learning rate at current step.
@@ -78,9 +75,9 @@ class TransformerLR(LearningRateSchedule):
 
         """
         step_num = F.cast(global_step, ms.float32)
-        warmup_scale = self.pow(self.warmup_steps, -1.5)
-        dim_scale = self.pow(self.dimension, -0.5)
-        lr1 = self.pow(step_num, -0.5)
+        warmup_scale = F.pow(self.warmup_steps, -1.5)
+        dim_scale = F.pow(self.dimension, -0.5)
+        lr1 = F.pow(step_num, -0.5)
         lr2 = step_num*warmup_scale
-        lr_percent = dim_scale * self.min(lr1, lr2)
+        lr_percent = dim_scale * F.min(lr1, lr2)
         return self.learning_rate * lr_percent

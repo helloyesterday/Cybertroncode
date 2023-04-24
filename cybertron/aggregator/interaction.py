@@ -29,12 +29,12 @@ import mindspore as ms
 from mindspore import Tensor
 from mindspore import nn
 from mindspore.nn import Cell
-from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
 
 from mindsponge.function import get_arguments
+from mindsponge.function import concat_last_dim, stack_last_dim
 
 from ..layer import MLP, Dense
 
@@ -94,9 +94,6 @@ class InteractionAggregator(nn.Cell):
         super().__init__()
         self._kwargs = kwargs
 
-        self.stack = P.Stack(-1)
-        self.reduce_sum = P.ReduceSum()
-
     def construct(self, ylist: List[Tensor], atom_mask: Tensor = None):
         """Aggregate the representations of each interaction layer.
 
@@ -147,8 +144,8 @@ class InteractionSummation(InteractionAggregator):
         return "sum"
 
     def construct(self, ylist, atom_mask=None):
-        xt = self.stack(ylist)
-        y = self.reduce_sum(xt, -1)
+        xt = stack_last_dim(ylist)
+        y = F.reduce_sum(xt, -1)
         if atom_mask is not None:
             y = y * F.expand_dims(atom_mask, -1)
         return y
@@ -183,14 +180,13 @@ class InteractionMean(InteractionAggregator):
         self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'mean'
-        self.reduce_mean = P.ReduceMean()
 
     def __str__(self):
         return "mean"
 
     def construct(self, ylist: List[Tensor], atom_mask: Tensor = None):
-        xt = self.stack(ylist)
-        y = self.reduce_mean(xt, -1)
+        xt = stack_last_dim(ylist)
+        y = F.reduce_mean(xt, -1)
         if atom_mask is not None:
             y = y * F.expand_dims(atom_mask, -1)
         return y
@@ -237,8 +233,8 @@ class LinearTransformation(InteractionAggregator):
         return "linear"
 
     def construct(self, ylist: List[Tensor], atom_mask: Tensor = None):
-        yt = self.stack(ylist)
-        ysum = self.reduce_sum(yt, -1)
+        yt = stack_last_dim(ylist)
+        ysum = F.reduce_sum(yt, -1)
         y = self.scale * ysum + self.shift
         if atom_mask is not None:
             y = y * F.expand_dims(atom_mask, -1)
@@ -311,8 +307,6 @@ class MultipleChannelRepresentation(InteractionAggregator):
                 for i in range(self.num_agg)
             ])
 
-        self.concat = P.Concat(-1)
-
     def __str__(self):
         return "MCR"
 
@@ -320,7 +314,7 @@ class MultipleChannelRepresentation(InteractionAggregator):
         readouts = ()
         for i in range(self.num_agg):
             readouts = readouts + (self.mcr[i](ylist[i]),)
-        y = self.concat(readouts)
+        y = concat_last_dim(readouts)
         if atom_mask is not None:
             y = y * F.expand_dims(atom_mask, -1)
         return y

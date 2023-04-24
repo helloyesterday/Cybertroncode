@@ -28,12 +28,13 @@ import mindspore.numpy as msnp
 from mindspore import Tensor
 from mindspore import nn
 from mindspore.nn import Cell
-from mindspore.ops import operations as P
+from mindspore import ops
 from mindspore.ops import functional as F
 from mindspore.common.parameter import Parameter
 from mindspore.common.initializer import Initializer, initializer, Constant
 
 from mindsponge.function import get_integer, get_arguments
+from mindsponge.function import concat_penulti, keepdims_mean, squeeze_last_dim
 
 from .layer import Dense, Residual
 from .cutoff import SmoothCutoff
@@ -86,10 +87,6 @@ class GraphNorm(Cell):
 
         self.axis = get_integer(axis)
 
-        self.reduce_mean = P.ReduceMean(True)
-
-        self.sqrt = P.Sqrt()
-
     def construct(self, nodes: Tensor):
         """Compute graph normalization.
 
@@ -101,14 +98,14 @@ class GraphNorm(Cell):
 
         """
 
-        mu = self.reduce_mean(nodes, self.axis)
+        mu = keepdims_mean(nodes, self.axis)
 
         nodes2 = nodes * nodes
-        mu2 = self.reduce_mean(nodes2, self.axis)
+        mu2 = keepdims_mean(nodes2, self.axis)
 
         a = self.alpha
         sigma2 = mu2 + (a*a - 2*a) * mu * mu
-        sigma = self.sqrt(sigma2)
+        sigma = F.sqrt(sigma2)
 
         y = self.gamma * (nodes - a * mu) / sigma + self.beta
 
@@ -135,8 +132,6 @@ class Aggregate(Cell):
 
         self.average = mean
         self.axis = get_integer(axis)
-        self.reduce_sum = P.ReduceSum()
-        self.maximum = P.Maximum()
 
     def construct(self, inputs: Tensor, mask: Tensor = None):
         """To aggregate the representation of each nodes
@@ -154,13 +149,13 @@ class Aggregate(Cell):
             inputs = inputs * F.expand_dims(mask, -1)
         # compute sum of input along axis
 
-        y = self.reduce_sum(inputs, self.axis)
+        y = F.reduce_sum(inputs, self.axis)
         # compute average of input along axis
         if self.average:
             # get the number of items along axis
             if mask is not None:
-                num = self.reduce_sum(mask, self.axis)
-                num = self.maximum(num, other=F.ones_like(num))
+                num = F.reduce_sum(mask, self.axis)
+                num = F.maximum(num, other=F.ones_like(num))
             else:
                 num = inputs.shape[self.axis]
 
@@ -192,8 +187,6 @@ class SmoothReciprocal(Cell):
         else:
             self.cutoff_network = cutoff_network(dmax)
 
-        self.sqrt = P.Sqrt()
-
     def construct(self, rij: Tensor, mask: Tensor):
         """calculate smooth reciprocal of Tensor
 
@@ -207,7 +200,7 @@ class SmoothReciprocal(Cell):
         """
         phi2rij, _ = self.cutoff_network(rij*2, mask)
 
-        r_near = phi2rij * msnp.reciprocal(self.sqrt(rij * rij + 1.0))
+        r_near = phi2rij * msnp.reciprocal(F.sqrt(rij * rij + 1.0))
         r_far = msnp.where(rij > 0, (1.0 - phi2rij) * msnp.reciprocal(rij), 0)
 
         reciprocal = r_near + r_far
@@ -229,7 +222,7 @@ class SoftmaxWithMask(Cell):
         super().__init__()
         self._kwargs = get_arguments(locals(), kwargs)
 
-        self.softmax = P.Softmax(get_integer(axis))
+        self.softmax = ops.Softmax(get_integer(axis))
 
         self.large_neg = -5e4
 
@@ -286,9 +279,6 @@ class PositionalEmbedding(Cell):
         self.x2k = Dense(dim, dim, has_bias=False)
         self.x2v = Dense(dim, dim, has_bias=False)
 
-        self.mul = P.Mul()
-        self.concat = P.Concat(-2)
-
     def construct(self,
                   xi: Tensor,
                   xij: Tensor,
@@ -321,33 +311,15 @@ class PositionalEmbedding(Cell):
 
         """
 
-        # e_ii = self.x_norm(xi + t)
-        # e_ij = self.x_norm(xij + t)
-
-        # # [B, A, 1, F]
-        # e_ii = F.expand_dims(e_ii,-2)
-        # # [B, A, N', F] + [B, A, N', F]
-        # e_ij = self.concat((e_ii,e_ij))
-
-        # g_ii = F.ones_like(e_ii) * g_ii
-        # g_ij = self.concat((g_ii,g_ij))
-
-        # # [B, A, 1, F]
-        # query = self.x2q(e_ii)
-        # # [B, A, N', F]
-        # key   = self.x2k(e_ij) * self.g_norm(g_ij)
-        # # [B, A, N', F]
-        # value = self.x2v(e_ij) * g_ij
-
         # [B, A, v] * [B, A, v] = [B, A, v]
-        xgii = self.mul(xi, g_ii)
+        xgii = F.mul(xi, g_ii)
         # [B, A, N, v] * [B, A, N, v] = [B, A, N, v]
-        xgij = self.mul(xij, g_ij)
+        xgij = F.mul(xij, g_ij)
 
         # [B, A, 1, v]
         xgii = F.expand_dims(xgii, -2)
         # [B, A, N', v]
-        xgij = self.concat((xgii, xgij))
+        xgij = concat_penulti((xgii, xgij))
         # if c_ij is not None:
         #     # [B, A, N', v] * [B, A, N', 1]
         #     xgij = xgij * F.expand_dims(c_ij,-1)
@@ -416,12 +388,9 @@ class MultiheadAttention(Cell):
 
         self.output = Dense(dim_feature, dim_feature, has_bias=False)
 
-        self.mul = P.Mul()
-        self.div = P.Div()
-        self.softmax = P.Softmax()
-        self.bmm = P.BatchMatMul()
-        self.bmmt = P.BatchMatMul(transpose_b=True)
-        self.reducesum = P.ReduceSum(True)
+        self.softmax = ops.Softmax()
+        self.bmm = ops.BatchMatMul()
+        self.bmmt = ops.BatchMatMul(transpose_b=True)
 
         # [0,1,...,D-1]
         ranges = list(range(dim_tensor+1))
@@ -430,7 +399,7 @@ class MultiheadAttention(Cell):
         ranges[-3] = tmpid
         # [0,1,...,D-2,D-3,D-1]
         self.trans_shape = tuple(ranges)
-        self.transpose = P.Transpose()
+        self.transpose = ops.Transpose()
 
         self.softmax_with_mask = SoftmaxWithMask()
 
@@ -482,7 +451,7 @@ class MultiheadAttention(Cell):
             # [..., h, X, f] x [..., h, X, f]^T = [..., h, X, X]
             attention_scores = self.bmmt(Q, K)
             # ([..., h, 1, X] or [..., h, X, X]) / sqrt(f)
-            attention_scores = self.mul(attention_scores, self.scores_mul)
+            attention_scores = F.mul(attention_scores, self.scores_mul)
 
             if mask is None:
                 # [..., h, 1, X] or [..., h, X, X]
@@ -502,7 +471,7 @@ class MultiheadAttention(Cell):
                     # [..., h, 1, X] * [..., 1, 1, X]
                     # or
                     # [..., h, X, X] * [..., 1, 1, X] = [..., h, X, X]
-                    attention_probs = self.mul(attention_probs, excut)
+                    attention_probs = F.mul(attention_probs, excut)
 
             # [..., h, 1, X] x [..., h, X, f] = [..., h, 1, f]
             # or
@@ -621,8 +590,6 @@ class Pondering(Cell):
         else:
             raise ValueError("n_hidden cannot be negative!")
 
-        self.squeeze = P.Squeeze(-1)
-
     def construct(self, x: Tensor):
         """Calculate pondering network.
 
@@ -635,7 +602,7 @@ class Pondering(Cell):
 
         """
         y = self.dense(x)
-        return self.squeeze(y)
+        return squeeze_last_dim(y)
 
 class ACTWeight(Cell):
     r"""Adapetive computation time modified from:
@@ -655,9 +622,6 @@ class ACTWeight(Cell):
         self._kwargs = get_arguments(locals(), kwargs)
 
         self.threshold = threshold
-
-        self.zeros_like = P.ZerosLike()
-        self.ones_like = P.OnesLike()
 
     def construct(self, prob: Tensor, halting_prob: Tensor):
         """Calculate Adapetive computation time.

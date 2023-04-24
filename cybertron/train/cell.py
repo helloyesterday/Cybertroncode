@@ -102,8 +102,6 @@ class WithCell(Cell):
 
         print(self.cls_name + ' with input type: ' + self.datatypes)
 
-        self.keep_sum = P.ReduceSum(True)
-
 
 class WithAdversarialLossCell(Cell):
     r"""Adversarial network.

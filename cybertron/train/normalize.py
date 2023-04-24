@@ -97,9 +97,6 @@ class OutputScaleShift(Cell):
 
         self.axis = axis
 
-        self.reduce_sum = P.ReduceSum()
-        self.keep_sum = P.ReduceSum(True)
-
     def construct(self, outputs: Tensor, num_atoms: Tensor, atom_type: Tensor = None):
         """Scale and shift output.
 
@@ -118,7 +115,7 @@ class OutputScaleShift(Cell):
             # (B,A,E)
             ref = F.gather(self.type_ref, atom_type, 0)
             # (B,E)
-            ref = self.reduce_sum(ref, self.axis)
+            ref = F.reduce_sum(ref, self.axis)
 
         # (B,E) + (B,E)
         outputs = outputs * self.scale + ref
@@ -194,9 +191,6 @@ class DatasetNormalization(Cell):
 
         self.axis = axis
 
-        self.reduce_sum = P.ReduceSum()
-        self.keep_sum = P.ReduceSum(True)
-
     def construct(self, label: Tensor, num_atoms: Tensor, atom_type: Tensor = None):
         """Normalize outputs.
 
@@ -213,7 +207,7 @@ class DatasetNormalization(Cell):
         ref = 0
         if self.type_ref is not None:
             ref = F.gather(self.type_ref, atom_type, 0)
-            ref = self.reduce_sum(ref, self.axis)
+            ref = F.reduce_sum(ref, self.axis)
 
         label -= ref
         if self.all_atomwsie:

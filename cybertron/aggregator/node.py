@@ -28,7 +28,7 @@ from typing import Union
 import mindspore as ms
 from mindspore import Tensor
 from mindspore import nn
-from mindspore.ops import operations as P
+from mindspore import ops
 from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 
@@ -97,7 +97,6 @@ class NodeAggregator(nn.Cell):
 
         self.dim = get_integer(dim)
         self.axis = get_integer(axis)
-        self.reduce_sum = P.ReduceSum()
 
     def construct(self, nodes: Tensor, atom_mask: Tensor = None, num_atoms: Tensor = None):
         """Aggregate the outputs of each atoms.
@@ -175,7 +174,7 @@ class TensorSummation(NodeAggregator):
             # (B,A,X) * (B,A,1)
             nodes = nodes * F.expand_dims(atom_mask, -1)
         # (B,X) <- (B,A,X)
-        agg = self.reduce_sum(nodes, self.axis)
+        agg = F.reduce_sum(nodes, self.axis)
         return agg
 
     def __str__(self):
@@ -214,9 +213,6 @@ class TensorMean(NodeAggregator):
         )
         self._kwargs = get_arguments(locals(), kwargs)
 
-        self.reduce_mean = P.ReduceMean()
-        self.mol_sum = P.ReduceSum(True)
-
     def construct(self, nodes: Tensor, atom_mask: Tensor = None, num_atoms: Tensor = None):
         """To average all tensors.
 
@@ -236,12 +232,12 @@ class TensorMean(NodeAggregator):
         """
         if atom_mask is None:
             # (B,X) <- (B,A,X)
-            return self.reduce_mean(nodes, self.axis)
+            return F.reduce_mean(nodes, self.axis)
 
         # (B,A,X) * (B,A,1)
         nodes = nodes * F.expand_dims(atom_mask, -1)
         # (B,X) <- (B,A,X)
-        agg = self.reduce_sum(nodes, self.axis)
+        agg = F.reduce_sum(nodes, self.axis)
         # (B,X) / (B,1)
         return agg / num_atoms
 
@@ -284,11 +280,10 @@ class SoftmaxGeneralizedAggregator(NodeAggregator):
         self.beta = ms.Parameter(initializer('one', 1), name="beta")
         self.rho = ms.Parameter(initializer('zero', 1), name="rho")
 
-        self.softmax = P.Softmax(axis=self.axis)
+        self.softmax = ops.Softmax(axis=self.axis)
         self.softmax_with_mask = SoftmaxWithMask(axis=self.axis)
-        self.mol_sum = P.ReduceSum(True)
 
-        self.expand_ones = P.Ones()((1, 1, self.dim), ms.int32)
+        self.expand_ones = F.ones((1, 1, self.dim), ms.int32)
 
     def construct(self, nodes: Tensor, atom_mask: Tensor = None, num_atoms: Tensor = None):
         """To aggregate all tensors using softmax-based generalized mean-max-sum.
@@ -320,7 +315,7 @@ class SoftmaxGeneralizedAggregator(NodeAggregator):
             mask = (self.expand_ones * atom_mask) > 0
             agg_nodes = self.softmax_with_mask(px, mask) * nodes * atom_mask
 
-        agg_nodes = self.reduce_sum(agg_nodes, self.axis)
+        agg_nodes = F.reduce_sum(agg_nodes, self.axis)
 
         return scale * agg_nodes
 
@@ -363,9 +358,6 @@ class PowermeanGeneralizedAggregator(NodeAggregator):
         self.beta = ms.Parameter(initializer('one', 1), name="beta")
         self.rho = ms.Parameter(initializer('one', 1), name="rho")
 
-        self.power = P.Pow()
-        self.mol_sum = P.ReduceSum(True)
-
     def construct(self, nodes: Tensor, atom_mask: Tensor = None, num_atoms: Tensor = None):
         """To aggregate all tensors using PowerMean-based generalized mean-max-sum.
 
@@ -387,12 +379,12 @@ class PowermeanGeneralizedAggregator(NodeAggregator):
             num_atoms = nodes.shape[self.axis]
 
         scale = num_atoms / (1 + self.beta * (num_atoms - 1))
-        xp = self.power(nodes, self.rho)
+        xp = F.pow(nodes, self.rho)
         if atom_mask is not None:
             xp = xp * F.expand_dims(atom_mask, -1)
-        agg_nodes = self.reduce_sum(xp, self.axis)
+        agg_nodes = F.reduce_sum(xp, self.axis)
 
-        return self.power(scale*agg_nodes, 1.0/self.rho)
+        return F.pow(scale*agg_nodes, 1.0/self.rho)
 
     def __str__(self):
         return "PowermeanGeneralizedAggregator<>"
@@ -440,7 +432,6 @@ class TransformerAggregator(NodeAggregator):
         self.multi_head_attention = MultiheadAttention(
             dim, n_heads, dim_tensor=3)
 
-        self.squeeze = P.Squeeze(-1)
         self.mean = TensorMean(dim, axis)
 
     def construct(self, nodes: Tensor, atom_mask: Tensor = None, num_atoms: Tensor = None):

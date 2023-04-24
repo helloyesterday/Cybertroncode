@@ -165,7 +165,6 @@ class WithEvalCell(WithCell):
                     print(info)
 
         self.add_cast_fp32 = add_cast_fp32
-        self.reducesum = P.ReduceSum(True)
 
 
 class WithLabelEvalCell(WithEvalCell):
