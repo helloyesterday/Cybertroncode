@@ -27,7 +27,7 @@ import time
 from .cybertron import Cybertron, CybertronFF
 from .model import SchNet, PhysNet, MolCT
 from .embedding import MolEmbedding, ConformationEmbedding
-from .readout import NodeReadout
+from .readout import NodeReadout, AtomwiseReadout, GraphReadout
 
 
 def _mindspore_version_check():
