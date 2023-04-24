@@ -91,9 +91,8 @@ class Interaction(Cell):
         """print information of interaction layer"""
         ret = char * num_retraction
         gap = char * num_gap
-        print(ret+gap+' Feature dimension: ' + str(self.dim_node_rep))
-        print(ret+gap+' Activation function: ' + self.activation.cls_name)
-        print('-'*80)
+        print(ret+gap+f' Feature dimension: {self.dim_node_rep}')
+        print(ret+gap+f' Activation function: {self.activation.cls_name}')
         return self
 
     def construct(self,

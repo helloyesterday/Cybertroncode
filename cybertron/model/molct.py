@@ -126,6 +126,8 @@ class MolCT(MolecularGNN):
             if self.interaction is None:
                 self.build_interaction()
 
+        self.default_embedding = self.get_default_embedding('molct')
+
     def build_interaction(self):
         if self.dim_edge_emb is None:
             raise ValueError('Cannot build interaction without `dim_edge_emb`. '

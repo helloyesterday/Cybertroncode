@@ -35,6 +35,7 @@ from mindsponge.function import get_integer, get_ms_array
 
 from ..interaction import Interaction
 from ..activation import get_activation
+from ..configure import get_embedding_config
 
 _MODEL_BY_KEY = dict()
 
@@ -147,9 +148,16 @@ class MolecularGNN(Cell):
                 self.interaction = interaction
             else:
                 raise TypeError(f'Unsupport type: {interaction}')
+        
+        self.default_embedding = self.get_default_embedding('default')
 
-        self.zeros = P.Zeros()
-        self.ones = P.Ones()
+    def get_default_embedding(self, configure: str = 'default') -> dict:
+        """get default configure of embedding"""
+        default_embedding = get_embedding_config(configure)
+        default_embedding['dim_node'] = self.dim_node_emb
+        default_embedding['dim_edge'] = self.dim_edge_emb
+        default_embedding['activation'] = self.activation
+        return default_embedding
 
     def set_dimension(self, dim_node_emb: int, dim_edge_emb: int):
         """check and set dimension of embedding vectors"""
@@ -198,20 +206,18 @@ class MolecularGNN(Cell):
         print(ret+gap+f' Dimension of edge representation vector: {self.dim_edge_rep}')
         print(ret+gap+f' Dimension of node embedding vector: {self.dim_node_emb}')
         print(ret+gap+f' Dimension of edge embedding vector: {self.dim_edge_emb}')
-        print('-'*80)
         if self.coupled_interaction:
             print(ret+gap+f' Using coupled interaction with {self.n_interaction} layers:')
-            print('-'*80)
             print(ret+gap+gap+' '+self.interaction[0].cls_name)
             self.interaction[0].print_info(
                 num_retraction=num_retraction+num_gap, num_gap=num_gap, char=char)
         else:
             print(ret+gap+f' Using {self.n_interaction} independent interaction layers:')
-            print('-'*80)
             for i, inter in enumerate(self.interaction):
                 print(ret+gap+' '+str(i)+'. '+inter.cls_name)
                 inter.print_info(num_retraction=num_retraction +
                                  num_gap, num_gap=num_gap, char=char)
+        print('-'*80)
 
     def construct(self,
                   node_emb: Tensor,

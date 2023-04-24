@@ -94,7 +94,6 @@ class SchNetInteraction(Interaction):
         gap = char * num_gap
         print(ret+gap+' Feature dimension: ' + str(self.dim_node_rep))
         print(ret+gap+' Activation function: ' + self.activation.cls_name)
-        print('-'*80)
         return self
 
     def construct(self,

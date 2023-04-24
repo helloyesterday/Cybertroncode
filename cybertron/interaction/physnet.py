@@ -28,7 +28,6 @@ from typing import Union
 from mindspore import Tensor
 from mindspore import Parameter
 from mindspore.nn import Cell
-from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
@@ -76,10 +75,8 @@ class PhysNetModule(Interaction):
 
         dim_feature = self.dim_node_rep
 
-        self.xi_dense = Dense(
-            dim_feature, dim_feature, activation=self.activation)
-        self.xij_dense = Dense(
-            dim_feature, dim_feature, activation=self.activation)
+        self.xi_dense = Dense(dim_feature, dim_feature, activation=self.activation)
+        self.xij_dense = Dense(dim_feature, dim_feature, activation=self.activation)
 
         self.attention_mask = Dense(self.dim_edge_emb, self.dim_edge_rep,
                                     has_bias=False, activation=None)
@@ -96,8 +93,6 @@ class PhysNetModule(Interaction):
         self.outer_residual = SeqPreActResidual(dim_feature, activation=self.activation,
                                                 n_res=self.n_outer_residual)
 
-        self.reducesum = P.ReduceSum()
-
     def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
         ret = char * num_retraction
         gap = char * num_gap
@@ -107,7 +102,6 @@ class PhysNetModule(Interaction):
               self.n_inter_residual)
         print(ret+gap+' Number of layers at outer residual: ' +
               self.n_outer_residual)
-        print('-'*80)
         return self
 
     def construct(self,
@@ -134,7 +128,7 @@ class PhysNetModule(Interaction):
         side = attention_mask * dxij
         if edge_mask is not None:
             side = side * F.expand_dims(edge_mask, -1)
-        v = dxi + self.reducesum(side, -2)
+        v = dxi + F.reduce_sum(side, -2)
 
         v1 = self.inter_residual(v)
         v1 = self.inter_dense(v1)

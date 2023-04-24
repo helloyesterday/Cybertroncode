@@ -117,6 +117,8 @@ class SchNet(MolecularGNN):
         if self.interaction is None and self.dim_edge_emb is not None:
             self.build_interaction()
 
+        self.default_embedding = self.get_default_embedding('schnet')
+
     def build_interaction(self):
         if self.dim_edge_emb is None:
             raise ValueError('Cannot build interaction without `dim_edge_emb`. '
