@@ -123,24 +123,21 @@ class LogGaussianBasis(RadicalBasisFunctions):
         self.coeff = -0.5 * msnp.reciprocal(msnp.square(self.sigma))
         self.inv_ref = msnp.reciprocal(self.r_ref)
 
-    def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
+    def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = ' '):
         ret = char * num_retraction
         gap = char * num_gap
-        print(ret+gap+' Minimum distance: ' +
-              str(self.r_min)+' '+self.units.length_unit)
-        print(ret+gap+' Maximum distance: ' +
-              str(self.r_max)+' '+self.units.length_unit)
-        print(ret+gap+' Reference distance: ' +
-              str(self.r_ref)+' '+self.units.length_unit)
-        print(ret+gap+' Log Gaussian begin: ' + str(self.offsets[0]))
-        print(ret+gap+' Log Gaussian end: ' + str(self.offsets[-1]))
-        print(ret+gap+' Interval for log Gaussian: '+str(self.delta))
-        print(ret+gap+' Sigma for log gaussian: ' + str(self.sigma))
-        print(ret+gap+' Number of basis functions: ' + str(self.num_basis))
+        print(ret+gap+f' Minimum distance: {self.r_min} {self.units.length_unit}')
+        print(ret+gap+f' Maximum distance: {self.r_max} {self.units.length_unit}')
+        print(ret+gap+f' Reference distance: {self.r_ref} {self.units.length_unit}')
+        print(ret+gap+f' Log Gaussian begin: {self.offsets[0]}')
+        print(ret+gap+f' Log Gaussian end: {self.offsets[-1]}')
+        print(ret+gap+f' Interval for log Gaussian: {self.delta}')
+        print(ret+gap+f' Sigma for log gaussian: {self.sigma}')
+        print(ret+gap+f' Number of basis functions: {self.num_basis}')
         if self.clip_distance:
-            print(ret+gap+' Clip the range of distance to (r_min,r_max).')
+            print(ret+gap+f' Clip the range of distance to ({self.r_min}, {self.r_max}).')
         if self.rescale:
-            print(ret+gap+' Rescale the range of RBF to (-1,1).')
+            print(ret+gap+f' Rescale the range of RBF to (-1, 1).')
         return self
 
     def construct(self, distance: Tensor) -> Tensor:

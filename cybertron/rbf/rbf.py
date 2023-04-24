@@ -102,22 +102,19 @@ class RadicalBasisFunctions(Cell):
         self.length_unit = self.units.length_unit
 
         if self.r_max <= self.r_min:
-            raise ValueError('The argument "r_max" must be larger ' +
-                             'than the argument "r_min" in RBF!')
+            raise ValueError(f'In RBF, r_max ({self.r_max}) must be larger than r_min ({self.r_min})!')
 
         self.r_range = self.r_max - self.r_min
 
-    def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = '-'):
+    def print_info(self, num_retraction: int = 6, num_gap: int = 3, char: str = ' '):
         """print the information of RBF"""
         ret = char * num_retraction
         gap = char * num_gap
-        print(ret+gap+' Minimum distance: ' +
-              str(self.r_min)+' '+self.units.length_unit)
-        print(ret+gap+' Maximum distance: ' +
-              str(self.r_max)+' '+self.units.length_unit)
-        print(ret+gap+' Number of basis functions: ' + str(self.num_basis))
+        print(ret+gap+f' Minimum distance: {self.r_min} {self.units.length_unit}')
+        print(ret+gap+f' Maximum distance: {self.r_max} {self.units.length_unit}')
+        print(ret+gap+f' Number of basis functions: {self.num_basis}')
         if self.clip_distance:
-            print(ret+gap+' Clip the range of distance to (r_min,r_max).')
+            print(ret+gap+f' Clip the range of distance to ({self.r_min}, {self.r_max}).')
         return self
 
     def construct(self, distance: Tensor) -> Tensor:
