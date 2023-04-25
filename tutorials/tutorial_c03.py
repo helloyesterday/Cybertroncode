@@ -63,13 +63,13 @@ if __name__ == '__main__':
         n_interaction=3,
         dim_feature=128,
         n_heads=8,
-        activation='swish',
+        activation='silu',
         max_cycles=1,
         length_unit='nm',
     )
 
-    readout = AtomwiseReadout(mod, dim_output=1)
-    net = Cybertron(model=mod, readout=readout, dim_output=1,
+    cls_name = AtomwiseReadout(mod, dim_output=1)
+    net = Cybertron(model=mod, readout=cls_name, dim_output=1,
                     num_atoms=num_atom, length_unit='nm')
 
     net.print_info()
