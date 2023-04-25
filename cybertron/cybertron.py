@@ -423,13 +423,11 @@ class Cybertron(Cell):
                 Type index (atomic number) of atom types.
             pbc_box (Tensor): Tensor of shape (B, D). Data type is float.
                 Box size of periodic boundary condition
-            distance (Tensor): Tensor of shape (B, A, N). Data type is float.
-                Distances between atoms
             neighbours (Tensor): Tensor of shape (B, A, N). Data type is int.
                 Indices of other near neighbour atoms around a atom
             neighbour_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
                 Mask for neighbours
-            bond_types (Tensor): Tensor of shape (B, A, N). Data type is int.
+            bonds (Tensor): Tensor of shape (B, A, N). Data type is int.
                 Types index of bond connected with two atoms
             bond_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
                 Mask for bonds

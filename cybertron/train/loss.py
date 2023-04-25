@@ -23,11 +23,15 @@
 Loss functions
 """
 
+from typing import Union, Tuple, List
+
 import mindspore as ms
 from mindspore import Tensor
 from mindspore.nn.loss.loss import LossBase
 from mindspore import ops
 from mindspore.ops import functional as F
+
+from mindsponge.function import get_integer, get_arguments
 
 
 __all__ = [
@@ -36,6 +40,76 @@ __all__ = [
     'MSELoss'
     'CrossEntropyLoss',
 ]
+
+
+class MolecularLoss(LossBase):
+    r"""Loss function of the energy and force of molecule.
+
+    Args:
+
+        ratio_energy (float):   Ratio of energy in loss function. Default: 1
+
+        ratio_forces (float):   Ratio of forces in loss function. Default: 100
+
+        force_dis (float):      A average norm value of force, which used to scale the force.
+                                Default: 1
+
+        ratio_normlize (bool):  Whether to do normalize the ratio of energy and force. Default: True
+
+        reduction (str):        Method to reduction the output Tensor. Default: 'mean'
+
+    """
+    def __init__(self, reduction: str = 'mean', **kwargs):
+        super().__init__(reduction)
+        self._kwargs = get_arguments(locals(), kwargs)
+
+    def construct(self,
+                  predict: Tensor,
+                  label: Tensor,
+                  num_atoms: Tensor = 1,
+                  atom_mask: Tensor = None,
+                  **kwargs,
+                  ):
+        """calculate loss function
+
+        Args:
+            pred_energy (Tensor):   Tensor with shape (B, E). Data type is float.
+                                    Predicted energy.
+            label_energy (Tensor):  Tensor with shape (B, E). Data type is float.
+                                    Label energy.
+            pred_forces (Tensor):   Tensor with shape (B, A, D). Data type is float.
+                                    Predicted force.
+            label_forces (Tensor):  Tensor with shape (B, A, D). Data type is float.
+                                    Label energy.
+            num_atoms (Tensor):     Tensor with shape (B, 1). Data type is int.
+                                    Number of atoms in each molecule.
+                                    Default: 1
+            atom_mask (Tensor):     Tensor with shape (B, A). Data type is bool.
+                                    Mask of atoms in each molecule.
+                                    Default: None
+
+        Symbols:
+            B:  Batch size
+            A:  Number of atoms
+            D:  Dimension of position coordinate. Usually is 3.
+            E:  Number of labels
+
+        Returns:
+            loss (Tensor):  Tensor with shape (B, 1). Data type is float.
+                            Loss function.
+
+        """
+
+        diff = predict - label
+        loss = self._calc_loss(diff)
+        loss = self.get_loss(loss)
+
+        return loss
+    
+    def _calc_loss(self, diff: Tensor) -> Tensor:
+        """calculate loss function"""
+        return diff
+
 
 class LossWithEnergyAndForces(LossBase):
     r"""Loss function of the energy and force of molecule.

@@ -29,6 +29,7 @@ from numpy import ndarray
 
 from mindsponge.function import Units
 
+
 class DatasetProcessor:
     r"""A dataset pre-processor
 

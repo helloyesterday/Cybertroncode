@@ -358,7 +358,7 @@ class AtomwiseReadout(NodeReadout):
             shift=shift,
             type_ref=type_ref,
             axis=axis,
-            mode='atomwsie',
+            mode='atomwise',
             energy_unit=energy_unit,
         )
         self._kwargs = get_arguments(locals(), kwargs)
