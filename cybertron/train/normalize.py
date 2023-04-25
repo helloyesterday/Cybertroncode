@@ -23,12 +23,17 @@
 Modules for normalization
 """
 
+from typing import Union, List
+from numpy import ndarray
+
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import Tensor
 from mindspore.nn import Cell
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
+
+from mindsponge.function import get_ms_array, get_arguments
 
 
 __all__ = [
@@ -66,23 +71,25 @@ class OutputScaleShift(Cell):
     """
 
     def __init__(self,
-                 scale: float = 1,
-                 shift: float = 0,
-                 type_ref: Tensor = None,
-                 atomwise_scaleshift: bool = None,
+                 scale: Union[float, Tensor, ndarray] = 1,
+                 shift: Union[float, Tensor, ndarray] = 0,
+                 type_ref: Union[Tensor, ndarray] = None,
+                 atomwise_scaleshift: Union[bool, List[bool]] = None,
                  axis: int = -2,
+                 **kwargs,
                  ):
 
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
-        self.scale = Tensor(scale, ms.float32)
-        self.shift = Tensor(shift, ms.float32)
+        self.scale = get_ms_array(scale, ms.float32)
+        self.shift = get_ms_array(shift, ms.float32)
 
         self.type_ref = None
         if type_ref is not None:
-            self.type_ref = Tensor(type_ref, ms.float32)
+            self.type_ref = get_ms_array(type_ref, ms.float32)
 
-        self.atomwise_scaleshift = Tensor(atomwise_scaleshift, ms.bool_)
+        self.atomwise_scaleshift = get_ms_array(atomwise_scaleshift, ms.bool_)
         self.all_atomwsie = False
         if self.atomwise_scaleshift.all():
             self.all_atomwsie = True
@@ -160,23 +167,24 @@ class DatasetNormalization(Cell):
     """
 
     def __init__(self,
-                 scale: float = 1,
-                 shift: float = 0,
-                 type_ref: Tensor = None,
-                 atomwise_scaleshift: bool = None,
+                 scale: Union[float, Tensor, ndarray] = 1,
+                 shift: Union[float, Tensor, ndarray] = 0,
+                 type_ref: Union[Tensor, ndarray] = None,
+                 atomwise_scaleshift: Union[bool, List[bool]] = None,
                  axis: int = -2,
+                 **kwargs,
                  ):
-
         super().__init__()
+        self._kwargs = get_arguments(locals(), kwargs)
 
-        self.scale = Tensor(scale, ms.float32)
-        self.shift = Tensor(shift, ms.float32)
+        self.scale = get_ms_array(scale, ms.float32)
+        self.shift = get_ms_array(shift, ms.float32)
 
         self.type_ref = None
         if type_ref is not None:
-            self.type_ref = Tensor(type_ref, ms.float32)
+            self.type_ref = get_ms_array(type_ref, ms.float32)
 
-        self.atomwise_scaleshift = Tensor(atomwise_scaleshift, ms.bool_)
+        self.atomwise_scaleshift = get_ms_array(atomwise_scaleshift, ms.bool_)
         self.all_atomwsie = False
         if self.atomwise_scaleshift.all():
             self.all_atomwsie = True
