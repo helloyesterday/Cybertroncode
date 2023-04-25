@@ -30,7 +30,7 @@ from mindspore.ops import composite as C
 
 from mindsponge.function import keepdims_sum
 
-from .cell import WithCell
+from .wrapper import WithCell
 from ..cybertron import Cybertron
 
 

@@ -23,7 +23,7 @@
 Train
 """
 
-from .cell import WithCell, WithAdversarialLossCell
+from .wrapper import WithCell, WithAdversarialLossCell
 from .train import WithLabelLossCell, WithForceLossCell
 from .eval import WithEvalCell, WithLabelEvalCell, WithForceEvalCell
 from .loss import LossWithEnergyAndForces, MAELoss, MSELoss, CrossEntropyLoss
@@ -33,7 +33,7 @@ from .callback import TrainMonitor
 from .normalize import OutputScaleShift, DatasetNormalization
 
 __all__ = []
-__all__.extend(cell.__all__)
+__all__.extend(wrapper.__all__)
 __all__.extend(train.__all__)
 __all__.extend(eval.__all__)
 __all__.extend(loss.__all__)

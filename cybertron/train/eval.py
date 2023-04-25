@@ -31,7 +31,7 @@ from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 from mindspore.ops import composite as C
 
-from .cell import WithCell
+from .wrapper import WithCell
 from .normalize import OutputScaleShift, DatasetNormalization
 from ..cybertron import Cybertron
 
