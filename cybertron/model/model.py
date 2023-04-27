@@ -137,7 +137,7 @@ class MolecularGNN(Cell):
 
         self.activation = get_activation(activation)
 
-        self.interaction = None
+        self.interaction: List[Interaction] = None
         if interaction is not None:
             if isinstance(interaction, Interaction):
                 interaction = [interaction] * self.n_interaction

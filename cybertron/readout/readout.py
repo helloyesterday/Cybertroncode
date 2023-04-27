@@ -24,16 +24,11 @@ Readout functions
 """
 
 from typing import Union, Tuple
-from numpy import ndarray
 
-import mindspore as ms
-import mindspore.numpy as msnp
-from mindspore import Tensor, Parameter
+from mindspore import Tensor
 from mindspore.nn import Cell
-from mindspore.ops import functional as F
 
-from mindsponge.function import Units, get_energy_unit
-from mindsponge.function import get_integer, get_ms_array
+from mindsponge.function import get_integer
 
 from ..activation import get_activation
 
@@ -92,9 +87,7 @@ class Readout(Cell):
                  dim_node_rep: int = None,
                  dim_edge_rep: int = None,
                  activation: Union[Cell, str] = None,
-                 scale: Union[float, Tensor, ndarray] = 1,
-                 shift: Union[float, Tensor, ndarray] = 0,
-                 unit: str = None,
+                 axis: int = -2,
                  ndim: int = 1,
                  shape: Tuple[int] = (1,),
                  **kwargs,
@@ -102,27 +95,17 @@ class Readout(Cell):
         super().__init__()
         self._kwargs = kwargs
 
-        try:
-            self.output_unit = get_energy_unit(unit)
-            self.units = Units(energy_unit=self.output_unit)
-        except KeyError:
-            self.output_unit = unit
-            self.units = Units(energy_unit=None)
-
         self.dim_node_rep = get_integer(dim_node_rep)
         self.dim_edge_rep = get_integer(dim_edge_rep)
 
         self._ndim = ndim
         self._shape = shape
+        self.axis = get_integer(axis)
+        self.shift_by_atoms = True
 
         self.activation = None
         if activation is not None:
             self.activation = get_activation(activation)
-
-        scale = msnp.broadcast_to(get_ms_array(scale, ms.float32), self.shape)
-        self.scale = Parameter(scale, name='scale', requires_grad=False)
-        shift = msnp.broadcast_to(get_ms_array(shift, ms.float32), self.shape)
-        self.shift = Parameter(shift, name='shift', requires_grad=False)
 
     @property
     def ndim(self) -> int:
@@ -133,10 +116,6 @@ class Readout(Cell):
     def shape(self) -> Tuple[int]:
         """shape of output Tensor (without batch size)"""
         return self._shape
-
-    @property
-    def energy_unit(self) -> str:
-        return self.units.energy_unit
 
     def set_dimension(self, dim_node_rep: int, dim_edge_rep: int):
         """check and set dimension of representation vectors"""
@@ -154,48 +133,6 @@ class Readout(Cell):
 
         return self
 
-    def convert_energy_from(self, unit) -> float:
-        """returns a scale factor that converts the energy from a specified unit."""
-        return self.units.convert_energy_from(unit)
-
-    def convert_energy_to(self, unit) -> float:
-        """returns a scale factor that converts the energy to a specified unit."""
-        return self.units.convert_energy_to(unit)
-
-    def set_unit(self, unit: str):
-        """set output unit"""
-        try:
-            self.output_unit = get_energy_unit(unit)
-            self.units.set_energy_unit(self.output_unit)
-        except KeyError:
-            self.output_unit = unit
-            self.units.set_energy_unit(None)
-        self._kwargs['unit'] = self.output_unit
-        return self
-
-    def set_scaleshift(self,
-                       scale: Union[float, Tensor, ndarray] = 1,
-                       shift: Union[float, Tensor, ndarray] = 0,
-                       unit: str = None
-                       ):
-        """set scale and shift"""
-        if unit is not None:
-            self.set_unit(unit)
-
-        scale: Tensor = get_ms_array(scale, ms.float32).reshape(-1)
-        if scale.shape != self.shape and scale.size != 1:
-            raise ValueError(f'The shape of "scale" ({scale.shape}) does not match'
-                             f'the shape of output tensor ({self.shape})')
-        F.assign(self.scale, scale)
-
-        shift: Tensor = get_ms_array(shift, ms.float32).reshape(-1)
-        if shift.shape != self.shape:
-            raise ValueError(f'The shape of "shift" ({shift.shape}) does not match'
-                             f'the shape of output tensor ({self.shape})')
-        F.assign(self.shift, shift)
-
-        return self
-
     def print_info(self, num_retraction: int = 0, num_gap: int = 3, char: str = '-'):
         """print the information of readout"""
         ret = char * num_retraction
@@ -204,9 +141,6 @@ class Readout(Cell):
         print(ret+gap+f" Representation dimension: {self.dim_node_rep}")
         print(ret+gap+f" Shape of readout: {self.shape}")
         print(ret+gap+f" Rank (ndim) of readout: {self.ndim}")
-        print(ret+gap+f" Scale: {self.scale.asnumpy()}")
-        print(ret+gap+f" Shift: {self.shift.asnumpy()}")
-        print(ret+gap+f" Output unit: {self.units.energy_unit_name}")
         print('-'*80)
         return self
 

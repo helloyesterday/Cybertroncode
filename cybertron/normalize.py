@@ -27,13 +27,13 @@ from typing import Union, List
 from numpy import ndarray
 
 import mindspore as ms
-import mindspore.numpy as msnp
-from mindspore import Tensor
+from mindspore import Tensor, Parameter
 from mindspore.nn import Cell
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 
 from mindsponge.function import get_ms_array, get_arguments
+from mindsponge.function import Units, get_energy_unit
 
 
 __all__ = [
@@ -47,103 +47,16 @@ class ScaleShift(Cell):
 
     Args:
 
-        scale (float):              Scale value. Default: 1
+        scale (float): Scale value. Default: 1
 
-        shift (float):              Shift value. Default: 0
+        shift (float): Shift value. Default: 0
 
-        type_ref (Tensor):          Tensor of shape (T, E). Data type is float
-                                    Reference values of label for each atom type. Default: None
+        type_ref (Union[Tensor, ndarray]): Tensor of shape (T, E). Data type is float
+            Reference values of label for each atom type. Default: None
 
-        atomwise_scaleshift (bool): Whether to do atomwise scale and shift. Default: None
+        by_atoms (bool): Whether to do atomwise scale and shift. Default: None
 
-        axis (int):                 Axis to summation the reference value of molecule. Default: -2
-
-    Symbols:
-
-        B:  Batch size
-
-        A:  Number of atoms
-
-        T:  Number of total atom types
-
-        E:  Number of labels
-
-    """
-
-    def __init__(self,
-                 scale: Union[float, Tensor, ndarray] = 1,
-                 shift: Union[float, Tensor, ndarray] = 0,
-                 type_ref: Union[Tensor, ndarray] = None,
-                 mode: str = 'atomwise',
-                 axis: int = -2,
-                 **kwargs,
-                 ):
-
-        super().__init__()
-        self._kwargs = get_arguments(locals(), kwargs)
-
-        self.scale = get_ms_array(scale, ms.float32)
-        self.shift = get_ms_array(shift, ms.float32)
-
-        self.type_ref = None
-        if type_ref is not None:
-            self.type_ref = get_ms_array(type_ref, ms.float32)
-
-        if mode.lower() in ['atomwise', 'a']:
-            self.atomwise_readout = True
-        elif mode.lower() in ['graph', 'set2set', 'g']:
-            self.atomwise_readout = False
-        else:
-            self.atomwise_readout = None
-            raise ValueError(f'Unknown mode: {mode}')
-
-        self.axis = axis
-
-    def construct(self, outputs: Tensor, num_atoms: Tensor, atom_type: Tensor = None):
-        """Scale and shift output.
-
-        Args:
-            outputs (Tensor):       Tensor with shape (B, E). Data type is float.
-            num_atoms (Tensor):     Tensor with shape (B, 1). Data type is int.
-            atom_type (Tensor):     Tensor with shape (B, A). Data type is float.
-                                    Default: None
-
-        Returns:
-            outputs (Tensor):       Tensor with shape (B,E). Data type is float.
-
-        """
-        ref = 0
-        if self.type_ref is not None:
-            # (B,A,E)
-            ref = F.gather(self.type_ref, atom_type, 0)
-            # (B,E)
-            ref = F.reduce_sum(ref, self.axis)
-
-        # (B,E) + (B,E)
-        outputs = outputs * self.scale + ref
-
-        shift = self.shift
-        if self.atomwise_readout:
-            shift *= num_atoms
-
-        # (B,E) + (B,1)
-        return outputs + self.shift
-
-class DatasetNormalization(Cell):
-    r"""A network to normalize the label of dataset or prediction.
-
-    Args:
-
-        scale (float):              Scale value. Default: 1
-
-        shift (float):              Shift value. Default: 0
-
-        type_ref (Tensor):          Tensor of shape (T, E). Data type is float
-                                    Reference values of label for each atom type. Default: None
-
-        atomwise_scaleshift (bool): Whether to do atomwise scale and shift. Default: None
-
-        axis (int):                 Axis to summation the reference value of molecule. Default: -2
+        axis (int): Axis to summation the reference value of molecule. Default: -2
 
     Symbols:
 
@@ -153,7 +66,7 @@ class DatasetNormalization(Cell):
 
         T:  Number of total atom types
 
-        E:  Number of labels
+        Y:  Number of labels
 
     """
 
@@ -161,51 +74,131 @@ class DatasetNormalization(Cell):
                  scale: Union[float, Tensor, ndarray] = 1,
                  shift: Union[float, Tensor, ndarray] = 0,
                  type_ref: Union[Tensor, ndarray] = None,
-                 mode: str = 'atomwise',
-                 axis: int = -2,
+                 shift_by_atoms: bool = True,
+                 unit: str = None,
                  **kwargs,
                  ):
+
         super().__init__()
         self._kwargs = get_arguments(locals(), kwargs)
 
-        self.scale = get_ms_array(scale, ms.float32)
-        self.shift = get_ms_array(shift, ms.float32)
+        try:
+            self.output_unit = get_energy_unit(unit)
+            self.units = Units(energy_unit=self.output_unit)
+        except KeyError:
+            self.output_unit = unit
+            self.units = Units(energy_unit=None)
 
-        self.type_ref = None
-        if type_ref is not None:
-            self.type_ref = get_ms_array(type_ref, ms.float32)
+        scale = get_ms_array(scale, ms.float32)
+        self.scale = Parameter(scale, name='scale', requires_grad=False)
+        shift = get_ms_array(shift, ms.float32)
+        self.shift = Parameter(shift, name='shift', requires_grad=False)
 
-        if mode.lower() in ['atomwise', 'a']:
-            self.atomwise_readout = True
-        elif mode.lower() in ['graph', 'set2set', 'g']:
-            self.atomwise_readout = False
+        type_ref = get_ms_array(type_ref, ms.float32)
+        if type_ref is None:
+            self.type_ref = Parameter(Tensor(0, ms.float32), name='type_ref', requires_grad=False)
         else:
-            self.atomwise_readout = None
-            raise ValueError(f'Unknown mode: {mode}')
+            self.type_ref = Parameter(type_ref, name='type_ref', requires_grad=False)
 
-        self.axis = axis
+        self.shift_by_atoms = shift_by_atoms
 
-    def construct(self, label: Tensor, num_atoms: Tensor, atom_type: Tensor = None):
+    def set_scaleshift(self,
+                       scale: Union[float, Tensor, ndarray],
+                       shift: Union[float, Tensor, ndarray],
+                       type_ref: Union[Tensor, ndarray] = None):
+
+        self.scale.set_data(get_ms_array(scale, ms.float32), True)
+        self.shift.set_data(get_ms_array(shift, ms.float32), True)
+
+        if type_ref is not None:
+            self.type_ref.set_data(get_ms_array(type_ref, ms.float32), True)
+
+        return self
+
+    def convert_energy_from(self, unit) -> float:
+        """returns a scale factor that converts the energy from a specified unit."""
+        return self.units.convert_energy_from(unit)
+
+    def convert_energy_to(self, unit) -> float:
+        """returns a scale factor that converts the energy to a specified unit."""
+        return self.units.convert_energy_to(unit)
+
+    def set_unit(self, unit: str):
+        """set output unit"""
+        try:
+            self.output_unit = get_energy_unit(unit)
+            self.units.set_energy_unit(self.output_unit)
+        except KeyError:
+            self.output_unit = unit
+            self.units.set_energy_unit(None)
+        self._kwargs['unit'] = self.output_unit
+        return self
+
+    def normalize(self, label: Tensor, num_atoms: Tensor, atom_type: Tensor = None) -> Tensor:
         """Normalize outputs.
 
         Args:
-            outputs (Tensor):       Tensor with shape (B, E). Data type is float.
+            label (Tensor):       Tensor with shape (B, ...). Data type is float.
             num_atoms (Tensor):     Tensor with shape (B, 1). Data type is int.
             atom_type (Tensor):    Tensor with shape (B, A). Data type is float.
                                     Default: None
 
         Returns:
-            outputs (Tensor):       Tensor with shape (B,E). Data type is float.
+            outputs (Tensor):       Tensor with shape (B, ...). Data type is float.
 
         """
         ref = 0
-        if self.type_ref is not None:
+        if self.type_ref.ndim > 0:
+            # (B, A, ...) <- (T, ...)
             ref = F.gather(self.type_ref, atom_type, 0)
-            ref = F.reduce_sum(ref, self.axis)
+            # (B, ...) <- (B, A, ...)
+            ref = F.reduce_sum(ref, 1)
+
+        # (B, ...) - (B, ...)
         label -= ref
 
+        # (...)
         shift = self.shift
-        if self.atomwise_readout:
+        if self.shift_by_atoms:
+            if self.shift.ndim > 1:
+                # (B, ...) <- (B, 1)
+                num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * shift.ndim)
+            # (B, ...) = (...) * (B, ...)
             shift *= num_atoms
 
         return (label - self.shift) / self.scale
+
+    def construct(self, outputs: Tensor, num_atoms: Tensor, atom_type: Tensor = None) -> Tensor:
+        """Scale and shift output.
+
+        Args:
+            outputs (Tensor):       Tensor with shape (B, ...). Data type is float.
+            num_atoms (Tensor):     Tensor with shape (B, 1). Data type is int.
+            atom_type (Tensor):     Tensor with shape (B, A). Data type is float.
+                                    Default: None
+
+        Returns:
+            outputs (Tensor):       Tensor with shape (B, ...). Data type is float.
+
+        """
+        ref = 0
+        if self.type_ref.ndim > 0:
+            # (B, A, ...) <- (T, ...)
+            ref = F.gather(self.type_ref, atom_type, 0)
+            # (B, ...) <- (B, A, ...)
+            ref = F.reduce_sum(ref, 1)
+
+        # (B, ...) * (...) + (B, ...)
+        outputs = outputs * self.scale + ref
+
+        # (...)
+        shift = self.shift
+        if self.shift_by_atoms:
+            if self.shift.ndim > 1:
+                # (B, ...) <- (B, 1)
+                num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * shift.ndim)
+            # (B, ...) = (...) * (B, ...)
+            shift *= num_atoms
+
+        # (B, ...) + (B, ...)
+        return outputs + self.shift
