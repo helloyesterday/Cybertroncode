@@ -289,7 +289,7 @@ class Cybertron(Cell):
                        shift: Union[float, Tensor, List[Union[float, Tensor]]] = 0,
                        type_ref: Union[Tensor, ndarray, List[Union[Tensor, ndarray]]] = None,
                        ):
-
+        """set scale, shift and type_ref"""
         if self.readout is None:
             return self
         
@@ -372,30 +372,35 @@ class Cybertron(Cell):
         return self
 
     def readout_ndim(self, readout_idx: int) -> int:
+        """returns the rank (ndim) of a specific readout function"""
         if self.readout is None:
             return None
         self._check_readout_index(readout_idx)
         return self.readout[readout_idx].ndim
 
     def readout_shape(self, readout_idx: int) -> Tuple[int]:
+        """returns the shape of a specific readout function"""
         if self.readout is None:
             return None
         self._check_readout_index(readout_idx)
         return self.readout[readout_idx].shape
 
     def scale(self, readout_idx: int = None) -> Union[Tensor, List[Tensor]]:
+        """returns the scale"""
         if self.readout is None:
             return [self.scaleshift[i].scale for i in range(self.num_readouts)]
         self._check_readout_index(readout_idx)
         return self.scaleshift[readout_idx].scale
     
     def shift(self, readout_idx: int = None) -> Union[Tensor, List[Tensor]]:
+        """returns the shift"""
         if self.readout is None:
             return [self.scaleshift[i].shift for i in range(self.num_readouts)]
         self._check_readout_index(readout_idx)
         return self.scaleshift[readout_idx].shift
 
     def type_ref(self, readout_idx: int = None) -> Union[Tensor, List[Tensor]]:
+        """returns the type_ref"""
         if self.readout is None:
             return [self.scaleshift[i].type_ref for i in range(self.num_readouts)]
         self._check_readout_index(readout_idx)

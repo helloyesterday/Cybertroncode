@@ -24,7 +24,7 @@ Train
 """
 
 from .wrapper import WithCell, WithAdversarialLossCell
-from .train import WithLabelLossCell, WithForceLossCell
+from .train import WithLabelLossCell, WithForceLossCell, MolWithLossCell
 from .eval import WithEvalCell, WithLabelEvalCell, WithForceEvalCell
 from .loss import LossWithEnergyAndForces, MAELoss, MSELoss, CrossEntropyLoss
 from .schedule import TransformerLR

@@ -31,7 +31,8 @@ from mindspore.nn.loss.loss import LossBase
 from mindspore import ops
 from mindspore.ops import functional as F
 
-from mindsponge.function import get_integer, get_arguments
+from mindsponge.function import get_ms_array, get_arguments
+from mindsponge.function import keepdims_mean, keepdims_sum
 
 
 __all__ = [
@@ -42,14 +43,10 @@ __all__ = [
 ]
 
 
-class MolecularLoss(LossBase):
+class AtomwiseLoss(LossBase):
     r"""Loss function of the energy and force of molecule.
 
     Args:
-
-        ratio_energy (float):   Ratio of energy in loss function. Default: 1
-
-        ratio_forces (float):   Ratio of forces in loss function. Default: 100
 
         force_dis (float):      A average norm value of force, which used to scale the force.
                                 Default: 1
@@ -59,9 +56,21 @@ class MolecularLoss(LossBase):
         reduction (str):        Method to reduction the output Tensor. Default: 'mean'
 
     """
-    def __init__(self, reduction: str = 'mean', **kwargs):
+    def __init__(self,
+                 force_dis: float = 1,
+                 atomwise: bool = True,
+                 reduction: str = 'mean',
+                 **kwargs
+                 ):
         super().__init__(reduction)
         self._kwargs = get_arguments(locals(), kwargs)
+
+        self.atomwise = atomwise
+        self.force_dis = get_ms_array(force_dis, ms.float32)
+
+    def calc_loss(self, diff: Tensor) -> Tensor:
+        """calculate loss function"""
+        raise NotImplementedError
 
     def construct(self,
                   predict: Tensor,
@@ -100,15 +109,38 @@ class MolecularLoss(LossBase):
 
         """
 
-        diff = predict - label
-        loss = self._calc_loss(diff)
-        loss = self.get_loss(loss)
+        if not self.atomwise or predict.ndim > 3 or predict.ndim < 2:
+            loss = self.calc_loss(predict - label)
+            return self.get_loss(loss)
 
-        return loss
+        if predict.ndim == 3:
+            # (B, A, D)
+            diff = (predict - label) * self.force_dis
+            diff = self.calc_loss(diff)
+            # (B, A)
+            diff = F.reduce_sum(diff, -1)
+
+            if atom_mask is None:
+                # (B, 1) <- (B, A)
+                loss = keepdims_mean(diff, -1)
+            else:
+                # (B, A) * (B, A)
+                diff = diff * atom_mask
+                # (B, 1) <- (B, A)
+                loss = keepdims_sum(diff, -1)
+                # (B, 1) / (B, 1)
+                loss = loss / num_atoms
+        else:
+            # (B, Y)
+            diff = (predict - label) / num_atoms
+            loss = self.calc_loss(diff)
+
+        # (B, 1)
+        natoms = F.cast(num_atoms, predict.dtype)
+        weights = natoms / F.reduce_mean(natoms)
+
+        return self.get_loss(loss, weights)
     
-    def _calc_loss(self, diff: Tensor) -> Tensor:
-        """calculate loss function"""
-        return diff
 
 
 class LossWithEnergyAndForces(LossBase):

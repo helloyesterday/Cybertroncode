@@ -94,8 +94,8 @@ class Error(Metric):
     """
     def __init__(self,
                  indexes: tuple = (1, 2),
-                 reduce_all_dims: bool = True,
-                 averaged_by_atoms: bool = False,
+                 reduce_all: bool = True,
+                 by_atoms: bool = False,
                  atom_aggregate: str = 'mean',
                  ):
 
@@ -106,23 +106,23 @@ class Error(Metric):
         if len(self._indexes) > 2:
             self.read_num_atoms = True
 
-        self.reduce_all_dims = reduce_all_dims
+        self.reduce_all = reduce_all
 
         if atom_aggregate.lower() not in ('mean', 'sum'):
             raise ValueError(
                 'aggregate_by_atoms method must be "mean" or "sum"')
         self.atom_aggregate = atom_aggregate.lower()
 
-        if reduce_all_dims:
+        if reduce_all:
             self.axis = None
         else:
             self.axis = 0
 
-        if averaged_by_atoms and not self.read_num_atoms:
+        if by_atoms and not self.read_num_atoms:
             raise ValueError(
                 'When to use averaged_by_atoms, the index of atom number must be set at "indexes".')
 
-        self.averaged_by_atoms = averaged_by_atoms
+        self.by_atoms = by_atoms
 
         self._error_sum = 0
         self._samples_num = 0
@@ -151,13 +151,13 @@ class Error(Metric):
         tot = y.shape[0]
         if self.read_num_atoms:
             natoms = self._convert_data(inputs[self._indexes[2]])
-            if self.averaged_by_atoms:
+            if self.by_atoms:
                 error /= natoms
-            elif self.reduce_all_dims:
+            elif self.reduce_all:
                 tot = np.sum(natoms)
                 if natoms.shape[0] != y.shape[0]:
                     tot *= y.shape[0]
-        elif self.reduce_all_dims:
+        elif self.reduce_all:
             tot = error.size
 
         self._error_sum += np.sum(error, axis=self.axis)
@@ -193,8 +193,8 @@ class MAE(Error):
 
         super().__init__(
             indexes=indexes,
-            reduce_all_dims=reduce_all_dims,
-            averaged_by_atoms=averaged_by_atoms,
+            reduce_all=reduce_all_dims,
+            by_atoms=averaged_by_atoms,
             atom_aggregate=atom_aggregate,
         )
 
@@ -225,8 +225,8 @@ class MSE(Error):
 
         super().__init__(
             indexes=indexes,
-            reduce_all_dims=reduce_all_dims,
-            averaged_by_atoms=averaged_by_atoms,
+            reduce_all=reduce_all_dims,
+            by_atoms=averaged_by_atoms,
             atom_aggregate=atom_aggregate,
         )
 
@@ -258,8 +258,8 @@ class MNE(Error):
 
         super().__init__(
             indexes=indexes,
-            reduce_all_dims=reduce_all_dims,
-            averaged_by_atoms=averaged_by_atoms,
+            reduce_all=reduce_all_dims,
+            by_atoms=averaged_by_atoms,
             atom_aggregate=atom_aggregate,
         )
 
@@ -291,8 +291,8 @@ class RMSE(Error):
 
         super().__init__(
             indexes=indexes,
-            reduce_all_dims=reduce_all_dims,
-            averaged_by_atoms=averaged_by_atoms,
+            reduce_all=reduce_all_dims,
+            by_atoms=averaged_by_atoms,
             atom_aggregate=atom_aggregate,
         )
 

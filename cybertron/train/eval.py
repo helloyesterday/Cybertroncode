@@ -77,7 +77,6 @@ class WithEvalCell(WithCell):
                  scale: float = None,
                  shift: float = None,
                  type_ref: Tensor = None,
-                 atomwise_scaleshift: Tensor = None,
                  eval_data_is_normed: bool = True,
                  add_cast_fp32: bool = False,
                  fulltypes: str = 'RZCNnBbE'
@@ -199,7 +198,6 @@ class WithLabelEvalCell(WithEvalCell):
                  scale: float = None,
                  shift: float = None,
                  type_ref: Tensor = None,
-                 atomwise_scaleshift: Tensor = None,
                  eval_data_is_normed: bool = True,
                  add_cast_fp32: bool = False,
                  ):
@@ -211,7 +209,6 @@ class WithLabelEvalCell(WithEvalCell):
             scale=scale,
             shift=shift,
             type_ref=type_ref,
-            atomwise_scaleshift=atomwise_scaleshift,
             eval_data_is_normed=eval_data_is_normed,
             add_cast_fp32=add_cast_fp32,
             fulltypes='RZCNnBbE',
