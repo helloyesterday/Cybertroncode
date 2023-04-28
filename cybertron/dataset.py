@@ -130,8 +130,8 @@ class DatasetProcessor:
         print('Number of data: '+str(self.n_data))
         print('Dimension of space: '+str(self.n_dim))
         print('Total number of effective atoms: '+str(self.tot_atoms))
-        print('Shape of atom types (Z): '+str(self.atom_type.shape))
-        print('Shape of position (R): '+str(self.position.shape))
+        print('Shape of atom types: '+str(self.atom_type.shape))
+        print('Shape of position: '+str(self.position.shape))
 
         # np.random.seed(seed)
         self.data_index = np.random.shuffle(np.arange(self.n_data))
@@ -145,7 +145,7 @@ class DatasetProcessor:
         else:
             self.label = self._get_scalar(label, 'label')
         self.n_label = self.label.shape[-1]
-        print('Shape of label (E): '+str(self.label.shape))
+        print('Shape of label: '+str(self.label.shape))
 
         # (N_type,E)
         self.type_ref = None
@@ -360,21 +360,21 @@ class DatasetProcessor:
             dataset['type_ref'] = self.type_ref.astype(dtype)
 
         atom_type = self.atom_type if self.single_molecule else self.atom_type[index]
-        dataset['Z'] = atom_type
-        dataset['R'] = self.position[index].astype(dtype)
+        dataset['atom_type'] = atom_type
+        dataset['coordinate'] = self.position[index].astype(dtype)
 
         atom_mask = atom_type > 0
         num_atoms = np.sum(atom_mask.astype(int), -1, keepdims=True)
         label = self.label[index] - self.get_label_ref(atom_type, atom_mask)
         label = self.label_normalization(mode, label, scale, shift, num_atoms)
-        dataset['E'] = label.astype(dtype)
+        dataset['label'] = label.astype(dtype)
 
         if self.force is not None:
             fscale = scale
             if self.n_label > 1:
                 fscale = scale[potential_index]
             force = self.force[index] / fscale
-            dataset['F'] = force.astype(dtype)
+            dataset['force'] = force.astype(dtype)
 
         dataset['scale'] = scale.astype(dtype)
         dataset['shift'] = shift.astype(dtype)
@@ -400,12 +400,12 @@ class DatasetProcessor:
         if self.type_ref is not None:
             dataset['type_ref'] = self.type_ref.astype(dtype)
 
-        dataset['Z'] = self.atom_type if self.single_molecule else self.atom_type[index]
-        dataset['R'] = self.position[index].astype(dtype)
-        dataset['E'] = self.label[index].astype(dtype)
+        dataset['atom_type'] = self.atom_type if self.single_molecule else self.atom_type[index]
+        dataset['coordinate'] = self.position[index].astype(dtype)
+        dataset['label'] = self.label[index].astype(dtype)
 
         if self.force is not None:
-            dataset['F'] = self.force[index].astype(dtype)
+            dataset['force'] = self.force[index].astype(dtype)
 
         if analysis_info:
             dataset['mol_avg'] = self.mol_avg.astype(dtype)
