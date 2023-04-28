@@ -278,6 +278,11 @@ class Cybertron(Cell):
         super().set_train(mode)
         self.use_scaleshift = not mode
         return self
+    
+    def set_inference(self, mode: bool = True):
+        """Sets the cell to inference mode."""
+        self.set_train(not mode)
+        return self
 
     def set_scaleshift(self,
                        scale: Union[float, Tensor, List[Union[float, Tensor]]] = 1,
@@ -378,6 +383,24 @@ class Cybertron(Cell):
         self._check_readout_index(readout_idx)
         return self.readout[readout_idx].shape
 
+    def scale(self, readout_idx: int = None) -> Union[Tensor, List[Tensor]]:
+        if self.readout is None:
+            return [self.scaleshift[i].scale for i in range(self.num_readouts)]
+        self._check_readout_index(readout_idx)
+        return self.scaleshift[readout_idx].scale
+    
+    def shift(self, readout_idx: int = None) -> Union[Tensor, List[Tensor]]:
+        if self.readout is None:
+            return [self.scaleshift[i].shift for i in range(self.num_readouts)]
+        self._check_readout_index(readout_idx)
+        return self.scaleshift[readout_idx].shift
+
+    def type_ref(self, readout_idx: int = None) -> Union[Tensor, List[Tensor]]:
+        if self.readout is None:
+            return [self.scaleshift[i].type_ref for i in range(self.num_readouts)]
+        self._check_readout_index(readout_idx)
+        return self.scaleshift[readout_idx].type_ref
+
     def set_units(self, length_unit: str = None, energy_unit: str = None):
         """set units"""
         if length_unit is not None:
@@ -432,6 +455,8 @@ class Cybertron(Cell):
         for i in range(self.num_readouts):
             print(ret+" "+str(i)+(". "+self.readout[i].cls_name))
             self.readout[i].print_info(
+                num_retraction=num_retraction, num_gap=num_gap, char=char)
+            self.scaleshift[i].print_info(
                 num_retraction=num_retraction, num_gap=num_gap, char=char)
             
         print(f'{ret} Input unit: {self._units.length_unit_name}')
@@ -534,6 +559,10 @@ class Cybertron(Cell):
         if self.readout is None:
             return node_rep, node_rep
 
+        num_atoms = node_rep.shape[-2]
+        if atom_mask is not None:
+            num_atoms = msnp.count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
+
         outputs = ()
         for i in range(self.num_readouts):
             output = self.readout[i](node_rep=node_rep,
@@ -550,9 +579,6 @@ class Cybertron(Cell):
                                      )
 
             if self.use_scaleshift and self.scaleshift is not None:
-                num_atoms = node_rep.shape[-2]
-                if atom_mask is not None:
-                    num_atoms = msnp.count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
                 output = self.scaleshift[i](output, num_atoms, atom_type)
 
             outputs += (output,)

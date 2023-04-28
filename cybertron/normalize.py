@@ -29,7 +29,7 @@ from numpy import ndarray
 import mindspore as ms
 from mindspore import Tensor, Parameter
 from mindspore.nn import Cell
-from mindspore.ops import operations as P
+from mindspore import ops
 from mindspore.ops import functional as F
 
 from mindsponge.function import get_ms_array, get_arguments
@@ -90,29 +90,65 @@ class ScaleShift(Cell):
             self.units = Units(energy_unit=None)
 
         scale = get_ms_array(scale, ms.float32)
-        self.scale = Parameter(scale, name='scale', requires_grad=False)
+        self._scale = Parameter(scale, name='scale', requires_grad=False)
         shift = get_ms_array(shift, ms.float32)
-        self.shift = Parameter(shift, name='shift', requires_grad=False)
+        self._shift = Parameter(shift, name='shift', requires_grad=False)
 
         type_ref = get_ms_array(type_ref, ms.float32)
         if type_ref is None:
-            self.type_ref = Parameter(Tensor(0, ms.float32), name='type_ref', requires_grad=False)
+            self._type_ref = Parameter(Tensor(0, ms.float32), name='type_ref', requires_grad=False)
         else:
-            self.type_ref = Parameter(type_ref, name='type_ref', requires_grad=False)
+            self._type_ref = Parameter(type_ref, name='type_ref', requires_grad=False)
 
         self.shift_by_atoms = shift_by_atoms
+
+        self.identity = ops.Identity()
+
+    @property
+    def scale(self) -> Tensor:
+        return self.identity(self._scale)
+
+    @scale.setter
+    def scale(self, scale_: Union[float, Tensor, ndarray]):
+        self._scale.set_data(get_ms_array(scale_, ms.float32), True)
+
+    @property
+    def shift(self) -> Tensor:
+        return self.identity(self._shift)
+
+    @shift.setter
+    def shift(self, shift_: Union[float, Tensor, ndarray]):
+        self._shift.set_data(get_ms_array(shift_, ms.float32), True)
+
+    @property
+    def type_ref(self) -> Tensor:
+        return self.identity(self._type_ref)
+    
+    @type_ref.setter
+    def type_ref(self, type_ref_: Union[float, Tensor, ndarray]):
+        if type_ref_ == None:
+            type_ref_ = 0
+        self._type_ref.set_data(get_ms_array(type_ref_, ms.float32), True)
 
     def set_scaleshift(self,
                        scale: Union[float, Tensor, ndarray],
                        shift: Union[float, Tensor, ndarray],
                        type_ref: Union[Tensor, ndarray] = None):
-
-        self.scale.set_data(get_ms_array(scale, ms.float32), True)
-        self.shift.set_data(get_ms_array(shift, ms.float32), True)
-
-        if type_ref is not None:
-            self.type_ref.set_data(get_ms_array(type_ref, ms.float32), True)
-
+        self._scale.set_data(get_ms_array(scale, ms.float32), True)
+        self._shift.set_data(get_ms_array(shift, ms.float32), True)
+        if self._type_ref is not None:
+            self._type_ref.set_data(get_ms_array(type_ref, ms.float32), True)
+        return self
+    
+    def set_unit(self, unit: str):
+        """set output unit"""
+        try:
+            self.output_unit = get_energy_unit(unit)
+            self.units.set_energy_unit(self.output_unit)
+        except KeyError:
+            self.output_unit = unit
+            self.units.set_energy_unit(None)
+        self._kwargs['unit'] = self.output_unit
         return self
 
     def convert_energy_from(self, unit) -> float:
@@ -123,15 +159,15 @@ class ScaleShift(Cell):
         """returns a scale factor that converts the energy to a specified unit."""
         return self.units.convert_energy_to(unit)
 
-    def set_unit(self, unit: str):
-        """set output unit"""
-        try:
-            self.output_unit = get_energy_unit(unit)
-            self.units.set_energy_unit(self.output_unit)
-        except KeyError:
-            self.output_unit = unit
-            self.units.set_energy_unit(None)
-        self._kwargs['unit'] = self.output_unit
+    def print_info(self, num_retraction: int = 0, num_gap: int = 3, char: str = '-'):
+        """print the information of readout"""
+        ret = char * num_retraction
+        gap = char * num_gap
+        print(ret+gap+f" Scale: {self.scale.asnumpy()}")
+        print(ret+gap+f" Shift: {self.shift.asnumpy()}")
+        print(ret+gap+f" Type ref: {self.type_ref.asnumpy()}")
+        print(ret+gap+f" Scale the shift by the number of atoms: {self.shift_by_atoms}")
+        print('-'*80)
         return self
 
     def normalize(self, label: Tensor, num_atoms: Tensor, atom_type: Tensor = None) -> Tensor:
@@ -148,9 +184,9 @@ class ScaleShift(Cell):
 
         """
         ref = 0
-        if self.type_ref.ndim > 0:
+        if self._type_ref.ndim > 0:
             # (B, A, ...) <- (T, ...)
-            ref = F.gather(self.type_ref, atom_type, 0)
+            ref = F.gather(self._type_ref, atom_type, 0)
             # (B, ...) <- (B, A, ...)
             ref = F.reduce_sum(ref, 1)
 
@@ -158,15 +194,15 @@ class ScaleShift(Cell):
         label -= ref
 
         # (...)
-        shift = self.shift
+        shift = self._shift
         if self.shift_by_atoms:
-            if self.shift.ndim > 1:
+            if self._shift.ndim > 1:
                 # (B, ...) <- (B, 1)
                 num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * shift.ndim)
             # (B, ...) = (...) * (B, ...)
             shift *= num_atoms
 
-        return (label - self.shift) / self.scale
+        return (label - self._shift) / self._scale
 
     def construct(self, outputs: Tensor, num_atoms: Tensor, atom_type: Tensor = None) -> Tensor:
         """Scale and shift output.
@@ -182,23 +218,23 @@ class ScaleShift(Cell):
 
         """
         ref = 0
-        if self.type_ref.ndim > 0:
+        if self._type_ref.ndim > 0:
             # (B, A, ...) <- (T, ...)
-            ref = F.gather(self.type_ref, atom_type, 0)
+            ref = F.gather(self._type_ref, atom_type, 0)
             # (B, ...) <- (B, A, ...)
             ref = F.reduce_sum(ref, 1)
 
         # (B, ...) * (...) + (B, ...)
-        outputs = outputs * self.scale + ref
+        outputs = outputs * self._scale + ref
 
         # (...)
-        shift = self.shift
+        shift = self._shift
         if self.shift_by_atoms:
-            if self.shift.ndim > 1:
+            if self._shift.ndim > 1:
                 # (B, ...) <- (B, 1)
                 num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * shift.ndim)
             # (B, ...) = (...) * (B, ...)
             shift *= num_atoms
 
         # (B, ...) + (B, ...)
-        return outputs + self.shift
+        return outputs + self._shift
