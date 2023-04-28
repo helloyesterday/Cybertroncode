@@ -23,21 +23,22 @@
 Train
 """
 
-from .wrapper import WithCell, WithAdversarialLossCell
-from .train import WithLabelLossCell, WithForceLossCell, MolWithLossCell
-from .eval import WithEvalCell, WithLabelEvalCell, WithForceEvalCell
-from .loss import LossWithEnergyAndForces, MAELoss, MSELoss, CrossEntropyLoss
+from .wrapper import MoleculeWrapper, WithAdversarialLossCell
+from .train import MolWithLossCell
+from .eval import MolWithEvalCell
+from .loss import MAELoss, MSELoss, CrossEntropyLoss
 from .schedule import TransformerLR
-from .metric import MaxError, Error, MAE, MSE, MNE, RMSE, MLoss
+from .metric import MaxError, Error, MAE, MSE, MNE, RMSE, Loss
 from .callback import TrainMonitor
-from .normalize import OutputScaleShift, DatasetNormalization
 
-__all__ = []
-__all__.extend(wrapper.__all__)
-__all__.extend(train.__all__)
-__all__.extend(eval.__all__)
+__all__ = [
+    'MoleculeWrapper',
+    'WithAdversarialLossCell',
+    'MolWithLossCell',
+    'MolWithEvalCell',
+]
+
 __all__.extend(loss.__all__)
 __all__.extend(schedule.__all__)
 __all__.extend(metric.__all__)
 __all__.extend(callback.__all__)
-__all__.extend(normalize.__all__)

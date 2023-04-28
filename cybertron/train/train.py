@@ -26,183 +26,14 @@ Cell for training
 from typing import Union, List
 
 import mindspore as ms
-from mindspore.nn import Cell
-from mindspore.ops import operations as P
 from mindspore.ops import functional as F
-from mindspore.ops import composite as C
 from mindspore.numpy import count_nonzero
 from mindspore.nn.loss.loss import LossBase
 
-from mindsponge.function import keepdims_sum, get_arguments
+from mindsponge.function import get_arguments
 
-from .wrapper import WithCell, MoleculeWrapper
+from .wrapper import MoleculeWrapper
 from ..cybertron import Cybertron
-
-
-__all__ = [
-    "WithForceLossCell",
-    "WithLabelLossCell",
-]
-
-
-class WithForceLossCell(WithCell):
-    r"""Cell to combine the network and the loss function with force.
-
-    Args:
-
-        datatypes (str):        Data types of the inputs.
-
-        network (Cybertron):    Neural network of Cybertron
-
-        loss_fn (Cell):         Loss function.
-
-    """
-    def __init__(self,
-                 datatypes: str,
-                 network: Cybertron,
-                 loss_fn: Cell,
-                 ):
-
-        super().__init__(
-            datatypes=datatypes,
-            network=network,
-            loss_fn=loss_fn,
-            fulltypes='RZCNnBbFE'
-        )
-
-        #pylint: disable=invalid-name
-
-        self.F = self.datatypes.find('F')  # force
-        if self.F < 0:
-            raise TypeError(
-                'The datatype "F" must be included in WithForceLossCell!')
-
-        self.grad_op = C.GradOperation()
-
-    def construct(self, *inputs):
-        """calculate loss function
-
-        Args:
-            *input: Tuple of Tensor
-
-        Returns:
-            loss (Tensor):  Tensor of shape (B, 1). Data type is float.
-
-        """
-        inputs = inputs + (None,)
-
-        coordinate = inputs[self.R]
-        atom_type = inputs[self.Z]
-        pbc_box = inputs[self.C]
-        neighbours = inputs[self.N]
-        neighbour_mask = inputs[self.n]
-        bonds = inputs[self.B]
-        bond_mask = inputs[self.b]
-
-        energy = inputs[self.E]
-        out = self._network(
-            coordinate=coordinate,
-            atom_type=atom_type,
-            pbc_box=pbc_box,
-            neighbours=neighbours,
-            neighbour_mask=neighbour_mask,
-            bonds=bonds,
-            bond_mask=bond_mask,
-        )
-
-        forces = inputs[self.F]
-        fout = -1 * self.grad_op(self._network)(
-            coordinate,
-            atom_type,
-            pbc_box,
-            neighbours,
-            neighbour_mask,
-            bonds,
-            bond_mask,
-        )
-
-        if atom_type is None:
-            atom_type = self.atom_type
-
-        num_atoms = F.cast(atom_type > 0, out.dtype)
-        num_atoms = keepdims_sum(num_atoms, -1)
-
-        if atom_type is None:
-            return self._loss_fn(out, energy, fout, forces)
-        atom_mask = atom_type > 0
-        return self._loss_fn(out, energy, fout, forces, num_atoms, atom_mask)
-
-    @property
-    def backbone_network(self):
-        return self._network
-
-
-class WithLabelLossCell(WithCell):
-    r"""Cell to combine the network and the loss function with label.
-
-    Args:
-
-        datatypes (str):        Data types of the inputs.
-
-        network (Cybertron):    Neural network of Cybertron
-
-        loss_fn (Cell):         Loss function.
-
-    """
-    def __init__(self,
-                 datatypes: str,
-                 network: Cybertron,
-                 loss_fn: Cell,
-                 ):
-
-        super().__init__(
-            datatypes=datatypes,
-            network=network,
-            loss_fn=loss_fn,
-            fulltypes='RZCDNnBbE'
-        )
-
-        self.set_train(True)
-
-    def construct(self, *inputs):
-        """calculate loss function
-
-        Args:
-            *input: Tuple of Tensor
-
-        Returns:
-            loss (Tensor):  Tensor of shape (B, 1). Data type is float.
-
-        """
-        inputs = inputs + (None,)
-
-        coordinate = inputs[self.R]
-        atom_type = inputs[self.Z]
-        pbc_box = inputs[self.C]
-        neighbours = inputs[self.N]
-        neighbour_mask = inputs[self.n]
-        bonds = inputs[self.B]
-        bond_mask = inputs[self.b]
-
-        out = self._network(
-            coordinate=coordinate,
-            atom_type=atom_type,
-            pbc_box=pbc_box,
-            neighbours=neighbours,
-            neighbour_mask=neighbour_mask,
-            bonds=bonds,
-            bond_mask=bond_mask,
-        )
-
-        label = inputs[self.E]
-
-        if atom_type is None:
-            atom_type = self.atom_type
-
-        num_atoms = F.cast(atom_type > 0, out.dtype)
-        num_atoms = keepdims_sum(num_atoms, -1)
-
-        return self._loss_fn(out, label)
 
 
 class MolWithLossCell(MoleculeWrapper):
@@ -218,9 +49,9 @@ class MolWithLossCell(MoleculeWrapper):
 
     """
     def __init__(self,
+                 data_keys: List[str],
                  network: Cybertron,
                  loss_fn: Union[LossBase, List[LossBase]],
-                 data_keys: List[str],
                  calc_force: bool = False,
                  energy_key: str = 'energy',
                  force_key: str = 'force',
@@ -239,6 +70,13 @@ class MolWithLossCell(MoleculeWrapper):
             weights_normalize=weights_normalize,
         )
         self._kwargs = get_arguments(locals(), kwargs)
+
+        self._loss_fn = self._check_loss(loss_fn)
+        self._loss_weights = self._check_weights(loss_weights)
+        self._normal_factor = self._calc_normal_factor(self._loss_weights)
+        self._molecular_loss = self._set_molecular_loss()
+        self._any_atomwise = any(self._molecular_loss)
+        self._set_atomwise_loss()
 
         self._network.set_train()
 
@@ -294,20 +132,19 @@ class MolWithLossCell(MoleculeWrapper):
 
         num_atoms = None
         atom_mask = None
-        if self.any_atomwise:
+        if self._any_atomwise:
             if atom_type is None:
                 atom_type = self.atom_type
-
             atom_mask = atom_type > 0
             num_atoms = count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
 
         loss = 0
         for i in range(self.num_labels):
-            if self.atomwise_loss[i]:
+            if self._molecular_loss[i]:
                 loss_ = self._loss_fn[i](outputs[i], labels[i], num_atoms, atom_mask)
             else:
                 loss_ = self._loss_fn[i](outputs[i], labels[i])
 
-            loss += loss_ * self.loss_weights[i]
+            loss += loss_ * self._loss_weights[i]
 
-        return loss * self.normal_factor
+        return loss * self._normal_factor

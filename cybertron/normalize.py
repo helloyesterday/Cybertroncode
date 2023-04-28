@@ -23,7 +23,7 @@
 Modules for normalization
 """
 
-from typing import Union, List
+from typing import Union
 from numpy import ndarray
 
 import mindspore as ms
@@ -169,6 +169,12 @@ class ScaleShift(Cell):
         print(ret+gap+f" Scale the shift by the number of atoms: {self.shift_by_atoms}")
         print('-'*80)
         return self
+    
+    def scale_force(self, force: Tensor) -> Tensor:
+        return force * self._scale
+
+    def normalize_force(self, force: Tensor) -> Tensor:
+        return force / self._scale
 
     def normalize(self, label: Tensor, num_atoms: Tensor, atom_type: Tensor = None) -> Tensor:
         """Normalize outputs.
@@ -204,7 +210,7 @@ class ScaleShift(Cell):
 
         return (label - self._shift) / self._scale
 
-    def construct(self, outputs: Tensor, num_atoms: Tensor, atom_type: Tensor = None) -> Tensor:
+    def construct(self, output: Tensor, num_atoms: Tensor, atom_type: Tensor = None) -> Tensor:
         """Scale and shift output.
 
         Args:
@@ -225,7 +231,7 @@ class ScaleShift(Cell):
             ref = F.reduce_sum(ref, 1)
 
         # (B, ...) * (...) + (B, ...)
-        outputs = outputs * self._scale + ref
+        output = output * self._scale + ref
 
         # (...)
         shift = self._shift
@@ -237,4 +243,4 @@ class ScaleShift(Cell):
             shift *= num_atoms
 
         # (B, ...) + (B, ...)
-        return outputs + self._shift
+        return output + self._shift

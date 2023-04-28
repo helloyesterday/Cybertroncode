@@ -23,401 +23,159 @@
 Cell for evaluation
 """
 
-import mindspore as ms
-import mindspore.numpy as msnp
-from mindspore import Tensor
-from mindspore.nn import Cell
-from mindspore.ops import operations as P
-from mindspore.ops import functional as F
-from mindspore.ops import composite as C
+from typing import Union, List
+from numpy import ndarray
 
-from .wrapper import WithCell
-from .normalize import OutputScaleShift, DatasetNormalization
+import mindspore as ms
+from mindspore import Tensor
+from mindspore.ops import functional as F
+from mindspore.numpy import count_nonzero
+from mindspore.nn.loss.loss import LossBase
+
+from mindsponge.function import get_arguments
+
+from .wrapper import MoleculeWrapper
 from ..cybertron import Cybertron
 
 
-__all__ = [
-    "WithEvalCell",
-    "WithForceEvalCell",
-    "WithLabelEvalCell",
-]
-
-
-class WithEvalCell(WithCell):
-    r"""Basic cell to combine the network and the evaluate function.
+class MolWithEvalCell(MoleculeWrapper):
+    r"""Basic cell to combine the network and the loss/evaluate function.
 
     Args:
 
-        datatypes (str):            Data types of the inputs.
+        datatypes (str):        Data types of the inputs.
 
-        network (Cybertron):        Neural network of Cybertron
+        network (Cybertron):    Neural network of Cybertron
 
-        loss_fn (Cell):             Loss function.
-
-        scale (float):              Scale value. Default: 1
-
-        shift (float):              Shift value. Default: 0
-
-        type_ref (Tensor):          Tensor of shape (T, E). Data type is float
-                                    Reference values of label for each atom type. Default: None
-
-        atomwise_scaleshift (bool): Whether to do atomwise scale and shift. Default: None
-
-        eval_data_is_normed (bool): Whether the evaluate dataset is normalized. Default: False
-
-        add_cast_fp32 (bool):       Whether cast the dataset to 32-bit. Default: False
-
-        fulltypes (str):            Full list of data types. Default: RZCDNnBbE'
+        loss_fn (Cell):         Loss function.
 
     """
     def __init__(self,
-                 datatypes: str,
+                 data_keys: List[str],
                  network: Cybertron,
-                 loss_fn: Cell = None,
-                 scale: float = None,
-                 shift: float = None,
-                 type_ref: Tensor = None,
-                 eval_data_is_normed: bool = True,
-                 add_cast_fp32: bool = False,
-                 fulltypes: str = 'RZCNnBbE'
+                 loss_fn: Union[LossBase, List[LossBase]] = None,
+                 loss_weights: List[Union[float, Tensor, ndarray]] = 1,
+                 calc_force: bool = False,
+                 energy_key: str = 'energy',
+                 force_key: str = 'force',
+                 weights_normalize: bool = False,
+                 normed_evaldata: bool = False,
+                 **kwargs
                  ):
-
         super().__init__(
-            datatypes=datatypes,
             network=network,
             loss_fn=loss_fn,
-            fulltypes=fulltypes
+            data_keys=data_keys,
+            calc_force=calc_force,
+            energy_key=energy_key,
+            force_key=force_key,
+            loss_weights=loss_weights,
+            weights_normalize=weights_normalize,
+        )
+        self._kwargs = get_arguments(locals(), kwargs)
+
+        self._normed_evaldata = normed_evaldata
+
+        self._force_id = self.get_index(self.force_key, self.label_keys)
+
+        if loss_fn is not None:
+            self._loss_fn = self._check_loss(loss_fn)
+            self._loss_weights = self._check_weights(loss_weights)
+            self._normal_factor = self._calc_normal_factor(self._loss_weights)
+            self._molecular_loss = self._set_molecular_loss()
+            self._any_atomwise = any(self._molecular_loss)
+            self._set_atomwise_loss()
+
+    def construct(self, *inputs):
+        """calculate loss function
+
+        Args:
+            *input: Tuple of Tensor
+
+        Returns:
+            loss (Tensor):  Tensor of shape (B, 1). Data type is float.
+
+        """
+        inputs = inputs + (None,)
+
+        coordinate = inputs[self.coordinate_id]
+        atom_type = inputs[self.atom_type_id]
+        pbc_box = inputs[self.pbc_box_id]
+        neighbours = inputs[self.neighbours_id]
+        neighbour_mask = inputs[self.neighbour_mask_id]
+        bonds = inputs[self.bonds_id]
+        bond_mask = inputs[self.bond_mask_id]
+
+        labels = [inputs[self.labels_id[i]] for i in range(self.num_labels)]
+
+        if atom_type is None:
+            atom_type = self.atom_type
+        atom_mask = atom_type > 0
+        num_atoms = count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
+
+        normed_labels = None
+        if self._normed_evaldata:
+            normed_labels = labels
+            labels = [self.scaleshift[i](normed_labels[i], num_atoms, atom_type) for i in range(self.num_readouts)]
+        elif self._loss_fn is not None:
+            if self._force_id == -1:
+                normed_labels = [self.scaleshift[i].normalize(labels[i], num_atoms, atom_type) for i in range(self.num_readouts)]
+            else:
+                normed_labels = []
+                for i in range(self.num_labels):
+                    if i == self._force_id:
+                        normed_labels.append(self.scaleshift[i].normalize_force(labels[i]))
+                    else:
+                        normed_labels.append(self.scaleshift[i].normalize(labels[i], num_atoms, atom_type))
+
+        normed_outputs = self._network(
+            coordinate=coordinate,
+            atom_type=atom_type,
+            pbc_box=pbc_box,
+            neighbours=neighbours,
+            neighbour_mask=neighbour_mask,
+            bonds=bonds,
+            bond_mask=bond_mask,
         )
 
-        self.scale = scale
-        self.shift = shift
-
-        if atomwise_scaleshift is None:
-            atomwise_scaleshift = self._network.atomwise_scaleshift
+        if self.num_readouts > 1:
+            outputs = ()
+            for i in range(self.num_readouts):
+                outputs += (self.scaleshift[i](normed_outputs[i], num_atoms, atom_mask),)
         else:
-            atomwise_scaleshift = Tensor(atomwise_scaleshift, ms.bool_)
-        self.atomwise_scaleshift = atomwise_scaleshift
+            outputs = (self.scaleshift[0](normed_outputs, num_atoms, atom_mask),)
+            normed_outputs = (normed_outputs,)
 
-        self.scaleshift = None
-        self.normalization = None
-        self.scaleshift_eval = eval_data_is_normed
-        self.normalize_eval = False
-        self.type_ref = None
-        if scale is not None or shift is not None:
-            if scale is None:
-                scale = 1
-            if shift is None:
-                shift = 0
-
-            if type_ref is not None:
-                self.type_ref = Tensor(type_ref, ms.float32)
-
-            self.scaleshift = OutputScaleShift(
-                scale=scale,
-                shift=shift,
-                type_ref=self.type_ref,
-                atomwise_scaleshift=atomwise_scaleshift
+        if self.calc_force:
+            normed_force = -1 * self.grad_op(self._network)(
+                coordinate,
+                atom_type,
+                pbc_box,
+                neighbours,
+                neighbour_mask,
+                bonds,
+                bond_mask,
             )
 
-            if self._loss_fn is not None:
-                self.normalization = DatasetNormalization(
-                    scale=scale,
-                    shift=shift,
-                    type_ref=self.type_ref,
-                    atomwise_scaleshift=atomwise_scaleshift
-                )
-                if not eval_data_is_normed:
-                    self.normalize_eval = True
+            force = self.scaleshift[-1].scale_force(normed_force)
 
-            self.scale = self.scaleshift.scale
-            self.shift = self.scaleshift.shift
-
-            scale = self.scale.asnumpy().reshape(-1)
-            shift = self.shift.asnumpy().reshape(-1)
-            atomwise_scaleshift = self.scaleshift.atomwise_scaleshift.asnumpy().reshape(-1)
-            print('   with scaleshift for training ' +
-                  ('and evaluate ' if eval_data_is_normed else ' ')+'dataset:')
-            if atomwise_scaleshift.size == 1:
-                print('   Scale: '+str(scale))
-                print('   Shift: '+str(shift))
-                print('   Scaleshift mode: ' +
-                      ('atomwise' if atomwise_scaleshift else 'graph'))
+            if self.num_labels == 1:
+                outputs = (force,)
+                normed_outputs = (normed_force,)
             else:
-                print('   {:>6s}. {:>16s}{:>16s}{:>12s}'.format(
-                    'Output', 'Scale', 'Shift', 'Mode'))
-                for i, m in enumerate(atomwise_scaleshift):
-                    scale_ = scale if scale.size == 1 else scale[i]
-                    shift_ = scale if shift.size == 1 else shift[i]
-                    mode = 'Atomwise' if m else 'graph'
-                    print('   {:<6s}{:>16.6e}{:>16.6e}{:>12s}'.format(
-                        str(i)+': ', scale_, shift_, mode))
-            if type_ref is not None:
-                print('   with reference value for atom types:')
-                info = '   Type '
-                for i in range(self.type_ref.shape[-1]):
-                    info += '{:>10s}'.format('Label'+str(i))
-                print(info)
-                for i, ref in enumerate(self.type_ref):
-                    info = '   {:<7s} '.format(str(i)+':')
-                    for r in ref:
-                        info += '{:>10.2e}'.format(r.asnumpy())
-                    print(info)
-
-        self.add_cast_fp32 = add_cast_fp32
-
-
-class WithLabelEvalCell(WithEvalCell):
-    r"""Cell to combine the network and the evaluate function with label.
-
-    Args:
-
-        datatypes (str):            Data types of the inputs.
-
-        network (Cybertron):        Neural network of Cybertron
-
-        loss_fn (Cell):             Loss function.
-
-        scale (float):              Scale value. Default: 1
-
-        shift (float):              Shift value. Default: 0
-
-        type_ref (Tensor):          Tensor of shape (T, E). Data type is float
-                                    Reference values of label for each atom type. Default: None
-
-        atomwise_scaleshift (bool): Whether to do atomwise scale and shift. Default: None
-
-        eval_data_is_normed (bool): Whether the evaluate dataset is normalized. Default: False
-
-        add_cast_fp32 (bool):       Whether cast the dataset to 32-bit. Default: False
-
-    """
-    def __init__(self,
-                 datatypes: str,
-                 network: Cybertron,
-                 loss_fn: Cell = None,
-                 scale: float = None,
-                 shift: float = None,
-                 type_ref: Tensor = None,
-                 eval_data_is_normed: bool = True,
-                 add_cast_fp32: bool = False,
-                 ):
-
-        super().__init__(
-            datatypes=datatypes,
-            network=network,
-            loss_fn=loss_fn,
-            scale=scale,
-            shift=shift,
-            type_ref=type_ref,
-            eval_data_is_normed=eval_data_is_normed,
-            add_cast_fp32=add_cast_fp32,
-            fulltypes='RZCNnBbE',
-        )
-
-    def construct(self, *inputs):
-        """calculate evaluate data
-
-        Args:
-            *input: Tuple of Tensor
-
-        Returns:
-            loss (Tensor):      Tensor of shape (B, 1). Data type is float.
-                                Loss function of evaluate data.
-            output (Tensor):    Tensor of shape (B, 1). Data type is float.
-                                Predicted results of network.
-            label (Tensor):     Tensor of shape (B, 1). Data type is float.
-                                Label of evaluate data.
-            num_atoms (Tensor): Tensor of shape (B, 1). Data type is int.
-                                Number of atoms in each molecule.
-
-        """
-        inputs = inputs + (None,)
-
-        coordinate = inputs[self.R]
-        atom_type = inputs[self.Z]
-        pbc_box = inputs[self.C]
-        neighbours = inputs[self.N]
-        neighbour_mask = inputs[self.n]
-        bonds = inputs[self.B]
-        bond_mask = inputs[self.b]
-
-        output = self._network(
-            coordinate=coordinate,
-            atom_type=atom_type,
-            pbc_box=pbc_box,
-            neighbours=neighbours,
-            neighbour_mask=neighbour_mask,
-            bonds=bonds,
-            bond_mask=bond_mask,
-        )
-
-        label = inputs[self.E]
-        if self.add_cast_fp32:
-            label = F.mixed_precision_cast(ms.float32, label)
-            output = F.cast(output, ms.float32)
-
-        if atom_type is None:
-            atom_type = self.atom_type
-
-        num_atoms = F.cast(atom_type > 0, ms.int32)
-        num_atoms = msnp.sum(atom_type > 0, -1, keepdims=True)
+                outputs += (force,)
+                normed_outputs += (normed_force,)
 
         loss = 0
+
         if self._loss_fn is not None:
-            if self.normalize_eval:
-                normed_label = self.normalization(label, num_atoms, atom_type)
-                loss = self._loss_fn(output, normed_label)
-            else:
-                loss = self._loss_fn(output, label)
+            for i in range(self.num_labels):
+                if self._molecular_loss[i]:
+                    loss_ = self._loss_fn[i](normed_outputs[i], normed_labels[i], num_atoms, atom_mask)
+                else:
+                    loss_ = self._loss_fn[i](normed_outputs[i], normed_labels[i])
 
-        if self.scaleshift is not None:
-            output = self.scaleshift(output, num_atoms, atom_type)
-            if self.scaleshift_eval:
-                label = self.scaleshift(label, num_atoms, atom_type)
+                loss += loss_ * self._loss_weights[i]
+            loss *= self._normal_factor
 
-        return loss, output, label, num_atoms
-
-
-class WithForceEvalCell(WithEvalCell):
-    r"""Cell to combine the network and the evaluate function with force.
-
-    Args:
-
-        datatypes (str):            Data types of the inputs.
-
-        network (Cybertron):        Neural network of Cybertron
-
-        loss_fn (Cell):             Loss function.
-
-        scale (float):              Scale value. Default: 1
-
-        shift (float):              Shift value. Default: 0
-
-        type_ref (Tensor):          Tensor of shape (T, E). Data type is float
-                                    Reference values of label for each atom type. Default: None
-
-        atomwise_scaleshift (bool): Whether to do atomwise scale and shift. Default: None
-
-        eval_data_is_normed (bool): Whether the evaluate dataset is normalized. Default: False
-
-        add_cast_fp32 (bool):       Whether cast the dataset to 32-bit. Default: False
-
-    """
-    def __init__(self,
-                 datatypes,
-                 network: Cybertron,
-                 loss_fn: Cell = None,
-                 scale: float = None,
-                 shift: float = None,
-                 type_ref: Tensor = None,
-                 atomwise_scaleshift: Tensor = None,
-                 eval_data_is_normed: bool = True,
-                 add_cast_fp32: bool = False,
-                 ):
-
-        super().__init__(
-            datatypes=datatypes,
-            network=network,
-            loss_fn=loss_fn,
-            scale=scale,
-            shift=shift,
-            type_ref=type_ref,
-            atomwise_scaleshift=atomwise_scaleshift,
-            eval_data_is_normed=eval_data_is_normed,
-            add_cast_fp32=add_cast_fp32,
-            fulltypes='RZCNnBbFE',
-        )
-        #pylint: disable=invalid-name
-
-        self.F = self.datatypes.find('F')  # force
-
-        if self.F < 0:
-            raise TypeError(
-                'The datatype "F" must be included in WithForceEvalCell!')
-
-        self.grad_op = C.GradOperation()
-
-    def construct(self, *inputs):
-        """calculate evaluate data
-
-        Args:
-            *input: Tuple of Tensor
-
-        Returns:
-            loss (Tensor):      Tensor of shape (B, 1). Data type is float.
-                                Loss function of evaluate data.
-            output (Tensor):    Tensor of shape (B, 1). Data type is float.
-                                Predicted results of network.
-            label (Tensor):     Tensor of shape (B, 1). Data type is float.
-                                Label of evaluate data.
-            num_atoms (Tensor): Tensor of shape (B, 1). Data type is int.
-                                Number of atoms in each molecule.
-
-        """
-        inputs = inputs + (None,)
-
-        coordinate = inputs[self.R]
-        atom_type = inputs[self.Z]
-        pbc_box = inputs[self.C]
-        neighbours = inputs[self.N]
-        neighbour_mask = inputs[self.n]
-        bonds = inputs[self.B]
-        bond_mask = inputs[self.b]
-
-        output_energy = self._network(
-            coordinate=coordinate,
-            atom_type=atom_type,
-            pbc_box=pbc_box,
-            neighbours=neighbours,
-            neighbour_mask=neighbour_mask,
-            bonds=bonds,
-            bond_mask=bond_mask,
-        )
-
-        output_forces = -1 * self.grad_op(self._network)(
-            coordinate,
-            atom_type,
-            pbc_box,
-            neighbours,
-            neighbour_mask,
-            bonds,
-            bond_mask,
-        )
-
-        label_forces = inputs[self.F]
-        label_energy = inputs[self.E]
-
-        if self.add_cast_fp32:
-            label_forces = F.mixed_precision_cast(ms.float32, label_forces)
-            label_energy = F.mixed_precision_cast(ms.float32, label_energy)
-            output_energy = F.cast(output_energy, ms.float32)
-
-        if atom_type is None:
-            atom_type = self.atom_type
-
-        num_atoms = F.cast(atom_type > 0, ms.int32)
-        num_atoms = msnp.sum(atom_type > 0, -1, keepdims=True)
-
-        loss = 0
-        if self._loss_fn is not None:
-            atom_mask = atom_type > 0
-            if self.normalize_eval:
-                normed_label_energy = self.normalization(
-                    label_energy, num_atoms, atom_type)
-                normed_label_forces = label_forces / self.scale
-                loss = self._loss_fn(output_energy, normed_label_energy,
-                                     output_forces, normed_label_forces, num_atoms, atom_mask)
-            else:
-                loss = self._loss_fn(
-                    output_energy, label_energy, output_forces, label_forces, num_atoms, atom_mask)
-
-        if self.scaleshift is not None:
-            output_energy = self.scaleshift(
-                output_energy, num_atoms, atom_type)
-            output_forces = output_forces * self.scale
-            if self.scaleshift_eval:
-                label_energy = self.scaleshift(
-                    label_energy, num_atoms, atom_type)
-                label_forces = label_forces * self.scale
-
-        return loss, output_energy, label_energy, output_forces, label_forces, num_atoms
+        return loss, outputs, labels, num_atoms

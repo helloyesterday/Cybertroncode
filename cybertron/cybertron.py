@@ -31,10 +31,9 @@ import mindspore.numpy as msnp
 from mindspore import Tensor, Parameter
 from mindspore.nn import Cell, CellList, Norm
 from mindspore.ops import functional as F
-from mindspore import ops
 
 from mindsponge.function import Units, GLOBAL_UNITS
-from mindsponge.function import get_integer, get_ms_array, get_tensor, get_arguments
+from mindsponge.function import get_integer, get_tensor, get_arguments
 from mindsponge.function import GetVector, gather_vector
 from mindsponge.partition import FullConnectNeighbours
 from mindsponge.potential import PotentialCell
