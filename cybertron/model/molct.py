@@ -90,9 +90,10 @@ class MolCT(MolecularGNN):
                  dim_edge_emb: int = None,
                  interaction: Union[Interaction, List[Interaction]] = None,
                  n_interaction: int = 3,
+                 activation: Union[Cell, str] = 'silu',
+                 open_act: bool = False,
                  n_heads: int = 8,
                  max_cycles: int = 10,
-                 activation: Union[Cell, str] = 'silu',
                  coupled_interaction: bool = False,
                  fixed_cycles: bool = False,
                  use_feed_forward: bool = False,
@@ -112,8 +113,12 @@ class MolCT(MolecularGNN):
         )
         self._kwargs = get_arguments(locals(), kwargs)
 
+        self.open_act = open_act
+        self.max_cycles = 1
+        if self.open_act:
+            self.max_cycles = get_integer(max_cycles)
+
         self.n_heads = get_integer(n_heads)
-        self.max_cycles = get_integer(max_cycles)
         self.use_feed_forward = use_feed_forward
         self.fixed_cycles = fixed_cycles
         self.act_threshold = get_ms_array(act_threshold, ms.float32)
