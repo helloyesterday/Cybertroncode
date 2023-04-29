@@ -20,83 +20,56 @@
 # limitations under the License.
 # ============================================================================
 """
-Cybertron tutorial 03: Use normalized dataset and validation dataset
+
+Cybertron tutorial 03: Load & test network
+
+Key points:
+    1) Initialize the network using a configuration file (yaml).
+    2) Load parameters for the network using a checkpoint files (ckpt).
+    3) Set scale and shift for network.
+    4) Use original or normalized dataset for test.
+
 """
 
 import sys
-import time
 import numpy as np
-from mindspore import nn
 from mindspore import context
 from mindspore import dataset as ds
 from mindspore.train import Model
-from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
-
-from mindsponge.data import write_yaml
 
 if __name__ == '__main__':
 
     sys.path.append('..')
 
+    from mindsponge.data import read_yaml, load_checkpoint
+
     from cybertron import Cybertron
-    from cybertron.model import MolCT
-    from cybertron.embedding import MolEmbedding
-    from cybertron.readout import AtomwiseReadout
-    from cybertron.train import TrainMonitor, MAELoss, MAE, Loss
-    from cybertron.train import MolWithLossCell, MolWithEvalCell
+    from cybertron.train import MAE, Loss
+    from cybertron.train import MolWithEvalCell, MAELoss
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    data_name = sys.path[0] + '/dataset_qm9_normed_'
-    train_file = data_name + 'trainset_1024.npz'
-    valid_file = data_name + 'validset_128.npz'
+    # Initializing the network using a configuration file (yaml)
+    config_file = 'Tutorial_C02/configure.yaml'
+    config = read_yaml(config_file)
+    net = Cybertron(**config)
 
-    train_data = np.load(train_file)
-    valid_data = np.load(valid_file)
+    # Loading parameters for the network using a checkpoint files (ckpt)
+    ckpt_file = 'Tutorial_C02/cybertron-molct-8_32.ckpt'
+    load_checkpoint(ckpt_file, net)
+
+    test_file = sys.path[0] + '/dataset_qm9_origin_testset_1024.npz'
+    test_data = np.load(test_file)
 
     idx = [7]  # U0
 
-    num_atom = int(train_data['num_atoms'])
-    _scale = train_data['scale'][idx]
-    shift = train_data['shift'][idx]
-    value = train_data['type_ref'][:, idx]
+    num_atom = test_data['num_atoms']
+    scale = test_data['scale'][idx]
+    shift = test_data['shift'][idx]
+    type_ref = test_data['type_ref'][:, idx]
 
-    dim_feature = 128
-    activation = 'silu'
-
-    emb = MolEmbedding(
-        dim_node=dim_feature,
-        emb_dis=True,
-        emb_bond=False,
-        cutoff=1,
-        cutoff_fn='smooth',
-        rbf_fn='log_gaussian',
-        activation=activation,
-        length_unit='nm',
-    )
-
-    mod = MolCT(
-        dim_feature=dim_feature,
-        dim_edge_emb=emb.dim_edge,
-        n_interaction=3,
-        n_heads=8,
-        fixed_cycles=False,
-        activation=activation,
-        max_cycles=10,
-        coupled_interaction=True,
-    )
-
-    readout = AtomwiseReadout(dim_output=1,
-                              dim_node_rep=dim_feature,
-                              activation=activation,
-                              )
-    
-    net = Cybertron(embedding=emb, model=mod, readout=readout, num_atoms=num_atom)
-
-    outdir = 'Tutorial_C03'
-    write_yaml(net._kwargs, 'configure.yaml', outdir)
-
-    net.print_info()
+    # Setting scale and shift
+    net.set_scaleshift(scale=scale, shift=shift, type_ref=type_ref)
 
     tot_params = 0
     for i, param in enumerate(net.get_parameters()):
@@ -104,58 +77,67 @@ if __name__ == '__main__':
         print(i, param.name, param.shape)
     print('Total parameters: ', tot_params)
 
-    N_EPOCH = 8
-    REPEAT_TIME = 1
-    BATCH_SIZE = 32
+    net.print_info()
 
-    ds_train = ds.NumpySlicesDataset(
-        {'coordinate': train_data['coordinate'],
-         'atom_type': train_data['atom_type'],
-         'label': train_data['label'][:, idx]}, shuffle=True)
-    data_key = ds_train.column_names
-    ds_train = ds_train.batch(BATCH_SIZE, drop_remainder=True)
-    ds_train = ds_train.repeat(REPEAT_TIME)
-    
-    ds_valid = ds.NumpySlicesDataset(
-        {'coordinate': valid_data['coordinate'],
-         'atom_type': valid_data['atom_type'],
-         'label': valid_data['label'][:, idx]}, shuffle=True)
-    column_names = ds_valid.column_names
-    ds_valid = ds_valid.batch(128)
-    ds_valid = ds_valid.repeat(1)
+    # Use original (unnormalized) data for evaluation
+    ds_test = ds.NumpySlicesDataset(
+        {'coordinate': test_data['coordinate'],
+         'atom_type': test_data['atom_type'],
+         'label': test_data['label'][:, idx]}, shuffle=False)
+    data_keys = ds_test.column_names
+    ds_test = ds_test.batch(1024)
+    ds_test = ds_test.repeat(1)
 
-    loss_network = MolWithLossCell(data_key, net, MAELoss())
-    eval_network = MolWithEvalCell(data_key, net, MAELoss())
-
-    # lr = 1e-3
-    lr = nn.ExponentialDecayLR(
-        learning_rate=1e-3, decay_rate=0.96, decay_steps=4, is_stair=True)
-    optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
+    # NOTE: When using unnormalized data for evaluation,
+    # the argument `normed_evaldata` should be set to `False`
+    # Default: False
+    eval_network = MolWithEvalCell(data_keys, net, MAELoss())
 
     eval_mae = 'EvalMAE'
     atom_mae = 'AtomMAE'
     eval_loss = 'Evalloss'
-    model = Model(loss_network, optimizer=optim, eval_network=eval_network, metrics={
-        eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
+    model = Model(net, eval_network=eval_network, metrics=
+                  {eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
 
-    outdir = 'Tutorial_C03'
-    outname = outdir + '_' + net.model_name
+    print('Evaluation with unnormalized test dataset:')
+    eval_metrics = model.eval(ds_test, dataset_sink_mode=False)
+    info = ''
+    for k, value in eval_metrics.items():
+        info += k
+        info += ': '
+        info += str(value)
+        info += ', '
+    print(info)
 
-    record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=16,
-                             directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
+    normed_test_file = sys.path[0] + '/dataset_qm9_normed_testset_1024.npz'
+    normed_test_file = np.load(normed_test_file)
 
-    config_ck = CheckpointConfig(
-        save_checkpoint_steps=32, keep_checkpoint_max=64)
-    ckpoint_cb = ModelCheckpoint(
-        prefix=outname, directory=outdir, config=config_ck)
+    # Using normaed dataset
+    ds_test_normed = ds.NumpySlicesDataset(
+        {'coordinate': normed_test_file['coordinate'],
+         'atom_type': normed_test_file['atom_type'],
+         'label': normed_test_file['label'][:, idx]}, shuffle=False)
+    data_keys = ds_test_normed.column_names
+    ds_test_normed = ds_test_normed.batch(1024)
+    ds_test_normed = ds_test_normed.repeat(1)
 
-    print("Start training ...")
-    beg_time = time.time()
-    model.train(N_EPOCH, ds_train, callbacks=[
-                record_cb, ckpoint_cb], dataset_sink_mode=False)
-    end_time = time.time()
-    used_time = end_time - beg_time
-    m, s = divmod(used_time, 60)
-    h, m = divmod(m, 60)
-    print("Training Fininshed!")
-    print("Training Time: %02d:%02d:%02d" % (h, m, s))
+    # NOTE: When using normalized data for evaluation,
+    # the argument `normed_evaldata` should be set to `True`
+    # Default: False
+    eval_network0 = MolWithEvalCell(data_keys, net, MAELoss(), normed_evaldata=True)
+
+    eval_mae = 'EvalMAE'
+    atom_mae = 'AtomMAE'
+    eval_loss = 'Evalloss'
+    model0 = Model(net, eval_network=eval_network0, metrics=
+                   {eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
+
+    print('Evaluation with normalized test dataset:')
+    eval_metrics = model0.eval(ds_test_normed, dataset_sink_mode=False)
+    info = ''
+    for k, value in eval_metrics.items():
+        info += k
+        info += ': '
+        info += str(value)
+        info += ', '
+    print(info)

@@ -21,11 +21,13 @@
 # ============================================================================
 """
 
-Cybertron tutorial 02: Configuring Cybertron
+Cybertron tutorial 04: Validate the model during training.
 
 Key points:
-    1) Embedding, model and readout
-    2) Graph & atomwise readout.
+    1) Set scale and shift (necessary for validation).
+    2) Set metric functions.
+    3) Set `normed_evaldata` according to whether the validation dataset is normalized or not.
+    4) Use TrainMonitor.
 
 """
 
@@ -36,7 +38,6 @@ from mindspore import nn
 from mindspore import context
 from mindspore import dataset as ds
 from mindspore.train import Model
-from mindspore.train.callback import LossMonitor
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
 if __name__ == '__main__':
@@ -47,17 +48,24 @@ if __name__ == '__main__':
     from cybertron.model import MolCT
     from cybertron.embedding import MolEmbedding
     from cybertron.readout import AtomwiseReadout
-    from cybertron.train import MolWithLossCell, MAELoss
+    from cybertron.train import TrainMonitor, MAE, MAELoss, Loss
+    from cybertron.train import MolWithLossCell, MolWithEvalCell
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    train_file = sys.path[0] + '/dataset_qm9_normed_trainset_1024.npz'
+    data_name = sys.path[0] + '/dataset_qm9_normed_'
+    train_file = data_name + 'trainset_1024.npz'
+    valid_file = data_name + 'validset_128.npz'
 
     train_data = np.load(train_file)
+    valid_data = np.load(valid_file)
 
     idx = [7]  # U0
 
     num_atom = train_data['num_atoms']
+    scale = train_data['scale'][idx]
+    shift = train_data['shift'][idx]
+    type_ref = train_data['type_ref'][:, idx]
 
     dim_feature = 128
     activation = 'silu'
@@ -79,24 +87,24 @@ if __name__ == '__main__':
         n_interaction=3,
         n_heads=8,
         activation=activation,
-        coupled_interaction=True,
     )
 
-    # Using Atomwise readout
     readout = AtomwiseReadout(dim_output=1,
                               dim_node_rep=dim_feature,
                               activation=activation,
                               )
 
-    net = Cybertron(model=mod, embedding=emb, readout=readout, num_atoms=num_atom)
+    net = Cybertron(embedding=emb, model=mod, readout=readout, num_atoms=num_atom)
+    # Setting scale and shift (necessary for validation)
+    net.set_scaleshift(scale=scale, shift=shift, type_ref=type_ref)
 
-    outdir = 'Tutorial_C02'
+    outdir = 'Tutorial_C04'
     net.save_configure('configure.yaml', outdir)
 
     net.print_info()
 
     tot_params = 0
-    for i, param in enumerate(net.trainable_params()):
+    for i, param in enumerate(net.get_parameters()):
         tot_params += param.size
         print(i, param.name, param.shape)
     print('Total parameters: ', tot_params)
@@ -110,25 +118,47 @@ if __name__ == '__main__':
          'atom_type': train_data['atom_type'],
          'label': train_data['label'][:, idx]}, shuffle=True)
     data_keys = ds_train.column_names
-
     ds_train = ds_train.batch(BATCH_SIZE, drop_remainder=True)
     ds_train = ds_train.repeat(REPEAT_TIME)
+
     loss_network = MolWithLossCell(data_keys, net, MAELoss())
 
-    lr = 1e-3
+    ds_valid = ds.NumpySlicesDataset(
+        {'coordinate': valid_data['coordinate'],
+         'atom_type': valid_data['atom_type'],
+         'label': valid_data['label'][:, idx]}, shuffle=True)
+    data_keys = ds_valid.column_names
+    ds_valid = ds_valid.batch(128)
+    ds_valid = ds_valid.repeat(1)
+
+    # NOTE: When using normalized data for evaluation,
+    # the argument `normed_evaldata` should be set to `True`
+    # Default: False
+    eval_network = MolWithEvalCell(data_keys, net, MAELoss(), normed_evaldata=True)
+
+    # lr = 1e-3
+    lr = nn.ExponentialDecayLR(learning_rate=1e-3, decay_rate=0.96, decay_steps=4, is_stair=True)
     optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
 
-    model = Model(loss_network, optimizer=optim)
+    # Set metric functions
+    eval_mae = 'EvalMAE'
+    atom_mae = 'AtomMAE'
+    eval_loss = 'Evalloss'
+    model = Model(loss_network, optimizer=optim, eval_network=eval_network, metrics={
+        eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
 
-    monitor_cb = LossMonitor(16)
+    outname = params_name = 'cybertron-' + net.model_name.lower()
 
-    params_name = 'cybertron-' + net.model_name.lower()
+    # Using TrainMonitor
+    record_cb = TrainMonitor(model, outname, per_step=32, avg_steps=32,
+                             directory=outdir, eval_dataset=ds_valid)
+
     config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
-    ckpoint_cb = ModelCheckpoint(prefix=params_name, directory=outdir, config=config_ck)
+    ckpoint_cb = ModelCheckpoint(prefix=outname, directory=outdir, config=config_ck)
 
     print("Start training ...")
     beg_time = time.time()
-    model.train(N_EPOCH, ds_train, callbacks=[monitor_cb, ckpoint_cb], dataset_sink_mode=False)
+    model.train(N_EPOCH, ds_train, callbacks=[record_cb, ckpoint_cb], dataset_sink_mode=False)
     end_time = time.time()
     used_time = end_time - beg_time
     m, s = divmod(used_time, 60)
