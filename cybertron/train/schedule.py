@@ -24,6 +24,7 @@ Learning rate schedule for optimizer
 """
 
 import mindspore as ms
+import mindspore.numpy as msnp
 from mindspore.nn.learning_rate_schedule import LearningRateSchedule
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
@@ -79,5 +80,5 @@ class TransformerLR(LearningRateSchedule):
         dim_scale = F.pow(self.dimension, -0.5)
         lr1 = F.pow(step_num, -0.5)
         lr2 = step_num*warmup_scale
-        lr_percent = dim_scale * F.min(lr1, lr2)
+        lr_percent = dim_scale * msnp.minimum(lr1, lr2)
         return self.learning_rate * lr_percent
