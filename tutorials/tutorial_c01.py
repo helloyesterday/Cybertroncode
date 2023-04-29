@@ -20,7 +20,6 @@
 # limitations under the License.
 # ============================================================================
 """
-
 Cybertron tutorial 01: Quick start with Cybertron
 
 Key points:

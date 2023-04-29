@@ -20,7 +20,6 @@
 # limitations under the License.
 # ============================================================================
 """
-
 Cybertron tutorial 04: Validate the model during training.
 
 Key points:

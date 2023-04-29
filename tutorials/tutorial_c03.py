@@ -20,7 +20,6 @@
 # limitations under the License.
 # ============================================================================
 """
-
 Cybertron tutorial 03: Load & test network
 
 Key points:

@@ -20,7 +20,13 @@
 # limitations under the License.
 # ============================================================================
 """
-Cybertron tutorial 05: Multi-task with multiple readouts (example 1)
+Cybertron tutorial 05: Multi-task training
+
+Key points:
+    1) Set multi readouts.
+    2) Set dataset with multi labels.
+    3) set metrics for multi labels.
+
 """
 
 import sys
@@ -57,6 +63,8 @@ if __name__ == '__main__':
     idx = [7, 8, 9, 10]  # U0, U, G, H
 
     num_atom = train_data['num_atoms']
+
+    # Set multi scale, shift and type_ref
     scale = [train_data['scale'][[i]] for i in idx]
     shift = [train_data['shift'][[i]] for i in idx]
     type_ref = [train_data['type_ref'][:, [i]] for i in idx]
@@ -83,10 +91,11 @@ if __name__ == '__main__':
         activation=activation,
     )
 
-    readout0 = AtomwiseReadout(dim_node_rep=dim_feature, activation=activation)
-    readout1 = AtomwiseReadout(dim_node_rep=dim_feature, activation=activation)
-    readout2 = AtomwiseReadout(dim_node_rep=dim_feature, activation=activation)
-    readout3 = AtomwiseReadout(dim_node_rep=dim_feature, activation=activation)
+    # Set multi readouts
+    readout0 = AtomwiseReadout(1, dim_feature, activation)
+    readout1 = AtomwiseReadout(1, dim_feature, activation)
+    readout2 = AtomwiseReadout(1, dim_feature, activation)
+    readout3 = AtomwiseReadout(1, dim_feature, activation)
 
     net = Cybertron(embedding=emb,
                     model=mod,
@@ -108,6 +117,7 @@ if __name__ == '__main__':
     REPEAT_TIME = 1
     BATCH_SIZE = 32
 
+    # set training dataset with multi labels
     ds_train = ds.NumpySlicesDataset(
         {'coordinate': train_data['coordinate'],
          'atom_type': train_data['atom_type'],
@@ -122,6 +132,7 @@ if __name__ == '__main__':
 
     loss_network = MolWithLossCell(data_keys, net, MAELoss())
 
+    # set valiation dataset with multi labels
     ds_valid = ds.NumpySlicesDataset(
         {'coordinate': valid_data['coordinate'],
          'atom_type': valid_data['atom_type'],
@@ -139,6 +150,7 @@ if __name__ == '__main__':
     lr = TransformerLR(learning_rate=1., warmup_steps=4000, dimension=dim_feature)
     optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
 
+    # set metrics for multi labels.
     model = Model(loss_network,
                   optimizer=optim,
                   eval_network=eval_network,

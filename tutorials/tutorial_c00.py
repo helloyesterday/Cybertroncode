@@ -21,9 +21,11 @@
 # ============================================================================
 """
 Cybertron tutorial 00: The preprocessing of dataset
-                       The NPZ file can be download from:
-                       dataset_qm9.npz: http://gofile.me/6Utp7/tJ5hoDIAo
-                       ethanol_dft.npz: http://gofile.me/6Utp7/hbQBofAFM
+
+The NPZ file can be download from:
+    dataset_qm9.npz: http://gofile.me/6Utp7/tJ5hoDIAo
+    ethanol_dft.npz: http://gofile.me/6Utp7/hbQBofAFM
+
 """
 
 import sys
