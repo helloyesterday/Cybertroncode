@@ -27,6 +27,7 @@ from typing import Union
 from numpy import ndarray
 
 import mindspore as ms
+from mindspore.numpy import count_nonzero
 from mindspore import Tensor, Parameter
 from mindspore.nn import Cell
 from mindspore import ops
@@ -165,7 +166,12 @@ class ScaleShift(Cell):
         gap = char * num_gap
         print(ret+gap+f" Scale: {self.scale.asnumpy()}")
         print(ret+gap+f" Shift: {self.shift.asnumpy()}")
-        print(ret+gap+f" Type ref: {self.type_ref.asnumpy()}")
+        if self.type_ref.ndim > 1:
+            print(ret+gap+" Reference value for atom types:")
+            for i, ref in enumerate(self.type_ref):
+                print(ret+gap+gap+' No.{: <5}'.format(f'{i}: {ref}'))
+        else:
+            print(ret+gap+f" Reference value for atom types: {self.type_ref.asnumpy()}")
         print(ret+gap+f" Scale the shift by the number of atoms: {self.shift_by_atoms}")
         print('-'*80)
         return self
@@ -176,7 +182,7 @@ class ScaleShift(Cell):
     def normalize_force(self, force: Tensor) -> Tensor:
         return force / self._scale
 
-    def normalize(self, label: Tensor, num_atoms: Tensor, atom_type: Tensor = None) -> Tensor:
+    def normalize(self, label: Tensor, atom_type: Tensor, num_atoms: Tensor = None) -> Tensor:
         """Normalize outputs.
 
         Args:
@@ -202,15 +208,17 @@ class ScaleShift(Cell):
         # (...)
         shift = self._shift
         if self.shift_by_atoms:
+            if num_atoms is None:
+                num_atoms = count_nonzero(F.cast(atom_type>0, ms.int16), axis=-1, keepdims=True)
             if self._shift.ndim > 1:
                 # (B, ...) <- (B, 1)
                 num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * shift.ndim)
             # (B, ...) = (...) * (B, ...)
             shift *= num_atoms
 
-        return (label - self._shift) / self._scale
+        return (label - shift) / self._scale
 
-    def construct(self, output: Tensor, num_atoms: Tensor, atom_type: Tensor = None) -> Tensor:
+    def construct(self, output: Tensor, atom_type: Tensor, num_atoms: Tensor = None) -> Tensor:
         """Scale and shift output.
 
         Args:
@@ -236,6 +244,8 @@ class ScaleShift(Cell):
         # (...)
         shift = self._shift
         if self.shift_by_atoms:
+            if num_atoms is None:
+                num_atoms = count_nonzero(F.cast(atom_type>0, ms.int16), axis=-1, keepdims=True)
             if self._shift.ndim > 1:
                 # (B, ...) <- (B, 1)
                 num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * shift.ndim)
@@ -243,4 +253,4 @@ class ScaleShift(Cell):
             shift *= num_atoms
 
         # (B, ...) + (B, ...)
-        return output + self._shift
+        return output + shift

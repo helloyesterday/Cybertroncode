@@ -23,6 +23,7 @@
 Main program of Cybertron
 """
 
+import os
 from typing import Union, List, Tuple
 from numpy import ndarray
 
@@ -31,17 +32,22 @@ import mindspore.numpy as msnp
 from mindspore import Tensor, Parameter
 from mindspore.nn import Cell, CellList, Norm
 from mindspore.ops import functional as F
+from mindspore.train import save_checkpoint
+from mindspore.train._utils import _make_directory
 
 from mindsponge.function import Units, GLOBAL_UNITS
 from mindsponge.function import get_integer, get_tensor, get_arguments
 from mindsponge.function import GetVector, gather_vector
 from mindsponge.partition import FullConnectNeighbours
 from mindsponge.potential import PotentialCell
+from mindsponge.data import write_yaml
 
 from .embedding import GraphEmbedding, get_embedding
 from .readout import Readout, get_readout
 from .model import MolecularGNN, get_molecular_model
 from .normalize import ScaleShift
+
+_cur_dir = os.getcwd()
 
 
 class Cybertron(Cell):
@@ -344,7 +350,6 @@ class Cybertron(Cell):
                                  f'the shape of readout function: {shape}')
             return ref
 
-        
         if not isinstance(type_ref, (list, tuple)):
             type_ref = [type_ref]
         if len(type_ref) != self.num_readouts:
@@ -426,6 +431,23 @@ class Cybertron(Cell):
             self.output_unit_scale = (
                 Tensor(self.scaleshift[i].convert_energy_to(self._units), ms.float32)
                 for i in range(self.num_readouts))
+        return self
+    
+    def save_configure(self, filename: str, directory: str = None):
+        """save configure to file"""
+        write_yaml(self._kwargs, filename, directory)
+        return self
+    
+    def save_checkpoint(self, ckpt_file_name: str, directory: str = None, append_dict: str = None):
+        """save checkpoint file"""
+        if directory is not None:
+            directory = _make_directory(directory)
+        else:
+            directory = _cur_dir
+        ckpt_file = os.path.join(directory, ckpt_file_name)
+        if os.path.exists(ckpt_file):
+            os.remove(ckpt_file)
+        save_checkpoint(self, ckpt_file, append_dict=append_dict)
         return self
 
     def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
@@ -583,7 +605,7 @@ class Cybertron(Cell):
                                      )
 
             if self.use_scaleshift and self.scaleshift is not None:
-                output = self.scaleshift[i](output, num_atoms, atom_type)
+                output = self.scaleshift[i](output, atom_type, num_atoms)
 
             outputs += (output,)
 

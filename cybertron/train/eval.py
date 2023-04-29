@@ -24,6 +24,7 @@ Cell for evaluation
 """
 
 from typing import Union, List
+import numpy as np
 from numpy import ndarray
 
 import mindspore as ms
@@ -86,6 +87,8 @@ class MolWithEvalCell(MoleculeWrapper):
             self._any_atomwise = any(self._molecular_loss)
             self._set_atomwise_loss()
 
+        self.zero = np.array(0, np.int32)
+
     def construct(self, *inputs):
         """calculate loss function
 
@@ -116,19 +119,21 @@ class MolWithEvalCell(MoleculeWrapper):
         normed_labels = None
         if self._normed_evaldata:
             normed_labels = labels
-            labels = [self.scaleshift[i](normed_labels[i], num_atoms, atom_type) for i in range(self.num_readouts)]
+            labels = [self.scaleshift[i](normed_labels[i], atom_type, num_atoms)
+                      for i in range(self.num_readouts)]
         elif self._loss_fn is not None:
             if self._force_id == -1:
-                normed_labels = [self.scaleshift[i].normalize(labels[i], num_atoms, atom_type) for i in range(self.num_readouts)]
+                normed_labels = [self.scaleshift[i].normalize(labels[i], atom_type, num_atoms)
+                                 for i in range(self.num_readouts)]
             else:
                 normed_labels = []
                 for i in range(self.num_labels):
                     if i == self._force_id:
                         normed_labels.append(self.scaleshift[i].normalize_force(labels[i]))
                     else:
-                        normed_labels.append(self.scaleshift[i].normalize(labels[i], num_atoms, atom_type))
+                        normed_labels.append(self.scaleshift[i].normalize(labels[i], atom_type, num_atoms))
 
-        normed_outputs = self._network(
+        outputs = self._network(
             coordinate=coordinate,
             atom_type=atom_type,
             pbc_box=pbc_box,
@@ -138,16 +143,27 @@ class MolWithEvalCell(MoleculeWrapper):
             bond_mask=bond_mask,
         )
 
-        if self.num_readouts > 1:
-            outputs = ()
-            for i in range(self.num_readouts):
-                outputs += (self.scaleshift[i](normed_outputs[i], num_atoms, atom_mask),)
-        else:
-            outputs = (self.scaleshift[0](normed_outputs, num_atoms, atom_mask),)
-            normed_outputs = (normed_outputs,)
+        if self.num_readouts == 1:
+            outputs = (outputs,)
+
+        def _normalize_outputs(outputs, outputs_scaled):
+            if outputs_scaled:
+                normed_outputs = ()
+                if self._loss_fn is not None:
+                    for i in range(self.num_readouts):
+                        normed_outputs += (self.scaleshift[i].normalize(outputs[i], atom_type, num_atoms),)
+            else:
+                normed_outputs = outputs
+                outputs = ()
+                for i in range(self.num_readouts):
+                    outputs += (self.scaleshift[i](normed_outputs[i], atom_type, num_atoms),)
+
+            return outputs, normed_outputs
+
+        outputs, normed_outputs = _normalize_outputs(outputs, self.outputs_scaled)
 
         if self.calc_force:
-            normed_force = -1 * self.grad_op(self._network)(
+            force = -1 * self.grad_op(self._network)(
                 coordinate,
                 atom_type,
                 pbc_box,
@@ -157,7 +173,13 @@ class MolWithEvalCell(MoleculeWrapper):
                 bond_mask,
             )
 
-            force = self.scaleshift[-1].scale_force(normed_force)
+            if self.outputs_scaled:
+                normed_force = None
+                if self._loss_fn is not None:
+                    normed_force = self.scaleshift[-1].normalize_force(force)
+            else:
+                normed_force = force
+                force = self.scaleshift[-1].scale_force(normed_force)
 
             if self.num_labels == 1:
                 outputs = (force,)
@@ -166,9 +188,11 @@ class MolWithEvalCell(MoleculeWrapper):
                 outputs += (force,)
                 normed_outputs += (normed_force,)
 
-        loss = 0
-
-        if self._loss_fn is not None:
+        
+        if self._loss_fn is None:
+            loss = self.zero
+        else:
+            loss = 0
             for i in range(self.num_labels):
                 if self._molecular_loss[i]:
                     loss_ = self._loss_fn[i](normed_outputs[i], normed_labels[i], num_atoms, atom_mask)

@@ -74,8 +74,8 @@ class MaxError(Metric):
         #pylint: disable=unused-argument
 
         predicts: ndarray = self._convert_data(predicts)
-        labels: ndarray = self._convert_data(labels)
-        diff = labels.reshape(predicts.shape) - predicts
+        label: ndarray = self._convert_data(labels)
+        diff = label.reshape(predicts.shape) - predicts
         max_error = diff.max() - diff.min()
         if max_error > self._max_error:
             self._max_error = max_error

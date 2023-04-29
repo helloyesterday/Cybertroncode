@@ -173,6 +173,10 @@ class MoleculeWrapper(Cell):
         return self._network
     
     @property
+    def outputs_scaled(self) -> bool:
+        return self._network.use_scaleshift
+    
+    @property
     def scaleshift(self) -> List[ScaleShift]:
         return self._network.scaleshift
     
