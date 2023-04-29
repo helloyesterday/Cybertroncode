@@ -117,9 +117,9 @@ class NeuralInteractionUnit(Interaction):
 
         self.pondering = None
         self.act_weight = None
-        self.do_act = False
+        self.open_act = False
         if self.max_cycles > 1:
-            self.do_act = True
+            self.open_act = True
             self.pondering = Pondering(dim_feature*3, bias_const=3)
             self.act_weight = ACTWeight(self.act_threshold)
 
@@ -200,7 +200,7 @@ class NeuralInteractionUnit(Interaction):
 
             return node_new
 
-        if self.do_act:
+        if self.open_act:
             def _act_encoder(node_new: Tensor,
                              node_vec: Tensor,
                              node_emb: Tensor,
