@@ -56,7 +56,7 @@ class MolWithLossCell(MoleculeWrapper):
                  energy_key: str = 'energy',
                  force_key: str = 'force',
                  loss_weights: List[float] = 1,
-                 weights_normalize: bool = False,
+                 weights_normalize: bool = True,
                  **kwargs
                  ):
         super().__init__(
@@ -73,12 +73,15 @@ class MolWithLossCell(MoleculeWrapper):
 
         self._loss_fn = self._check_loss(loss_fn)
         self._loss_weights = self._check_weights(loss_weights)
-        self._normal_factor = self._calc_normal_factor(self._loss_weights)
         self._molecular_loss = self._set_molecular_loss()
         self._any_atomwise = any(self._molecular_loss)
         self._set_atomwise_loss()
 
         self._network.set_train()
+
+    def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
+        super().print_info(num_retraction, num_gap, char)
+        print('-'*80)
 
     def construct(self, *inputs):
         """calculate loss function
@@ -147,4 +150,4 @@ class MolWithLossCell(MoleculeWrapper):
 
             loss += loss_ * self._loss_weights[i]
 
-        return loss * self._normal_factor
+        return loss
