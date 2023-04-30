@@ -36,7 +36,7 @@ from mindspore.train import save_checkpoint
 from mindspore.train._utils import _make_directory
 
 from mindsponge.function import Units, GLOBAL_UNITS
-from mindsponge.function import get_integer, get_tensor, get_arguments
+from mindsponge.function import get_integer, get_tensor, get_ms_array, get_arguments
 from mindsponge.function import GetVector, gather_vector
 from mindsponge.partition import FullConnectNeighbours
 from mindsponge.potential import PotentialCell
@@ -133,8 +133,8 @@ class Cybertron(Cell):
             self.num_atoms = natoms
         else:
             # (1,A)
-            self.atom_type = Tensor(atom_type, ms.int32).reshape(1, -1)
-            self.atom_mask = atom_type > 0
+            self.atom_type = get_ms_array(atom_type, ms.int32).reshape(1, -1)
+            self.atom_mask = self.atom_type > 0
             natoms = self.atom_type.shape[-1]
             if self.atom_mask.all():
                 self.num_atoms = natoms
