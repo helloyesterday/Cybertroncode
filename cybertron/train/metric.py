@@ -100,6 +100,7 @@ class Error(Metric):
     def __init__(self,
                  index: int = 0,
                  by_atoms: bool = False,
+                 reduction: str = 'mean',
                  aggregate: str = 'mean',
                  **kwargs
                  ):
@@ -112,10 +113,27 @@ class Error(Metric):
     
         self._index = get_integer(index)
 
-        if aggregate.lower() not in ('mean', 'sum'):
-            raise ValueError(f'aggregate method must be "mean" or "sum", but got: {aggregate}')
+        self._reduction = reduction
+        if reduction is not None:
+            if not isinstance(reduction, str):
+                raise TypeError(f'The type of "reduction" must be str, but got: {type(reduction)}')
+            if reduction.lower() not in ('mean', 'sum', 'none'):
+                raise ValueError(f"For '{self.__class__.__name__}', the 'reduction' must be in "
+                                 f" ['mean', 'sum', 'none'], but got {reduction}.")
+            self._reduction = reduction.lower()
+            if self._reduction == 'none':
+                self._reduction = None
 
-        self._aggregate = aggregate.lower()
+        self._aggregate = aggregate
+        if reduction is not None:
+            if not isinstance(aggregate, str):
+                raise TypeError(f'The type of "aggregate" must be str, but got: {type(aggregate)}')
+            if aggregate.lower() not in ('mean', 'sum', 'none'):
+                raise ValueError(f"For '{self.__class__.__name__}', the 'reduction' must be in "
+                                 f" ['mean', 'sum', 'none'], but got {aggregate}.")
+            self._aggregate = aggregate.lower()
+            if self._aggregate == 'none':
+                self._aggregate = None
 
         self._by_atoms = by_atoms
 
@@ -132,29 +150,61 @@ class Error(Metric):
                loss: Tensor,
                predicts: Tuple[Tensor],
                labels: List[Tensor],
-               num_atoms: Tensor,
+               atom_mask: Tensor = None,
                *args):
         """update metric"""
         #pylint: disable=unused-argument
 
+        # (B, ...)
         predict = self._convert_data(predicts[self._index])
+        # (B, ...)
         label = self._convert_data(labels[self._index])
 
         error: ndarray = self._calc_error(predict, label)
-        if len(error.shape) > 2:
+        batch_size = error.shape[0]
+
+        if len(error.shape) > 2 and self._aggregate is not None:
             axis = tuple(range(2, len(error.shape)))
-            # (B, 1) <- (B, ...)
+            # (B, A) <- (B, A, ...)
             if self._aggregate == 'mean':
                 error = np.mean(error, axis=axis)
             else:
                 error = np.sum(error, axis=axis)
 
-        tot = label.shape[0]
-        if self._by_atoms:
-            error /= self._convert_data(num_atoms)
+        num_atoms = 1
+        total_num = batch_size
+        if atom_mask is not None:
+            atom_mask = self._convert_data(atom_mask)
+            # (B, 1) <- (B, A) OR (1, 1) <- (1, A)
+            num_atoms = np.count_nonzero(atom_mask, -1, keepdims=True)
+            total_num = np.sum(num_atoms)
+            if num_atoms.shape[0] == 1:
+                total_num *= batch_size
 
-        self._error_sum += np.sum(error)
-        self._samples_num += tot
+        atomic = False
+        if atom_mask is not None and error.shape[1] == atom_mask.shape[1]:
+            atomic = True
+            atom_mask_ = atom_mask
+            if error.ndim != atom_mask.ndim:
+                # (B, A, ...) <- (B, A)
+                newshape = atom_mask.shape + (1,) * (error.ndim - atom_mask.ndim)
+                atom_mask_ = np.reshape(atom_mask, newshape)
+            # (B, A) * (B, A)
+            error *= atom_mask_
+
+        weight = batch_size
+        if self._reduction is not None:
+            error_shape1 = error.shape[1]
+            # (B,) <- (B, ...)
+            axis = tuple(range(1, len(error.shape)))
+            error = np.sum(error, axis=axis)
+            if self._reduction == 'mean':
+                weight = batch_size * error_shape1
+                if atomic or self._by_atoms:
+                    weight = total_num
+
+        self._error_sum += np.sum(error, axis=0)
+        self._samples_num += weight
 
     def eval(self) -> float:
         if self._samples_num == 0:
@@ -184,6 +234,7 @@ class MAE(Error):
     def __init__(self,
                  index: int = 0,
                  by_atoms: bool = False,
+                 reduction: str = 'mean',
                  aggregate: str = 'mean',
                  **kwargs
                  ):
@@ -191,6 +242,7 @@ class MAE(Error):
         super().__init__(
             index=index,
             by_atoms=by_atoms,
+            reduction=reduction,
             aggregate=aggregate,
         )
         self._kwargs = get_arguments(locals(), kwargs)
@@ -217,6 +269,7 @@ class MSE(Error):
     def __init__(self,
                  index: int = 0,
                  by_atoms: bool = False,
+                 reduction: str = 'mean',
                  aggregate: str = 'mean',
                  **kwargs
                  ):
@@ -224,6 +277,7 @@ class MSE(Error):
         super().__init__(
             index=index,
             by_atoms=by_atoms,
+            reduction=reduction,
             aggregate=aggregate,
         )
         self._kwargs = get_arguments(locals(), kwargs)
@@ -250,6 +304,7 @@ class MNE(Error):
     def __init__(self,
                  index: int = 0,
                  by_atoms: bool = False,
+                 reduction: str = 'mean',
                  aggregate: str = 'mean',
                  **kwargs
                  ):
@@ -257,6 +312,7 @@ class MNE(Error):
         super().__init__(
             index=index,
             by_atoms=by_atoms,
+            reduction=reduction,
             aggregate=aggregate,
         )
         self._kwargs = get_arguments(locals(), kwargs)
@@ -284,13 +340,15 @@ class RMSE(Error):
     def __init__(self,
                  index: int = 0,
                  by_atoms: bool = False,
-                 aggregate: str = 'mean',
+                 reduction: str = 'mean',
+                 aggregate: str = 'sum',
                  **kwargs
                  ):
 
         super().__init__(
             index=index,
             by_atoms=by_atoms,
+            reduction=reduction,
             aggregate=aggregate,
         )
         self._kwargs = get_arguments(locals(), kwargs)
