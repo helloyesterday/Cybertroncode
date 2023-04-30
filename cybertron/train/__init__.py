@@ -27,7 +27,7 @@ from .wrapper import MoleculeWrapper, WithAdversarialLossCell
 from .train import MolWithLossCell
 from .eval import MolWithEvalCell
 from .loss import MAELoss, MSELoss, CrossEntropyLoss
-from .schedule import TransformerLR
+from .lr import TransformerLR
 from .metric import MaxError, Error, MAE, MSE, MNE, RMSE, Loss
 from .callback import TrainMonitor
 
@@ -39,6 +39,6 @@ __all__ = [
 ]
 
 __all__.extend(loss.__all__)
-__all__.extend(schedule.__all__)
+__all__.extend(lr.__all__)
 __all__.extend(metric.__all__)
 __all__.extend(callback.__all__)
