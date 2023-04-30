@@ -137,7 +137,7 @@ class ScaleShift(Cell):
                        type_ref: Union[Tensor, ndarray] = None):
         self._scale.set_data(get_ms_array(scale, ms.float32), True)
         self._shift.set_data(get_ms_array(shift, ms.float32), True)
-        if self._type_ref is not None:
+        if type_ref is not None:
             self._type_ref.set_data(get_ms_array(type_ref, ms.float32), True)
         return self
     
