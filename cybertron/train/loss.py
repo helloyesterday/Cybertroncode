@@ -54,7 +54,8 @@ class MolecularLoss(LossBase):
         atomwise (bool): Whether to average over each atom when calculating the loss function.
             Default: None
 
-        reduction (str): Method to reduction the output Tensor. Default: 'mean'
+        reduction (str): Type of reduction to be applied to loss. The optional values are "mean", "sum", and "none".
+            Default: "mean".
 
     """
     def __init__(self,
@@ -139,8 +140,8 @@ class MolecularLoss(LossBase):
             loss = self._calc_loss(diff)
 
         # (B, 1)
-        natoms = F.cast(num_atoms, predict.dtype)
-        weights = natoms / F.reduce_mean(natoms)
+        num_atoms = F.cast(num_atoms, predict.dtype)
+        weights = num_atoms / F.reduce_mean(num_atoms)
 
         return self.get_loss(loss, weights)
 
