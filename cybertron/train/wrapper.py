@@ -27,7 +27,6 @@ from typing import Union, List
 from numpy import ndarray
 
 import mindspore as ms
-import mindspore.numpy as msnp
 from mindspore import Tensor
 from mindspore import context
 from mindspore.nn import Cell, CellList
@@ -62,7 +61,7 @@ class MoleculeWrapper(Cell):
                  calc_force: bool = False,
                  energy_key: str = 'energy',
                  force_key: str = 'force',
-                 weights_normalize: bool = False,
+                 weights_normalize: bool = True,
                  **kwargs
                  ):
 
@@ -118,7 +117,9 @@ class MoleculeWrapper(Cell):
 
         if not self.calc_force and self.num_labels != self.num_outputs:
             raise ValueError(f'The number of network outputs is {self.num_outputs}, '
-                             f'but the number of labels is {self.num_labels}. ')
+                             f'but the number of labels in {self.cls_name} is {self.num_labels}. '
+                             f'If you want to fit the forces calculated by automatic differentiation, '
+                             f'set `calc_force` to True.')
 
         self.energy_key = energy_key
         self.force_key = force_key
@@ -173,7 +174,7 @@ class MoleculeWrapper(Cell):
         return self._network
     
     @property
-    def outputs_scaled(self) -> bool:
+    def scaled_outputs(self) -> bool:
         return self._network.use_scaleshift
     
     @property
@@ -185,6 +186,32 @@ class MoleculeWrapper(Cell):
         if arg in data_keys:
             return data_keys.index(arg)
         return -1
+    
+    def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
+        """print the information of Cybertron"""
+        ret = char * num_retraction
+        gap = char * num_gap
+        print(f'Cell wrapper: {self.cls_name}')
+        print(f'{ret} Input arguments:')
+        for i, arg in enumerate(self.input_keys):
+            print(f'{ret}{gap} Argument {i}: {arg}')
+        if self.num_labels == 1:
+            print(f'{ret} Label: {self.label_keys[0]}')
+            if self._loss_fn is not None:
+                print(f'{ret} Loss function: {self._loss_fn[0]}')
+        else:
+            if self._loss_fn is None:
+                print(f'{ret} Labels:')
+                for i in range(self.num_labels):
+                    print(f'{ret}{gap} Label {i}: {self.label_keys[i]}')
+            else:
+                print(f'{ret} Labels, loss function and weights:')
+                for i in range(self.num_labels):
+                    print(f'{ret}{gap}'
+                        f' Label {i}: {self.label_keys[i]}, '
+                        f' loss: {self._loss_fn[i].cls_name}, '
+                        f' weight: {self._loss_weights[i]}.')
+        print(f'{ret} Calculate force using automatic differentiation: {self.calc_force}')
     
     def _check_loss(self, loss_fn_) -> List[MolecularLoss]:
         if isinstance(loss_fn_, LossBase):
@@ -206,17 +233,18 @@ class MoleculeWrapper(Cell):
         if len(weights_) != self.num_labels and len(weights_) == 1:
             weights_ = weights_ * self.num_labels
         if len(weights_) == self.num_labels:
-            return [get_ms_array(w, ms.float32) for w in weights_]
-        raise ValueError(f'The number of labels is {self.num_labels} but '
-                            f'the number of loss_fn is {len(weights_)}')
-    
-    def _calc_normal_factor(self, loss_weights):
-        if self._weights_normalize and self.num_labels > 1:
+            weights_ = [get_ms_array(w, ms.float32) for w in weights_]
+        else:
+            raise ValueError(f'The number of labels is {self.num_labels} but '
+                                f'the number of loss_fn is {len(weights_)}')
+
+        if self._normal_factor and self.num_labels > 1:
             normal_factor = 0
-            for w in loss_weights:
+            for w in weights_:
                 normal_factor += w
-            return msnp.reciprocal(normal_factor)
-        return 1
+            weights_ = [w / normal_factor for w in weights_]
+
+        return weights_
     
     def _set_molecular_loss(self):
         molecular_loss = []

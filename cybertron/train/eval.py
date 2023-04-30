@@ -24,7 +24,6 @@ Cell for evaluation
 """
 
 from typing import Union, List
-import numpy as np
 from numpy import ndarray
 
 import mindspore as ms
@@ -59,7 +58,7 @@ class MolWithEvalCell(MoleculeWrapper):
                  calc_force: bool = False,
                  energy_key: str = 'energy',
                  force_key: str = 'force',
-                 weights_normalize: bool = False,
+                 weights_normalize: bool = True,
                  normed_evaldata: bool = False,
                  **kwargs
                  ):
@@ -82,12 +81,17 @@ class MolWithEvalCell(MoleculeWrapper):
         if loss_fn is not None:
             self._loss_fn = self._check_loss(loss_fn)
             self._loss_weights = self._check_weights(loss_weights)
-            self._normal_factor = self._calc_normal_factor(self._loss_weights)
             self._molecular_loss = self._set_molecular_loss()
             self._any_atomwise = any(self._molecular_loss)
             self._set_atomwise_loss()
 
-        self.zero = np.array(0, np.int32)
+        self.zero = Tensor(0, ms.float32)
+
+    def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
+        super().print_info(num_retraction, num_gap, char)
+        ret = char * num_retraction
+        print(f'{ret} Using normalized dataset: {self._normed_evaldata}')
+        print('-'*80)
 
     def construct(self, *inputs):
         """calculate loss function
@@ -121,17 +125,15 @@ class MolWithEvalCell(MoleculeWrapper):
             normed_labels = labels
             labels = [self.scaleshift[i](normed_labels[i], atom_type, num_atoms)
                       for i in range(self.num_readouts)]
+            if self.calc_force:
+                force_label = self.scaleshift[0].scale_force(normed_labels[-1])
+                labels.append(force_label)
         elif self._loss_fn is not None:
-            if self._force_id == -1:
-                normed_labels = [self.scaleshift[i].normalize(labels[i], atom_type, num_atoms)
-                                 for i in range(self.num_readouts)]
-            else:
-                normed_labels = []
-                for i in range(self.num_labels):
-                    if i == self._force_id:
-                        normed_labels.append(self.scaleshift[i].normalize_force(labels[i]))
-                    else:
-                        normed_labels.append(self.scaleshift[i].normalize(labels[i], atom_type, num_atoms))
+            normed_labels = [self.scaleshift[i].normalize(labels[i], atom_type, num_atoms)
+                             for i in range(self.num_readouts)]
+            if self.calc_force:
+                force_label = self.scaleshift[0].normalize_force(labels[-1])
+                normed_labels.append(force_label)
 
         outputs = self._network(
             coordinate=coordinate,
@@ -146,8 +148,8 @@ class MolWithEvalCell(MoleculeWrapper):
         if self.num_readouts == 1:
             outputs = (outputs,)
 
-        def _normalize_outputs(outputs, outputs_scaled):
-            if outputs_scaled:
+        def _normalize_outputs(outputs, scaled_outputs):
+            if scaled_outputs:
                 normed_outputs = ()
                 if self._loss_fn is not None:
                     for i in range(self.num_readouts):
@@ -160,7 +162,7 @@ class MolWithEvalCell(MoleculeWrapper):
 
             return outputs, normed_outputs
 
-        outputs, normed_outputs = _normalize_outputs(outputs, self.outputs_scaled)
+        outputs, normed_outputs = _normalize_outputs(outputs, self.scaled_outputs)
 
         if self.calc_force:
             force = -1 * self.grad_op(self._network)(
@@ -173,13 +175,13 @@ class MolWithEvalCell(MoleculeWrapper):
                 bond_mask,
             )
 
-            if self.outputs_scaled:
+            if self.scaled_outputs:
                 normed_force = None
                 if self._loss_fn is not None:
-                    normed_force = self.scaleshift[-1].normalize_force(force)
+                    normed_force = self.scaleshift[0].normalize_force(force)
             else:
                 normed_force = force
-                force = self.scaleshift[-1].scale_force(normed_force)
+                force = self.scaleshift[0].scale_force(normed_force)
 
             if self.num_labels == 1:
                 outputs = (force,)
@@ -188,7 +190,6 @@ class MolWithEvalCell(MoleculeWrapper):
                 outputs += (force,)
                 normed_outputs += (normed_force,)
 
-        
         if self._loss_fn is None:
             loss = self.zero
         else:
@@ -200,6 +201,5 @@ class MolWithEvalCell(MoleculeWrapper):
                     loss_ = self._loss_fn[i](normed_outputs[i], normed_labels[i])
 
                 loss += loss_ * self._loss_weights[i]
-            loss *= self._normal_factor
 
-        return loss, outputs, labels, num_atoms
+        return loss, outputs, labels, atom_mask
