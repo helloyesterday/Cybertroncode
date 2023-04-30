@@ -46,10 +46,11 @@ if __name__ == '__main__':
     from cybertron.model import MolCT
     from cybertron.embedding import MolEmbedding
     from cybertron.readout import AtomwiseReadout
-    from cybertron.train import MAE, Loss, MAELoss
     from cybertron.train import MolWithLossCell, MolWithEvalCell
-    from cybertron.train import TrainMonitor
-    from cybertron.train import TransformerLR
+    from cybertron.train.lr import TransformerLR
+    from cybertron.train.loss import MAELoss
+    from cybertron.train.metric import MAE, Loss
+    from cybertron.train.callback import TrainMonitor
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
@@ -105,6 +106,9 @@ if __name__ == '__main__':
 
     net.set_scaleshift(scale=scale, shift=shift, type_ref=type_ref)
 
+    outdir = 'Tutorial_C06'
+    net.save_configure('configure.yaml', outdir)
+
     tot_params = 0
     for i, param in enumerate(net.get_parameters()):
         tot_params += param.size
@@ -131,6 +135,7 @@ if __name__ == '__main__':
     ds_train = ds_train.repeat(REPEAT_TIME)
 
     loss_network = MolWithLossCell(data_keys, net, MAELoss())
+    loss_network.print_info()
 
     # set valiation dataset with multi labels
     ds_valid = ds.NumpySlicesDataset(
@@ -146,6 +151,7 @@ if __name__ == '__main__':
     ds_valid = ds_valid.repeat(1)
 
     eval_network = MolWithEvalCell(data_keys, net, MAELoss(), normed_evaldata=True)
+    eval_network.print_info()
 
     lr = TransformerLR(learning_rate=1., warmup_steps=4000, dimension=dim_feature)
     optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
@@ -162,12 +168,12 @@ if __name__ == '__main__':
                   )
 
     outdir = 'Tutorial_C05'
-    outname = outdir + '_' + net.model_name
-    record_cb = TrainMonitor(model, outname, per_step=16, avg_steps=16,
+    ckpt_name = 'cybertron-' + net.model_name.lower()
+    record_cb = TrainMonitor(model, ckpt_name, per_step=16, avg_steps=16,
                              directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics='Evalloss')
 
     config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
-    ckpoint_cb = ModelCheckpoint(prefix=outname, directory=outdir, config=config_ck)
+    ckpoint_cb = ModelCheckpoint(prefix=ckpt_name, directory=outdir, config=config_ck)
 
     print("Start training ...")
     beg_time = time.time()

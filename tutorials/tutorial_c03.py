@@ -43,8 +43,9 @@ if __name__ == '__main__':
     from mindsponge.data import read_yaml, load_checkpoint
 
     from cybertron import Cybertron
-    from cybertron.train import MAE, Loss
-    from cybertron.train import MolWithEvalCell, MAELoss
+    from cybertron.train import MolWithEvalCell
+    from cybertron.train.loss import MAELoss
+    from cybertron.train.metric import MAE, Loss
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
@@ -91,6 +92,7 @@ if __name__ == '__main__':
     # the argument `normed_evaldata` should be set to `False`
     # Default: False
     eval_network = MolWithEvalCell(data_keys, net, MAELoss())
+    eval_network.print_info()
 
     eval_mae = 'EvalMAE'
     atom_mae = 'AtomMAE'
@@ -109,13 +111,13 @@ if __name__ == '__main__':
     print(info)
 
     normed_test_file = sys.path[0] + '/dataset_qm9_normed_testset_1024.npz'
-    normed_test_file = np.load(normed_test_file)
+    normed_test_data = np.load(normed_test_file)
 
     # Using normaed dataset
     ds_test_normed = ds.NumpySlicesDataset(
-        {'coordinate': normed_test_file['coordinate'],
-         'atom_type': normed_test_file['atom_type'],
-         'label': normed_test_file['label'][:, idx]}, shuffle=False)
+        {'coordinate': normed_test_data['coordinate'],
+         'atom_type': normed_test_data['atom_type'],
+         'label': normed_test_data['label'][:, idx]}, shuffle=False)
     data_keys = ds_test_normed.column_names
     ds_test_normed = ds_test_normed.batch(1024)
     ds_test_normed = ds_test_normed.repeat(1)
@@ -124,6 +126,7 @@ if __name__ == '__main__':
     # the argument `normed_evaldata` should be set to `True`
     # Default: False
     eval_network0 = MolWithEvalCell(data_keys, net, MAELoss(), normed_evaldata=True)
+    eval_network0.print_info()
 
     eval_mae = 'EvalMAE'
     atom_mae = 'AtomMAE'
@@ -132,9 +135,9 @@ if __name__ == '__main__':
                    {eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
 
     print('Evaluation with normalized test dataset:')
-    eval_metrics = model0.eval(ds_test_normed, dataset_sink_mode=False)
+    eval_metrics0 = model0.eval(ds_test_normed, dataset_sink_mode=False)
     info = ''
-    for k, value in eval_metrics.items():
+    for k, value in eval_metrics0.items():
         info += k
         info += ': '
         info += str(value)

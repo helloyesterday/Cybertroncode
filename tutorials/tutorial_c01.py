@@ -44,7 +44,8 @@ if __name__ == '__main__':
     sys.path.append('..')
 
     from cybertron import Cybertron
-    from cybertron.train import MolWithLossCell, MAELoss
+    from cybertron.train import MolWithLossCell
+    from cybertron.train.loss import MAELoss
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
@@ -86,6 +87,7 @@ if __name__ == '__main__':
     ds_train = ds_train.repeat(REPEAT_TIME)
 
     loss_network = MolWithLossCell(data_keys, net, MAELoss())
+    loss_network.print_info()
 
     lr = 1e-3
     optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
@@ -94,9 +96,9 @@ if __name__ == '__main__':
 
     monitor_cb = LossMonitor(16)
 
-    params_name = 'cybertron-' + net.model_name.lower()
+    ckpt_name = 'cybertron-' + net.model_name.lower()
     config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
-    ckpoint_cb = ModelCheckpoint(prefix=params_name, directory=outdir, config=config_ck)
+    ckpoint_cb = ModelCheckpoint(prefix=ckpt_name, directory=outdir, config=config_ck)
 
     print("Start training ...")
     beg_time = time.time()

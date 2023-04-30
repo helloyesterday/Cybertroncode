@@ -20,22 +20,17 @@
 # limitations under the License.
 # ============================================================================
 """
-Cybertron tutorial 04: Validate the model during training.
-
-Key points:
-    1) Set scale and shift (necessary for validation).
-    2) Set metric functions.
-    3) Set `normed_evaldata` according to whether the validation dataset is normalized or not.
-    4) Use TrainMonitor.
-
+Cybertron tutorial 07: Dataset with force
 """
 
 import sys
 import time
 import numpy as np
+import mindspore as ms
 from mindspore import nn
-from mindspore import context
+from mindspore import Tensor
 from mindspore import dataset as ds
+from mindspore import context
 from mindspore.train import Model
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
@@ -48,25 +43,24 @@ if __name__ == '__main__':
     from cybertron.embedding import MolEmbedding
     from cybertron.readout import AtomwiseReadout
     from cybertron.train import MolWithLossCell, MolWithEvalCell
-    from cybertron.train.loss import MAELoss
-    from cybertron.train.metric import MAE, Loss
+    from cybertron.train.lr import TransformerLR
+    from cybertron.train.loss import MSELoss
+    from cybertron.train.metric import MAE, RMSE, Loss
     from cybertron.train.callback import TrainMonitor
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    data_name = sys.path[0] + '/dataset_qm9_normed_'
-    train_file = data_name + 'trainset_1024.npz'
-    valid_file = data_name + 'validset_128.npz'
+    sys_name = 'dataset_ethanol_normed_'
+
+    train_file = sys_name + 'trainset_1024.npz'
+    valid_file = sys_name + 'validset_128.npz'
 
     train_data = np.load(train_file)
     valid_data = np.load(valid_file)
 
-    idx = [7]  # U0
-
-    num_atom = train_data['num_atoms']
-    scale = train_data['scale'][idx]
-    shift = train_data['shift'][idx]
-    type_ref = train_data['type_ref'][:, idx]
+    atom_type = Tensor(train_data['atom_type'], ms.int32)
+    scale = train_data['scale']
+    shift = train_data['shift']
 
     dim_feature = 128
     activation = 'silu'
@@ -96,20 +90,19 @@ if __name__ == '__main__':
         activation=activation,
     )
 
-    net = Cybertron(embedding=emb, model=mod, readout=readout, num_atoms=num_atom)
-    # Setting scale and shift (necessary for validation)
-    net.set_scaleshift(scale=scale, shift=shift, type_ref=type_ref)
+    net = Cybertron(embedding=emb, model=mod, readout=readout, atom_type=atom_type, length_unit='nm')
+    net.set_scaleshift(scale=scale, shift=shift)
 
-    outdir = 'Tutorial_C04'
+    outdir = 'Tutorial_C07'
     net.save_configure('configure.yaml', outdir)
 
-    net.print_info()
-
     tot_params = 0
-    for i, param in enumerate(net.get_parameters()):
+    for i, param in enumerate(net.trainable_params()):
         tot_params += param.size
         print(i, param.name, param.shape)
     print('Total parameters: ', tot_params)
+
+    net.print_info()
 
     N_EPOCH = 8
     REPEAT_TIME = 1
@@ -117,52 +110,64 @@ if __name__ == '__main__':
 
     ds_train = ds.NumpySlicesDataset(
         {'coordinate': train_data['coordinate'],
-         'atom_type': train_data['atom_type'],
-         'label': train_data['label'][:, idx]}, shuffle=True)
+         'energy': train_data['label'],
+         'force': train_data['force'],
+         }, shuffle=True)
+
     data_keys = ds_train.column_names
-    ds_train = ds_train.batch(BATCH_SIZE, drop_remainder=True)
+    ds_train = ds_train.batch(BATCH_SIZE)
     ds_train = ds_train.repeat(REPEAT_TIME)
 
-    loss_network = MolWithLossCell(data_keys, net, MAELoss())
+    force_dis = train_data['avg_force_dis']
+    loss_network = MolWithLossCell(data_keys=data_keys,
+                                   network=net,
+                                   loss_fn=[MSELoss(), MSELoss(force_dis=force_dis)],
+                                   calc_force=True,
+                                   loss_weights=[1, 100],
+                                   )
     loss_network.print_info()
 
     ds_valid = ds.NumpySlicesDataset(
         {'coordinate': valid_data['coordinate'],
-         'atom_type': valid_data['atom_type'],
-         'label': valid_data['label'][:, idx]}, shuffle=True)
+         'energy': valid_data['label'],
+         'force': valid_data['force'],
+         }, shuffle=True)
     data_keys = ds_valid.column_names
     ds_valid = ds_valid.batch(128)
     ds_valid = ds_valid.repeat(1)
 
-    # NOTE: When using normalized data for evaluation,
-    # the argument `normed_evaldata` should be set to `True`
-    # Default: False
-    eval_network = MolWithEvalCell(data_keys, net, MAELoss(), normed_evaldata=True)
+    eval_network = MolWithEvalCell(data_keys=data_keys,
+                                   network=net,
+                                   loss_fn=[MSELoss(), MSELoss(force_dis=force_dis)],
+                                   calc_force=True,
+                                   loss_weights=[1, 100],
+                                   normed_evaldata=True
+                                   )
     eval_network.print_info()
 
-    # lr = 1e-3
-    lr = nn.ExponentialDecayLR(learning_rate=1e-3, decay_rate=0.96, decay_steps=4, is_stair=True)
+    lr = TransformerLR(learning_rate=1., warmup_steps=4000, dimension=dim_feature)
     optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
 
-    # Set metric functions
-    eval_mae = 'EvalMAE'
-    atom_mae = 'AtomMAE'
-    eval_loss = 'Evalloss'
-    model = Model(loss_network, optimizer=optim, eval_network=eval_network, metrics={
-        eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
+    energy_mae = 'EnergyMAE'
+    forces_mae = 'ForcesMAE'
+    forces_rmse = 'ForcesRMSE'
+    eval_loss = 'EvalLoss'
+    model = Model(loss_network, eval_network=eval_network, optimizer=optim,
+                  metrics={eval_loss: Loss(), energy_mae: MAE(0), forces_mae: MAE(1),
+                           forces_rmse: RMSE(1)})
 
+    outdir = 'Tutorial_C07'
     ckpt_name = 'cybertron-' + net.model_name.lower()
-
-    # Using TrainMonitor
-    record_cb = TrainMonitor(model, ckpt_name, per_step=32, avg_steps=32,
-                             directory=outdir, eval_dataset=ds_valid)
+    record_cb = TrainMonitor(model, ckpt_name, per_epoch=1, avg_steps=32,
+                             directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=forces_rmse)
 
     config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
     ckpoint_cb = ModelCheckpoint(prefix=ckpt_name, directory=outdir, config=config_ck)
 
     print("Start training ...")
     beg_time = time.time()
-    model.train(N_EPOCH, ds_train, callbacks=[record_cb, ckpoint_cb], dataset_sink_mode=False)
+    model.train(N_EPOCH, ds_train, callbacks=[
+                record_cb, ckpoint_cb], dataset_sink_mode=False)
     end_time = time.time()
     used_time = end_time - beg_time
     m, s = divmod(used_time, 60)

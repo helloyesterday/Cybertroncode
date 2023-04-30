@@ -47,8 +47,10 @@ if __name__ == '__main__':
     from cybertron.model import MolCT
     from cybertron.embedding import MolEmbedding
     from cybertron.readout import AtomwiseReadout
-    from cybertron.train import TrainMonitor, MAE, MAELoss, Loss
     from cybertron.train import MolWithLossCell, MolWithEvalCell
+    from cybertron.train.loss import MAELoss
+    from cybertron.train.metric import MAE, Loss
+    from cybertron.train.callback import TrainMonitor
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
@@ -87,10 +89,11 @@ if __name__ == '__main__':
         activation=activation,
     )
 
-    readout = AtomwiseReadout(dim_output=1,
-                              dim_node_rep=dim_feature,
-                              activation=activation,
-                              )
+    readout = AtomwiseReadout(
+        dim_output=1,
+        dim_node_rep=dim_feature,
+        activation=activation,
+    )
 
     net = Cybertron(embedding=emb, model=mod, readout=readout, num_atoms=num_atom)
     # Setting scale and shift (necessary for validation)
@@ -120,6 +123,7 @@ if __name__ == '__main__':
     ds_train = ds_train.repeat(REPEAT_TIME)
 
     loss_network = MolWithLossCell(data_keys, net, MAELoss())
+    loss_network.print_info()
 
     ds_valid = ds.NumpySlicesDataset(
         {'coordinate': valid_data['coordinate'],
@@ -133,6 +137,7 @@ if __name__ == '__main__':
     # the argument `normed_evaldata` should be set to `False`
     # Default: False
     eval_network = MolWithEvalCell(data_keys, net, MAELoss())
+    eval_network.print_info()
 
     # lr = 1e-3
     lr = nn.ExponentialDecayLR(learning_rate=1e-3, decay_rate=0.96, decay_steps=4, is_stair=True)
@@ -145,14 +150,14 @@ if __name__ == '__main__':
     model = Model(loss_network, optimizer=optim, eval_network=eval_network, metrics={
         eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
 
-    outname = params_name = 'cybertron-' + net.model_name.lower()
+    ckpt_name = 'cybertron-' + net.model_name.lower()
 
     # Automatically save the best model based on a specified metric (best_ckpt_metrics)
-    record_cb = TrainMonitor(model, outname, per_step=32, avg_steps=32,
+    record_cb = TrainMonitor(model, ckpt_name, per_step=32, avg_steps=32,
                              directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
 
     config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
-    ckpoint_cb = ModelCheckpoint(prefix=outname, directory=outdir, config=config_ck)
+    ckpoint_cb = ModelCheckpoint(prefix=ckpt_name, directory=outdir, config=config_ck)
 
     print("Start training ...")
     beg_time = time.time()
