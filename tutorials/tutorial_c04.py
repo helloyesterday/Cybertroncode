@@ -149,7 +149,7 @@ if __name__ == '__main__':
     atom_mae = 'AtomMAE'
     eval_loss = 'Evalloss'
     model = Model(loss_network, optimizer=optim, eval_network=eval_network, metrics={
-        eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
+        eval_mae: MAE(), atom_mae: MAE(per_atom=True), eval_loss: Loss()})
 
     ckpt_name = 'cybertron-' + net.model_name.lower()
 

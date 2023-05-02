@@ -148,7 +148,7 @@ if __name__ == '__main__':
     atom_mae = 'AtomMAE'
     eval_loss = 'Evalloss'
     model = Model(loss_network, optimizer=optim, eval_network=eval_network, metrics={
-        eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
+        eval_mae: MAE(), atom_mae: MAE(per_atom=True), eval_loss: Loss()})
 
     ckpt_name = 'cybertron-' + net.model_name.lower()
 
@@ -202,7 +202,7 @@ if __name__ == '__main__':
     atom_mae = 'AtomMAE'
     eval_loss = 'Evalloss'
     model0 = Model(net, eval_network=eval_network0, metrics=
-                   {eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
+                   {eval_mae: MAE(), atom_mae: MAE(per_atom=True), eval_loss: Loss()})
 
     print('Test model:')
     eval_metrics = model0.eval(ds_test_normed, dataset_sink_mode=False)

@@ -98,7 +98,7 @@ if __name__ == '__main__':
     atom_mae = 'AtomMAE'
     eval_loss = 'Evalloss'
     model = Model(net, eval_network=eval_network, metrics=
-                  {eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
+                  {eval_mae: MAE(), atom_mae: MAE(per_atom=True), eval_loss: Loss()})
 
     print('Evaluation with unnormalized test dataset:')
     eval_metrics = model.eval(ds_test, dataset_sink_mode=False)
@@ -132,7 +132,7 @@ if __name__ == '__main__':
     atom_mae = 'AtomMAE'
     eval_loss = 'Evalloss'
     model0 = Model(net, eval_network=eval_network0, metrics=
-                   {eval_mae: MAE(), atom_mae: MAE(by_atoms=True), eval_loss: Loss()})
+                   {eval_mae: MAE(), atom_mae: MAE(per_atom=True), eval_loss: Loss()})
 
     print('Evaluation with normalized test dataset:')
     eval_metrics0 = model0.eval(ds_test_normed, dataset_sink_mode=False)
