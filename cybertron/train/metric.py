@@ -89,17 +89,21 @@ class Error(Metric):
 
     Args:
 
-        indexes (tuple): Indexes for label and predicted data. Default: (1, 2)
+        index (int): Index of the output for which error to be calculated. Default: 0
 
-        by_atoms (bool): Whether to average the data by the number of atoms. Default: True
+        per_atom (bool): Calculate the error per atom. Default: False
 
-        aggregate (str): The way to aggregate the data of each atom. Valid only for vector
-            labels (e.g. force). Default: 'mean'
+        reduction (str): The way to reduce the shape of the output tensor from `(B, Y)` to `(B, 1)`.
+            The optional values are "mean", "sum", and "none". Default: "mean".
+
+        aggregate (str): The way of aggregating the extra dimensions of the output tensor,
+            i.e. from `(B, A, ...)` to `(B, A)`. The optional values are "mean", "sum", and "none".
+            Default: "mean".
 
     """
     def __init__(self,
                  index: int = 0,
-                 by_atoms: bool = False,
+                 per_atom: bool = False,
                  reduction: str = 'mean',
                  aggregate: str = 'mean',
                  **kwargs
@@ -135,7 +139,7 @@ class Error(Metric):
             if self._aggregate == 'none':
                 self._aggregate = None
 
-        self._by_atoms = by_atoms
+        self._by_atoms = per_atom
 
         self._error_sum = 0
         self._samples_num = 0
@@ -221,19 +225,21 @@ class MAE(Error):
 
     Args:
 
-        indexes (tuple): Indexes for label and predicted data. Default: (1, 2)
+        index (int): Index of the output for which error to be calculated. Default: 0
 
-        reduce_dims (bool): Whether to summation the data of all atoms in molecule. Default: True
+        per_atom (bool): Calculate the error per atom. Default: False
 
-        by_atoms (bool): Whether to averaged the data by the number of atoms in molecule.
-            Default: True
+        reduction (str): The way to reduce the shape of the output tensor from `(B, Y)` to `(B, 1)`.
+            The optional values are "mean", "sum", and "none". Default: "mean".
 
-        aggregate (str): The way to aggregate the data of each atom. Default: 'mean'
+        aggregate (str): The way of aggregating the extra dimensions of the output tensor,
+            i.e. from `(B, A, ...)` to `(B, A)`. The optional values are "mean", "sum", and "none".
+            Default: "mean".
 
     """
     def __init__(self,
                  index: int = 0,
-                 by_atoms: bool = False,
+                 per_atom: bool = False,
                  reduction: str = 'mean',
                  aggregate: str = 'mean',
                  **kwargs
@@ -241,7 +247,7 @@ class MAE(Error):
 
         super().__init__(
             index=index,
-            by_atoms=by_atoms,
+            per_atom=per_atom,
             reduction=reduction,
             aggregate=aggregate,
         )
@@ -256,19 +262,21 @@ class MSE(Error):
 
     Args:
 
-        indexes (tuple):            Indexes for label and predicted data. Default: (1, 2)
+        index (int): Index of the output for which error to be calculated. Default: 0
 
-        reduce_dims (bool):     Whether to summation the data of all atoms in molecule. Default: True
+        per_atom (bool): Calculate the error per atom. Default: False
 
-        by_atoms (bool):   Whether to averaged the data by the number of atoms in molecule.
-                                    Default: True
+        reduction (str): The way to reduce the shape of the output tensor from `(B, Y)` to `(B, 1)`.
+            The optional values are "mean", "sum", and "none". Default: "mean".
 
-        aggregate (str):       The way to aggregate the data of each atom. Default: 'mean'
+        aggregate (str): The way of aggregating the extra dimensions of the output tensor,
+            i.e. from `(B, A, ...)` to `(B, A)`. The optional values are "mean", "sum", and "none".
+            Default: "mean".
 
     """
     def __init__(self,
                  index: int = 0,
-                 by_atoms: bool = False,
+                 per_atom: bool = False,
                  reduction: str = 'mean',
                  aggregate: str = 'mean',
                  **kwargs
@@ -276,7 +284,7 @@ class MSE(Error):
 
         super().__init__(
             index=index,
-            by_atoms=by_atoms,
+            per_atom=per_atom,
             reduction=reduction,
             aggregate=aggregate,
         )
@@ -291,19 +299,21 @@ class MNE(Error):
 
     Args:
 
-        indexes (tuple):            Indexes for label and predicted data. Default: (1, 2)
+        index (int): Index of the output for which error to be calculated. Default: 0
 
-        reduce_dims (bool):     Whether to summation the data of all atoms in molecule. Default: True
+        per_atom (bool): Calculate the error per atom. Default: False
 
-        by_atoms (bool):   Whether to averaged the data by the number of atoms in molecule.
-                                    Default: True
+        reduction (str): The way to reduce the shape of the output tensor from `(B, Y)` to `(B, 1)`.
+            The optional values are "mean", "sum", and "none". Default: "mean".
 
-        aggregate (str):       The way to aggregate the data of each atom. Default: 'mean'
+        aggregate (str): The way of aggregating the extra dimensions of the output tensor,
+            i.e. from `(B, A, ...)` to `(B, A)`. The optional values are "mean", "sum", and "none".
+            Default: "mean".
 
     """
     def __init__(self,
                  index: int = 0,
-                 by_atoms: bool = False,
+                 per_atom: bool = False,
                  reduction: str = 'mean',
                  aggregate: str = 'mean',
                  **kwargs
@@ -311,7 +321,7 @@ class MNE(Error):
 
         super().__init__(
             index=index,
-            by_atoms=by_atoms,
+            per_atom=per_atom,
             reduction=reduction,
             aggregate=aggregate,
         )
@@ -327,19 +337,21 @@ class RMSE(Error):
 
     Args:
 
-        indexes (tuple):            Indexes for label and predicted data. Default: (1, 2)
+        index (int): Index of the output for which error to be calculated. Default: 0
 
-        reduce_dims (bool):     Whether to summation the data of all atoms in molecule. Default: True
+        per_atom (bool): Calculate the error per atom. Default: False
 
-        by_atoms (bool):   Whether to averaged the data by the number of atoms in molecule.
-                                    Default: True
+        reduction (str): The way to reduce the shape of the output tensor from `(B, Y)` to `(B, 1)`.
+            The optional values are "mean", "sum", and "none". Default: "mean".
 
-        aggregate (str):       The way to aggregate the data of each atom. Default: 'mean'
+        aggregate (str): The way of aggregating the extra dimensions of the output tensor,
+            i.e. from `(B, A, ...)` to `(B, A)`. The optional values are "mean", "sum", and "none".
+            Default: "sum".
 
     """
     def __init__(self,
                  index: int = 0,
-                 by_atoms: bool = False,
+                 per_atom: bool = False,
                  reduction: str = 'mean',
                  aggregate: str = 'sum',
                  **kwargs
@@ -347,7 +359,7 @@ class RMSE(Error):
 
         super().__init__(
             index=index,
-            by_atoms=by_atoms,
+            per_atom=per_atom,
             reduction=reduction,
             aggregate=aggregate,
         )
