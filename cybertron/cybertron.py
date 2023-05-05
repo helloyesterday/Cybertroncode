@@ -138,7 +138,7 @@ class Cybertron(Cell):
             if self.atom_mask.all():
                 self.num_atoms = natoms
             else:
-                self.num_atoms = F.cast(atom_type > 0, ms.int32)
+                self.num_atoms = F.cast(atom_type > 0, ms.int16)
                 self.num_atoms = msnp.sum(num_atoms, -1, keepdims=True)
 
         self.bond_types = None
@@ -706,7 +706,7 @@ class CybertronFF(PotentialCell):
             if self.atom_mask.all():
                 self.num_atoms = natoms
             else:
-                self.num_atoms = F.cast(atom_type > 0, ms.int32)
+                self.num_atoms = F.cast(atom_type > 0, ms.int16)
                 self.num_atoms = msnp.sum(num_atoms, -1, keepdims=True)
 
         self.bond_types = None
