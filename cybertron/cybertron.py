@@ -592,6 +592,7 @@ class Cybertron(Cell):
             output = self.readout[i](node_rep=node_rep,
                                      edge_rep=edge_rep,
                                      node_emb=node_emb,
+                                     edge_emb=edge_emb,
                                      atom_type=atom_type,
                                      atom_mask=atom_mask,
                                      neigh_dis=neigh_dis,
