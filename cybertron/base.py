@@ -224,7 +224,7 @@ class SoftmaxWithMask(Cell):
 
         self.softmax = ops.Softmax(get_integer(axis))
 
-        self.large_neg = -5e4
+        self.large_neg = Tensor(-5e4, ms.float16)
 
     def construct(self, x: Tensor, mask: Tensor):
         """Compute softmax of Tensor with mask
@@ -639,14 +639,14 @@ class ACTWeight(Cell):
         """
 
         # Mask for inputs which have not halted last cy
-        running = F.cast(halting_prob < 1.0, ms.float32)
+        running = F.cast(halting_prob < 1.0, prob.dtype)
 
         # Add the halting probability for this step to the halting
         # probabilities for those input which haven't halted yet
         add_prob = prob * running
         new_prob = halting_prob + add_prob
-        mask_run = F.cast(new_prob <= self.threshold, ms.float32)
-        mask_halt = F.cast(new_prob > self.threshold, ms.float32)
+        mask_run = F.cast(new_prob <= self.threshold, prob.dtype)
+        mask_halt = F.cast(new_prob > self.threshold, prob.dtype)
 
         # Mask of inputs which haven't halted, and didn't halt this step
         still_running = mask_run * running

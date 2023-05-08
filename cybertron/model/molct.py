@@ -218,7 +218,7 @@ class MolCT(MolecularGNN):
         # (B,A) -> (B,A,1)
         node_mask = F.expand_dims(node_mask, -1)
 
-        c_ii = F.cast(node_mask, ms.float32)
+        c_ii = F.cast(node_mask, edge_cutoff.dtype)
         edge_cutoff = concat_last_dim((c_ii, edge_cutoff))
         edge_mask = concat_last_dim((node_mask, edge_mask))
 

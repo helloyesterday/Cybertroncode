@@ -289,7 +289,7 @@ class MolEmbedding(GraphEmbedding):
 
             if bond_mask is not None:
                 bond_emb = bond_emb * F.expand_dims(bond_mask, -1)
-                bond_cutoff = F.cast(bond_mask > 0, ms.float32)
+                bond_cutoff = F.cast(bond_mask > 0, bond_emb.dtype)
 
             if self.bond_filter is not None:
                 bond_emb = self.bond_filter(bond_emb)
