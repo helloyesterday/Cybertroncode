@@ -324,7 +324,7 @@ class Cybertron(Cell):
                 return F.reshape(value, (1,) * len(shape) + (-1,))
 
             raise ValueError(f'The shape of {name} ({value.shape}) does not match '
-                                f'the shape of readout function: {shape}')
+                             f'the shape of readout function: {shape}')
 
         scale = _check_data(scale, 'scale')
         shift = _check_data(shift, 'shift')
