@@ -60,6 +60,7 @@ class MolWithEvalCell(MoleculeWrapper):
                  force_key: str = 'force',
                  weights_normalize: bool = True,
                  normed_evaldata: bool = False,
+                 add_cast_fp32: bool = False,
                  **kwargs
                  ):
         super().__init__(
@@ -73,6 +74,8 @@ class MolWithEvalCell(MoleculeWrapper):
             weights_normalize=weights_normalize,
         )
         self._kwargs = get_arguments(locals(), kwargs)
+
+        self.add_cast_fp32 = add_cast_fp32
 
         self._normed_evaldata = normed_evaldata
 
@@ -113,7 +116,11 @@ class MolWithEvalCell(MoleculeWrapper):
         bonds = inputs[self.bonds_id]
         bond_mask = inputs[self.bond_mask_id]
 
-        labels = [inputs[self.labels_id[i]] for i in range(self.num_labels)]
+        if self.add_cast_fp32:
+            labels = [F.mixed_precision_cast(ms.float32, inputs[self.labels_id[i]])
+                      for i in range(self.num_labels)]
+        else:
+            labels = [inputs[self.labels_id[i]] for i in range(self.num_labels)]
 
         if atom_type is None:
             atom_type = self.atom_type
@@ -147,6 +154,11 @@ class MolWithEvalCell(MoleculeWrapper):
 
         if self.num_readouts == 1:
             outputs = (outputs,)
+
+        if self.add_cast_fp32:
+            outputs_ = ()
+            for i in range(self.num_readouts):
+                outputs_ += (F.cast(outputs[i], ms.float32))
 
         def _normalize_outputs(outputs, scaled_outputs):
             if scaled_outputs:
