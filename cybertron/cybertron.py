@@ -357,7 +357,7 @@ class Cybertron(Cell):
                 type_ref *= self.num_readouts
             else:
                 raise ValueError(f'The number of type_ref {len(type_ref)} must be equal to '
-                                    f'the number of readout functions {self.num_readouts}')
+                                 f'the number of readout functions {self.num_readouts}')
 
         type_ref = [_check_type_ref(type_ref[i], self.readout[i].shape)
                     for i in range(self.num_readouts)]
