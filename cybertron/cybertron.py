@@ -319,9 +319,10 @@ class Cybertron(Cell):
             if value.shape != shape:
                 if value.size == 1:
                     # (1, ..., 1) <- (1)
-                    value = F.reshape(value, (1,)* (len(shape) - 1) + (-1,))
-                raise ValueError(f'The shape of {name} ({value.shape}) does not match '
-                                f'the shape of readout function: {shape}')
+                    value = F.reshape(value, (1,) * len(shape) + (-1,))
+                else:
+                    raise ValueError(f'The shape of {name} ({value.shape}) does not match '
+                                    f'the shape of readout function: {shape}')
             return value
 
         scale = _check_data(scale, 'scale')
@@ -827,7 +828,7 @@ class CybertronFF(PotentialCell):
         """set scale, shift and type_ref"""
         if self.readout is None:
             return self
-        
+
         def _check_data(value, name: str):
             if isinstance(value, (list, tuple)):
                 if len(value) != 1:
@@ -837,7 +838,6 @@ class CybertronFF(PotentialCell):
             value = get_tensor(value, ms.float32)
             if value.size != 1:
                 raise ValueError(f'The size of {name} must be 1, but got: {value.size}')
-
 
         def _check_type_ref(ref) -> Tensor:
             if ref is None:

@@ -210,9 +210,9 @@ class ScaleShift(Cell):
         if self.shift_by_atoms:
             if num_atoms is None:
                 num_atoms = count_nonzero(F.cast(atom_type>0, ms.int16), axis=-1, keepdims=True)
-            if self._shift.ndim > 1:
+            if label.ndim > 2:
                 # (B, ...) <- (B, 1)
-                num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * shift.ndim)
+                num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * (label.ndim - 1))
             # (B, ...) = (...) * (B, ...)
             shift *= num_atoms
 
@@ -246,9 +246,9 @@ class ScaleShift(Cell):
         if self.shift_by_atoms:
             if num_atoms is None:
                 num_atoms = count_nonzero(F.cast(atom_type>0, ms.int16), axis=-1, keepdims=True)
-            if self._shift.ndim > 1:
+            if output.ndim > 2:
                 # (B, ...) <- (B, 1)
-                num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * shift.ndim)
+                num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * (output.ndim - 1))
             # (B, ...) = (...) * (B, ...)
             shift *= num_atoms
 
