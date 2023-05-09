@@ -316,14 +316,15 @@ class Cybertron(Cell):
             value = get_tensor(value, ms.float32)
             if value.ndim == 0:
                 value = F.reshape(value, (-1,))
-            if value.shape != shape:
-                if value.size == 1:
-                    # (1, ..., 1) <- (1)
-                    value = F.reshape(value, (1,) * len(shape) + (-1,))
-                else:
-                    raise ValueError(f'The shape of {name} ({value.shape}) does not match '
-                                    f'the shape of readout function: {shape}')
-            return value
+            if value.shape == shape:
+                return value
+
+            if value.size == 1:
+                # (1, ..., 1) <- (1)
+                return F.reshape(value, (1,) * len(shape) + (-1,))
+
+            raise ValueError(f'The shape of {name} ({value.shape}) does not match '
+                                f'the shape of readout function: {shape}')
 
         scale = _check_data(scale, 'scale')
         shift = _check_data(shift, 'shift')
