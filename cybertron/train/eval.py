@@ -116,11 +116,8 @@ class MolWithEvalCell(MoleculeWrapper):
         bonds = inputs[self.bonds_id]
         bond_mask = inputs[self.bond_mask_id]
 
-        if self.add_cast_fp32:
-            labels = [F.mixed_precision_cast(ms.float32, inputs[self.labels_id[i]])
-                      for i in range(self.num_labels)]
-        else:
-            labels = [inputs[self.labels_id[i]] for i in range(self.num_labels)]
+        
+        labels = [inputs[self.labels_id[i]] for i in range(self.num_labels)]
 
         if atom_type is None:
             atom_type = self.atom_type
@@ -154,11 +151,6 @@ class MolWithEvalCell(MoleculeWrapper):
 
         if self.num_readouts == 1:
             outputs = (outputs,)
-
-        if self.add_cast_fp32:
-            outputs_ = ()
-            for i in range(self.num_readouts):
-                outputs_ += (F.cast(outputs[i], ms.float32))
 
         def _normalize_outputs(outputs, scaled_outputs):
             if scaled_outputs:
@@ -202,9 +194,27 @@ class MolWithEvalCell(MoleculeWrapper):
                 outputs += (force,)
                 normed_outputs += (normed_force,)
 
+        if self.add_cast_fp32:
+            outputs_ = ()
+            labels_ = []
+            for i in range(self.num_readouts):
+                outputs_ += (F.cast(outputs[i], ms.float32),)
+                labels_.append(F.cast(labels[i], ms.float32))
+            outputs = outputs_
+            labels = labels_
+
         if self._loss_fn is None:
             loss = self.zero
         else:
+            if self.add_cast_fp32:
+                normed_outputs_ = ()
+                normed_labels_ = []
+                for i in range(self.num_readouts):
+                    normed_outputs_ += (F.cast(normed_outputs[i], ms.float32),)
+                    normed_labels_.append(F.cast(normed_labels[i], ms.float32))
+                normed_outputs = normed_outputs_
+                normed_labels = normed_labels_
+
             loss = 0
             for i in range(self.num_labels):
                 if self._molecular_loss[i]:
