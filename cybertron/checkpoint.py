@@ -24,6 +24,9 @@ import numpy as np
 import mindspore.nn as nn
 from mindspore.nn import Cell
 from mindspore import log as logger
+# mindspore 1.10
+# from mindspore._checkparam import Validator
+# mindspore 2.0
 from mindspore import _checkparam as Validator
 from mindspore.common.initializer import initializer
 from mindspore.common.parameter import Parameter

@@ -73,4 +73,4 @@ def _mindspore_version_check():
                 f"Please pay attention to the above warning, countdown: {i}")
             time.sleep(1)
 
-_mindspore_version_check()
+# _mindspore_version_check()
