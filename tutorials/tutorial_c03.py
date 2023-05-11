@@ -40,9 +40,9 @@ if __name__ == '__main__':
 
     sys.path.append('..')
 
-    from mindsponge.data import read_yaml, load_checkpoint
+    from mindsponge.data import read_yaml
 
-    from cybertron import Cybertron
+    from cybertron import Cybertron, load_checkpoint
     from cybertron.train import MolWithEvalCell
     from cybertron.train.loss import MAELoss
     from cybertron.train.metric import MAE, Loss

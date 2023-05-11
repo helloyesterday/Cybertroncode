@@ -41,9 +41,9 @@ if __name__ == '__main__':
 
     sys.path.append('..')
 
-    from mindsponge.data import read_yaml, load_checkpoint
+    from mindsponge.data import read_yaml
 
-    from cybertron import Cybertron
+    from cybertron import Cybertron, load_checkpoint
     from cybertron.model import MolCT
     from cybertron.embedding import MolEmbedding
     from cybertron.readout import AtomwiseReadout
