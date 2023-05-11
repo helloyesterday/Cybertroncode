@@ -28,6 +28,7 @@ from .cybertron import Cybertron, CybertronFF
 from .model import SchNet, PhysNet, MolCT
 from .embedding import MolEmbedding, ConformationEmbedding
 from .readout import NodeReadout, AtomwiseReadout, GraphReadout
+from .checkpoint import save_checkpoint, load_checkpoint, load_param_into_net
 
 
 def _mindspore_version_check():
