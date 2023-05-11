@@ -28,11 +28,13 @@ import mindspore.numpy as msnp
 from mindspore.nn.learning_rate_schedule import LearningRateSchedule
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
-from mindspore._checkparam import Validator as validator
+from mindspore import _checkparam as validator
+
 
 __all__ = [
     "TransformerLR",
 ]
+
 
 class TransformerLR(LearningRateSchedule):
     r"""A transformer type dynamic learning rate schedule.
