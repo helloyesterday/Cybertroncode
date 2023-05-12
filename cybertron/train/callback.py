@@ -165,9 +165,6 @@ class TrainMonitor(Callback):
             self.loss_record += batch_loss
             self.train_num += nbatch
 
-        # if self._per_step > 0 and cb_params.cur_step_num % self._per_step == 0:
-        #     self._output_data(cb_params)
-
         # In disaster recovery scenario, the cb_params.cur_step_num may be rollback to previous step
         # and be less than self._last_print_time, so self._last_print_time need to be updated.
         if self._per_step != 0 and (cb_params.cur_step_num <= self._last_print_time):
