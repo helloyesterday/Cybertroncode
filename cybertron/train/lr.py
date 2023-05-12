@@ -62,10 +62,8 @@ class TransformerLR(LearningRateSchedule):
         super().__init__()
         if not isinstance(learning_rate, float):
             raise TypeError("learning_rate must be float.")
-        Validator.check_non_negative_float(
-            learning_rate, "learning_rate", self.cls_name)
-        Validator.check_positive_int(
-            warmup_steps, 'warmup_steps', self.cls_name)
+        Validator.check_non_negative_float(learning_rate, "learning_rate", self.cls_name)
+        Validator.check_positive_int(warmup_steps, 'warmup_steps', self.cls_name)
 
         self.learning_rate = learning_rate
 

@@ -44,9 +44,11 @@ from mindspore.train._utils import _make_directory
 
 _cur_dir = os.getcwd()
 
+
 __all__ = [
     "TrainMonitor",
 ]
+
 
 class TrainMonitor(Callback):
     r"""A callback to show and record the information during training process.
