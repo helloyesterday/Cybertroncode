@@ -276,12 +276,12 @@ class Cybertron(Cell):
     @property
     def model_name(self) -> str:
         return self.model.cls_name
-    
+
     def set_train(self, mode: bool = True):
         super().set_train(mode)
         self.use_scaleshift = not mode
         return self
-    
+
     def set_inference(self, mode: bool = True):
         """Sets the cell to inference mode."""
         self.set_train(not mode)
@@ -295,7 +295,7 @@ class Cybertron(Cell):
         """set scale, shift and type_ref"""
         if self.readout is None:
             return self
-        
+
         def _check_data(value, name: str):
             if not isinstance(value, (list, tuple)):
                 value = [value]
@@ -330,14 +330,14 @@ class Cybertron(Cell):
         shift = _check_data(shift, 'shift')
 
         scale = [_check_scaleshift(scale[i], self.readout[i].shape, 'scale')
-                    for i in range(self.num_readouts)]
+                 for i in range(self.num_readouts)]
         shift = [_check_scaleshift(shift[i], self.readout[i].shape, 'shift')
-                    for i in range(self.num_readouts)]
+                 for i in range(self.num_readouts)]
 
         def _check_type_ref(ref, shape: Tuple[int]) -> Tensor:
             if ref is None:
                 return None
-            if not isinstance(ref, (Tensor, Parameter, ndarray)):    
+            if not isinstance(ref, (Tensor, Parameter, ndarray)):
                 raise TypeError(f'The type of type_ref must be Tensor, Parameter or ndarray, '
                                 f'but got: {type(ref)}')
 
@@ -365,11 +365,11 @@ class Cybertron(Cell):
         if self.scaleshift is None:
             self.scaleshift = CellList([
                 ScaleShift(scale=scale[i],
-                shift=shift[i],
-                type_ref=type_ref[i],
-                shift_by_atoms=self.readout[i].shift_by_atoms,
-                ) for i in range(self.num_readouts)
-                ])
+                           shift=shift[i],
+                           type_ref=type_ref[i],
+                           shift_by_atoms=self.readout[i].shift_by_atoms)
+                for i in range(self.num_readouts)
+            ])
         else:
             for i in range(self.num_readouts):
                 self.scaleshift[i].set_scaleshift(scale=scale[i], shift=shift[i], type_ref=type_ref[i])
@@ -395,7 +395,7 @@ class Cybertron(Cell):
             return [self.scaleshift[i].scale for i in range(self.num_readouts)]
         self._check_readout_index(readout_idx)
         return self.scaleshift[readout_idx].scale
-    
+
     def shift(self, readout_idx: int = None) -> Union[Tensor, List[Tensor]]:
         """returns the shift"""
         if self.readout is None:
@@ -432,12 +432,12 @@ class Cybertron(Cell):
                 Tensor(self.scaleshift[i].convert_energy_to(self._units), ms.float32)
                 for i in range(self.num_readouts))
         return self
-    
+
     def save_configure(self, filename: str, directory: str = None):
         """save configure to file"""
         write_yaml(self._kwargs, filename, directory)
         return self
-    
+
     def save_checkpoint(self, ckpt_file_name: str, directory: str = None, append_dict: str = None):
         """save checkpoint file"""
         if directory is not None:
@@ -484,7 +484,7 @@ class Cybertron(Cell):
                 num_retraction=num_retraction, num_gap=num_gap, char=char)
             self.scaleshift[i].print_info(
                 num_retraction=num_retraction, num_gap=num_gap, char=char)
-            
+
         print(f'{ret} Input unit: {self._units.length_unit_name}')
         print(f'{ret} Output unit: {self._units.energy_unit_name}')
         print(f'{ret} Input unit scale: {self.input_unit_scale}')
@@ -620,7 +620,7 @@ class Cybertron(Cell):
             raise ValueError(f'The index ({readout_idx}) is exceed '
                              f'the number of readout ({self.num_readouts})')
         return self
-    
+
 
 class CybertronFF(PotentialCell):
     """Cybertron: An architecture to perform deep molecular model for molecular modeling.
@@ -668,11 +668,10 @@ class CybertronFF(PotentialCell):
     """
 
     def __init__(self,
+                 atom_type: Union[Tensor, ndarray, List[int]],
                  model: Union[MolecularGNN, dict, str],
                  embedding: Union[GraphEmbedding, dict, str] = 'conformation',
                  readout: Union[Readout, dict, str, List[Readout]] = 'atomwise',
-                 num_atoms: int = None,
-                 atom_type: Union[Tensor, ndarray, List[int]] = None,
                  bond_types: Union[Tensor, ndarray, List[int]] = None,
                  pbc_box: Union[Tensor, ndarray, List[float]] = None,
                  use_pbc: bool = None,
@@ -693,30 +692,20 @@ class CybertronFF(PotentialCell):
         if readout is None:
             raise ValueError('The readout function in CybertronFF cannot be None!')
 
-        if atom_type is None:
-            self.atom_type = None
-            self.atom_mask = None
-            if num_atoms is None:
-                raise ValueError(
-                    '"num_atoms" must be assigned when "atom_type" is None')
-            natoms = get_integer(num_atoms)
-            self.num_atoms = natoms
+        # (1,A)
+        self.atom_type: Tensor = get_ms_array(atom_type, ms.int32).reshape(1, -1)
+        self.atom_mask: Tensor = self.atom_type > 0
+        max_atoms = self.atom_type.shape[-1]
+        if self.atom_mask.all():
+            self.num_atoms = max_atoms
         else:
-            # (1,A)
-            self.atom_type: Tensor = get_ms_array(atom_type, ms.int32).reshape(1, -1)
-            self.atom_mask: Tensor = self.atom_type > 0
-            natoms = self.atom_type.shape[-1]
-            if self.atom_mask.all():
-                self.num_atoms = natoms
-            else:
-                self.num_atoms = F.cast(atom_type > 0, ms.int16)
-                self.num_atoms = msnp.sum(num_atoms, -1, keepdims=True)
+            num_atoms = F.cast(atom_type > 0, ms.int16)
+            self.num_atoms = msnp.sum(num_atoms, -1, keepdims=True)
 
         self.bond_types = None
         self.bond_mask = None
         if bond_types is not None:
-            self.bond_types = Tensor(
-                bond_types, ms.int32).reshape(1, natoms, -1)
+            self.bond_types = Tensor(bond_types, ms.int32).reshape(1, max_atoms, -1)
             self.bond_mask = bond_types > 0
 
         model = get_molecular_model(model)
@@ -760,7 +749,7 @@ class CybertronFF(PotentialCell):
             readout = readout[0]
         elif not isinstance(readout, (Readout, str, dict)):
             raise TypeError(f'The type of `readout` must be Readout, dict or str but got: {type(readout)}')
-        
+
         self.readout = get_readout(cls_name=readout,
                                    dim_node_rep=self.dim_node_rep,
                                    dim_edge_rep=self.dim_edge_rep,
@@ -805,12 +794,12 @@ class CybertronFF(PotentialCell):
     @property
     def model_name(self) -> str:
         return self.model.cls_name
-    
+
     @property
     def scale(self) -> Union[Tensor, List[Tensor]]:
         """returns the scale"""
         return self.scaleshift.scale
-    
+
     @property
     def shift(self) -> Union[Tensor, List[Tensor]]:
         """returns the shift"""
@@ -839,6 +828,7 @@ class CybertronFF(PotentialCell):
             value = get_tensor(value, ms.float32)
             if value.size != 1:
                 raise ValueError(f'The size of {name} must be 1, but got: {value.size}')
+            return value
 
         def _check_type_ref(ref) -> Tensor:
             if ref is None:
@@ -850,10 +840,10 @@ class CybertronFF(PotentialCell):
                 raise ValueError(f'The last dimension of type_ref {ref.shape} must be 1, '
                                  f'but got: {ref.shape[-1]}')
             return ref
-        
-        scale=_check_data(scale, 'scale'),
-        shift=_check_data(shift, 'shift'),
-        type_ref=_check_type_ref(type_ref),
+
+        scale = _check_data(scale, 'scale')
+        shift = _check_data(shift, 'shift')
+        type_ref = _check_type_ref(type_ref)
 
         if self.scaleshift is None:
             self.scaleshift = ScaleShift(
@@ -924,40 +914,9 @@ class CybertronFF(PotentialCell):
         """
         #pylint: disable=unused-argument
 
-        """Compute the properties of the molecules.
-
-        Args:
-            coordinate (Tensor): Tensor of shape (B, A, D). Data type is float.
-                Cartesian coordinates for each atom.
-            atom_type (Tensor): Tensor of shape (B, A). Data type is int.
-                Type index (atomic number) of atom types.
-            pbc_box (Tensor): Tensor of shape (B, D). Data type is float.
-                Box size of periodic boundary condition
-            neighbours (Tensor): Tensor of shape (B, A, N). Data type is int.
-                Indices of other near neighbour atoms around a atom
-            neighbour_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
-                Mask for neighbours
-            bonds (Tensor): Tensor of shape (B, A, N). Data type is int.
-                Types index of bond connected with two atoms
-            bond_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
-                Mask for bonds
-
-        Returns:
-            outputs (Tensor):    Tensor of shape (B, A, O). Data type is float.
-
-        """
-
-        if self.atom_type is None:
-            # (1, A)
-            atom_mask = atom_type > 0
-        else:
-            # (1, A)
-            atom_type = self.atom_type
-            atom_mask = self.atom_mask
-
         node_emb, node_mask, edge_emb, \
-            edge_mask, edge_cutoff, edge_self = self.embedding(atom_type=atom_type,
-                                                               atom_mask=atom_mask,
+            edge_mask, edge_cutoff, edge_self = self.embedding(atom_type=self.atom_type,
+                                                               atom_mask=self.atom_mask,
                                                                neigh_dis=neighbour_distance,
                                                                neigh_vec=neighbour_vector,
                                                                neigh_list=neighbour_index,
@@ -974,20 +933,17 @@ class CybertronFF(PotentialCell):
                                         )
 
         output = self.readout(node_rep=node_rep,
-                                    edge_rep=edge_rep,
-                                    node_emb=node_emb,
-                                    atom_type=atom_type,
-                                    atom_mask=atom_mask,
-                                    neigh_dis=neighbour_distance,
-                                    neigh_vec=neighbour_vector,
-                                    neigh_list=neighbour_index,
-                                    neigh_mask=neighbour_mask,
-                                    )
+                              edge_rep=edge_rep,
+                              node_emb=node_emb,
+                              atom_type=self.atom_type,
+                              atom_mask=self.atom_mask,
+                              neigh_dis=neighbour_distance,
+                              neigh_vec=neighbour_vector,
+                              neigh_list=neighbour_index,
+                              neigh_mask=neighbour_mask,
+                              )
 
         if self.scaleshift is not None:
-            num_atoms = node_rep.shape[-2]
-            if atom_mask is not None:
-                num_atoms = msnp.count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
-            output = self.scaleshift(output, atom_type, num_atoms)
+            output = self.scaleshift(output, self.atom_type, self.num_atoms)
 
         return output
