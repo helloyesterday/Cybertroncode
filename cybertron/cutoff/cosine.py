@@ -24,12 +24,10 @@ Cutoff functions
 """
 
 from typing import Union
-import math
 from numpy import ndarray
 
 import mindspore as ms
 from mindspore import Tensor
-from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 
 from mindsponge.function import get_arguments

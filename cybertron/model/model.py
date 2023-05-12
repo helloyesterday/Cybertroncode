@@ -29,7 +29,6 @@ import mindspore.numpy as msnp
 from mindspore.nn import Cell, CellList
 from mindspore import Tensor
 from mindspore.ops import functional as F
-from mindspore.ops import operations as P
 
 from mindsponge.function import get_integer, get_ms_array
 
@@ -148,7 +147,7 @@ class MolecularGNN(Cell):
                 self.interaction = interaction
             else:
                 raise TypeError(f'Unsupport type: {interaction}')
-        
+
         self.default_embedding = self.get_default_embedding('default')
 
     def get_default_embedding(self, configure: str = 'default') -> dict:

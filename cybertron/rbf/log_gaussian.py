@@ -166,6 +166,6 @@ class LogGaussianBasis(RadicalBasisFunctions):
             rbf = rbf * 2 - 1.0
 
         return rbf
-    
+
     def __str__(self):
         return 'LogGaussianBasis<>'

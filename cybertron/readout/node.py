@@ -24,16 +24,14 @@ Readout functions
 """
 
 from typing import Union
-from numpy import ndarray
 
 import mindspore as ms
-from mindspore import Tensor, Parameter
+from mindspore import Tensor
 from mindspore.nn import Cell
 from mindspore.numpy import count_nonzero
-from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 
-from mindsponge.function import get_integer, get_ms_array, get_arguments
+from mindsponge.function import get_integer, get_arguments
 
 from .readout import Readout, _readout_register
 from ..aggregator import NodeAggregator, get_node_aggregator
@@ -141,6 +139,24 @@ class NodeReadout(Readout):
         print(ret+gap+f" Reduce axis: {self.axis}")
         print('-'*80)
         return self
+
+    def construct(self,
+                  node_rep: Tensor,
+                  edge_rep: Tensor,
+                  node_emb: Tensor = None,
+                  edge_emb: Tensor = None,
+                  atom_type: Tensor = None,
+                  atom_mask: Tensor = None,
+                  neigh_dis: Tensor = None,
+                  neigh_vec: Tensor = None,
+                  neigh_list: Tensor = None,
+                  neigh_mask: Tensor = None,
+                  bond: Tensor = None,
+                  bond_mask: Tensor = None,
+                  **kwargs,
+                  ):
+
+        raise NotImplementedError
 
 
 @_readout_register('atomwise')
@@ -314,7 +330,7 @@ class GraphReadout(NodeReadout):
 
         if aggregator is None:
             raise ValueError('The aggreator cannot be None under Graph mode!')
-        
+
         self.shift_by_atoms = False
 
     def construct(self,

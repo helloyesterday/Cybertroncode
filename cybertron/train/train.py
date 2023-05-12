@@ -75,7 +75,7 @@ class MolWithLossCell(MoleculeWrapper):
         self._loss_weights = self._check_weights(loss_weights)
         self._molecular_loss = self._set_molecular_loss()
         self._any_atomwise = any(self._molecular_loss)
-        self._set_atomwise_loss()
+        self._set_atomwise()
 
         self._network.set_train()
 

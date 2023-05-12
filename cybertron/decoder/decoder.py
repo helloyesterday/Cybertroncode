@@ -84,6 +84,6 @@ class Decoder(Cell):
     def construct(self, x: Tensor):
         #pylint: disable=not-callable
         return self.output(x)
-    
+
     def __str__(self):
         return 'Decoder<>'
