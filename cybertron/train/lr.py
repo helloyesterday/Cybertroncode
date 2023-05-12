@@ -26,9 +26,14 @@ Learning rate schedule for optimizer
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore.nn.learning_rate_schedule import LearningRateSchedule
-from mindspore.ops import operations as P
 from mindspore.ops import functional as F
-from mindspore import _checkparam as validator
+
+try:
+    # MindSpore 1.X
+    from mindspore._checkparam import Validator
+except ImportError:
+    # MindSpore 2.X
+    from mindspore import _checkparam as Validator
 
 
 __all__ = [
@@ -57,9 +62,9 @@ class TransformerLR(LearningRateSchedule):
         super().__init__()
         if not isinstance(learning_rate, float):
             raise TypeError("learning_rate must be float.")
-        validator.check_non_negative_float(
+        Validator.check_non_negative_float(
             learning_rate, "learning_rate", self.cls_name)
-        validator.check_positive_int(
+        Validator.check_positive_int(
             warmup_steps, 'warmup_steps', self.cls_name)
 
         self.learning_rate = learning_rate

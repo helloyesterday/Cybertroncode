@@ -24,9 +24,6 @@ import numpy as np
 import mindspore.nn as nn
 from mindspore.nn import Cell
 from mindspore import log as logger
-# mindspore 1.10
-# from mindspore._checkparam import Validator
-# mindspore 2.0
 from mindspore import _checkparam as Validator
 from mindspore.common.initializer import initializer
 from mindspore.common.parameter import Parameter
@@ -36,6 +33,14 @@ from mindspore.train.serialization import tensor_to_ms_type, tensor_to_np_type
 from mindspore.train.serialization import _special_process_par, _type_convert, _check_ckpt_file_name, _check_prefix
 from mindspore.train.serialization import _parse_ckpt_proto, _whether_load_param, _load_dismatch_prefix_params
 from mindspore.train.serialization import save_checkpoint
+
+try:
+    # MindSpore 1.X
+    from mindspore._checkparam import Validator
+except ImportError:
+    # MindSpore 2.X
+    from mindspore import _checkparam as Validator
+
 
 __all__ = [
     'save_checkpoint',
