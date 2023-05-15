@@ -676,8 +676,8 @@ class CybertronFF(PotentialCell):
                  bond_types: Union[Tensor, ndarray, List[int]] = None,
                  pbc_box: Union[Tensor, ndarray, List[float]] = None,
                  use_pbc: bool = None,
-                 scale: Union[float, Tensor, List[Union[float, Tensor]]] = 1,
-                 shift: Union[float, Tensor, List[Union[float, Tensor]]] = 0,
+                 scale: Union[float, Tensor, List[Union[float, Tensor]]] = 1.,
+                 shift: Union[float, Tensor, List[Union[float, Tensor]]] = 0.,
                  type_ref: Union[Tensor, ndarray, List[Union[Tensor, ndarray]]] = None,
                  length_unit: Union[str, Units] = None,
                  energy_unit: Union[str, Units] = None,
@@ -761,14 +761,16 @@ class CybertronFF(PotentialCell):
         elif not isinstance(readout, (Readout, str, dict)):
             raise TypeError(f'The type of `readout` must be Readout, dict or str but got: {type(readout)}')
         
-        self.readout = get_readout(cls_name=readout,
+        
+        self.readout = [get_readout(cls_name=readout,
                                    dim_node_rep=self.dim_node_rep,
                                    dim_edge_rep=self.dim_edge_rep,
                                    activation=self.activation,
-                                   )
+                                   )]
 
-        self.output_ndim = self.readout.ndim
-        self.output_shape = self.readout.shape
+        self.output_ndim = self.readout[0].ndim
+        self.output_shape = self.readout[0].shape
+        self.readout = CellList(self.readout)
 
         self.scaleshift: ScaleShift = None
         self.set_scaleshift(scale, shift, type_ref)
@@ -782,9 +784,9 @@ class CybertronFF(PotentialCell):
     @units.setter
     def units(self, units_: Units):
         self._units = units_
-        self.input_unit_scale = self.embedding.convert_length_from(self._units)
-        if self.readout is not None:
-            self.output_unit_scale = self.scaleshift.convert_energy_to(self._units)
+        # self.input_unit_scale = self.embedding.convert_length_from(self._units)
+        # if self.readout is not None:
+        #     self.output_unit_scale = self.scaleshift.convert_energy_to(self._units)
 
     @property
     def length_unit(self) -> str:
@@ -839,6 +841,7 @@ class CybertronFF(PotentialCell):
             value = get_tensor(value, ms.float32)
             if value.size != 1:
                 raise ValueError(f'The size of {name} must be 1, but got: {value.size}')
+            return float(value)
 
         def _check_type_ref(ref) -> Tensor:
             if ref is None:
@@ -851,16 +854,16 @@ class CybertronFF(PotentialCell):
                                  f'but got: {ref.shape[-1]}')
             return ref
         
-        scale=_check_data(scale, 'scale'),
-        shift=_check_data(shift, 'shift'),
-        type_ref=_check_type_ref(type_ref),
-
+        scale=_check_data(scale, 'scale')
+        shift=_check_data(shift, 'shift')
+        type_ref=_check_type_ref(type_ref)
+        
         if self.scaleshift is None:
             self.scaleshift = ScaleShift(
                 scale=scale,
                 shift=shift,
                 type_ref=type_ref,
-                shift_by_atoms=self.readout.shift_by_atoms,
+                shift_by_atoms=self.readout[0].shift_by_atoms,
                 )
         else:
             self.scaleshift.set_scaleshift(scale, shift, type_ref)
@@ -946,17 +949,20 @@ class CybertronFF(PotentialCell):
             outputs (Tensor):    Tensor of shape (B, A, O). Data type is float.
 
         """
+        
 
         if self.atom_type is None:
             # (1, A)
-            atom_mask = atom_type > 0
+            atom_mask = self.atom_type > 0
         else:
             # (1, A)
             atom_type = self.atom_type
             atom_mask = self.atom_mask
 
+        
+
         node_emb, node_mask, edge_emb, \
-            edge_mask, edge_cutoff, edge_self = self.embedding(atom_type=atom_type,
+            edge_mask, edge_cutoff, edge_self = self.embedding(atom_type=self.atom_type,
                                                                atom_mask=atom_mask,
                                                                neigh_dis=neighbour_distance,
                                                                neigh_vec=neighbour_vector,
@@ -976,7 +982,7 @@ class CybertronFF(PotentialCell):
         output = self.readout(node_rep=node_rep,
                                     edge_rep=edge_rep,
                                     node_emb=node_emb,
-                                    atom_type=atom_type,
+                                    atom_type=self.atom_type,
                                     atom_mask=atom_mask,
                                     neigh_dis=neighbour_distance,
                                     neigh_vec=neighbour_vector,
@@ -988,6 +994,6 @@ class CybertronFF(PotentialCell):
             num_atoms = node_rep.shape[-2]
             if atom_mask is not None:
                 num_atoms = msnp.count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
-            output = self.scaleshift(output, atom_type, num_atoms)
+            output = self.scaleshift(output, self.atom_type, num_atoms)
 
         return output
