@@ -27,6 +27,7 @@ import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore.nn.learning_rate_schedule import LearningRateSchedule
 from mindspore.ops import functional as F
+from mindsponge.function import get_ms_array
 
 try:
     # MindSpore 1.X
@@ -67,8 +68,8 @@ class TransformerLR(LearningRateSchedule):
 
         self.learning_rate = learning_rate
 
-        self.warmup_steps = F.cast(warmup_steps, ms.float32)
-        self.dimension = F.cast(dimension, ms.float32)
+        self.warmup_steps = get_ms_array(warmup_steps, ms.float32)
+        self.dim_scale = msnp.power(dimension, -0.5)
 
     def construct(self, global_step: int):
         """Calculate the learning rate at current step.
@@ -80,10 +81,9 @@ class TransformerLR(LearningRateSchedule):
             lr (Tensor):   Current learning rate.
 
         """
-        step_num = F.cast(global_step, ms.float32)
+        step_num = F.reshape(F.cast(global_step, ms.float32), ())
         warmup_scale = F.pow(self.warmup_steps, -1.5)
-        dim_scale = F.pow(self.dimension, -0.5)
         lr1 = F.pow(step_num, -0.5)
-        lr2 = step_num*warmup_scale
-        lr_percent = dim_scale * msnp.minimum(lr1, lr2)
+        lr2 = step_num * warmup_scale
+        lr_percent = self.dim_scale * F.minimum(lr1, lr2)
         return self.learning_rate * lr_percent
