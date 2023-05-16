@@ -31,6 +31,7 @@ import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import Tensor, Parameter
 from mindspore.nn import Cell, CellList, Norm
+from mindspore import ops
 from mindspore.ops import functional as F
 from mindspore.train import save_checkpoint
 from mindspore.train._utils import _make_directory
@@ -119,8 +120,6 @@ class Cybertron(Cell):
 
         if length_unit is None:
             length_unit = GLOBAL_UNITS.length_unit
-        if energy_unit is None:
-            energy_unit = GLOBAL_UNITS.energy_unit
         self._units = Units(length_unit, energy_unit)
 
         if atom_type is None:
@@ -141,10 +140,10 @@ class Cybertron(Cell):
                 self.num_atoms = F.cast(atom_type > 0, ms.int16)
                 self.num_atoms = msnp.sum(num_atoms, -1, keepdims=True)
 
-        self.bond_types = None
+        self.bonds = None
         self.bond_mask = None
         if bond_types is not None:
-            self.bond_types = get_ms_array(bond_types, ms.int32).reshape(1, natoms, -1)
+            self.bonds = get_ms_array(bond_types, ms.int32).reshape(1, natoms, -1)
             self.bond_mask = bond_types > 0
 
         model = get_molecular_model(model)
@@ -463,9 +462,9 @@ class Cybertron(Cell):
             print(f'{ret} Using fixed atom type index:')
             for i, atom in enumerate(self.atom_type[0]):
                 print(ret+gap+' Atom {: <7}'.format(str(i))+f': {atom.asnumpy()}')
-        if self.bond_types is not None:
+        if self.bonds is not None:
             print(ret+' Using fixed bond connection:')
-            for b in self.bond_types[0]:
+            for b in self.bonds[0]:
                 print(ret+gap+' '+str(b.asnumpy()))
             print(ret+' Fixed bond mask:')
             for m in self.bond_mask[0]:
@@ -560,7 +559,12 @@ class Cybertron(Cell):
                 # (B, A, N, D) = (B, A, N, D) + (B, A, N, 1)
                 neigh_vec += F.expand_dims(large_dis, -1)
 
-            neigh_dis = self.norm_last_dim(neigh_vec)
+            # neigh_dis = self.norm_last_dim(neigh_vec)
+            neigh_dis = ops.norm(neigh_vec, dim=-1)
+
+        if self.bonds is not None:
+            bonds = self.bonds
+            bond_mask = self.bond_mask
 
         node_emb, node_mask, edge_emb, \
             edge_mask, edge_cutoff, edge_self = self.embedding(atom_type=atom_type,
@@ -679,7 +683,7 @@ class CybertronFF(PotentialCell):
                  shift: Union[float, Tensor, List[Union[float, Tensor]]] = 0,
                  type_ref: Union[Tensor, ndarray, List[Union[Tensor, ndarray]]] = None,
                  length_unit: Union[str, Units] = None,
-                 energy_unit: Union[str, Units] = None,
+                 energy_unit: Union[str, Units] = 'none',
                  **kwargs
                  ):
         super().__init__(
@@ -702,10 +706,10 @@ class CybertronFF(PotentialCell):
             num_atoms = F.cast(atom_type > 0, ms.int16)
             self.num_atoms = msnp.sum(num_atoms, -1, keepdims=True)
 
-        self.bond_types = None
+        self.bonds = None
         self.bond_mask = None
         if bond_types is not None:
-            self.bond_types = Tensor(bond_types, ms.int32).reshape(1, max_atoms, -1)
+            self.bonds = Tensor(bond_types, ms.int32).reshape(1, max_atoms, -1)
             self.bond_mask = bond_types > 0
 
         model = get_molecular_model(model)
@@ -750,46 +754,20 @@ class CybertronFF(PotentialCell):
         elif not isinstance(readout, (Readout, str, dict)):
             raise TypeError(f'The type of `readout` must be Readout, dict or str but got: {type(readout)}')
 
-        self.readout = get_readout(cls_name=readout,
+        readout = get_readout(cls_name=readout,
                                    dim_node_rep=self.dim_node_rep,
                                    dim_edge_rep=self.dim_edge_rep,
                                    activation=self.activation,
                                    )
+        self.readout: List[Readout] = CellList([readout])
 
-        self.output_ndim = self.readout.ndim
-        self.output_shape = self.readout.shape
+        self.output_ndim = self.readout[0].ndim
+        self.output_shape = self.readout[0].shape
 
         self.scaleshift: ScaleShift = None
         self.set_scaleshift(scale, shift, type_ref)
 
-        self.input_unit_scale = self.embedding.convert_length_from(self._units)
-
-    @property
-    def units(self) -> Units:
-        return self._units
-
-    @units.setter
-    def units(self, units_: Units):
-        self._units = units_
-        self.input_unit_scale = self.embedding.convert_length_from(self._units)
-        if self.readout is not None:
-            self.output_unit_scale = self.scaleshift.convert_energy_to(self._units)
-
-    @property
-    def length_unit(self) -> str:
-        return self._units.length_unit
-
-    @length_unit.setter
-    def length_unit(self, length_unit_: Union[str, Units]):
-        self.set_length_unit(length_unit_)
-
-    @property
-    def energy_unit(self) -> str:
-        return self._units.energy_unit
-
-    @energy_unit.setter
-    def energy_unit(self, energy_unit_: Union[str, Units]):
-        self.set_energy_unit(energy_unit_)
+        self.input_unit_scale = self.embedding.convert_length_from(self.units)
 
     @property
     def model_name(self) -> str:
@@ -816,8 +794,6 @@ class CybertronFF(PotentialCell):
                        type_ref: Union[Tensor, ndarray, List[Union[Tensor, ndarray]]] = None,
                        ):
         """set scale, shift and type_ref"""
-        if self.readout is None:
-            return self
 
         def _check_data(value, name: str):
             if isinstance(value, (list, tuple)):
@@ -850,7 +826,7 @@ class CybertronFF(PotentialCell):
                 scale=scale,
                 shift=shift,
                 type_ref=type_ref,
-                shift_by_atoms=self.readout.shift_by_atoms,
+                shift_by_atoms=self.readout[0].shift_by_atoms,
                 )
         else:
             self.scaleshift.set_scaleshift(scale, shift, type_ref)
@@ -874,8 +850,7 @@ class CybertronFF(PotentialCell):
     def set_energy_unit(self, energy_units: str):
         """set energy unit"""
         self._units.set_energy_unit(energy_units)
-        if self.readout is not None:
-            self.output_unit_scale = self.scaleshift.convert_energy_to(self._units)
+        self.output_unit_scale = self.scaleshift.convert_energy_to(self._units)
         return self
 
     def construct(self,
@@ -921,6 +896,8 @@ class CybertronFF(PotentialCell):
                                                                neigh_vec=neighbour_vector,
                                                                neigh_list=neighbour_index,
                                                                neigh_mask=neighbour_mask,
+                                                               bond=self.bonds,
+                                                               bond_mask=self.bond_mask,
                                                                )
 
         node_rep, edge_rep = self.model(node_emb=node_emb,
@@ -932,16 +909,16 @@ class CybertronFF(PotentialCell):
                                         edge_self=edge_self,
                                         )
 
-        output = self.readout(node_rep=node_rep,
-                              edge_rep=edge_rep,
-                              node_emb=node_emb,
-                              atom_type=self.atom_type,
-                              atom_mask=self.atom_mask,
-                              neigh_dis=neighbour_distance,
-                              neigh_vec=neighbour_vector,
-                              neigh_list=neighbour_index,
-                              neigh_mask=neighbour_mask,
-                              )
+        output = self.readout[0](node_rep=node_rep,
+                                 edge_rep=edge_rep,
+                                 node_emb=node_emb,
+                                 atom_type=self.atom_type,
+                                 atom_mask=self.atom_mask,
+                                 neigh_dis=neighbour_distance,
+                                 neigh_vec=neighbour_vector,
+                                 neigh_list=neighbour_index,
+                                 neigh_mask=neighbour_mask,
+                                 )
 
         if self.scaleshift is not None:
             output = self.scaleshift(output, self.atom_type, self.num_atoms)
