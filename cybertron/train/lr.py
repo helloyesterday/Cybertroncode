@@ -26,13 +26,21 @@ Learning rate schedule for optimizer
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore.nn.learning_rate_schedule import LearningRateSchedule
-from mindspore.ops import operations as P
 from mindspore.ops import functional as F
-from mindspore._checkparam import Validator as validator
+from mindsponge.function import get_ms_array
+
+try:
+    # MindSpore 1.X
+    from mindspore._checkparam import Validator
+except ImportError:
+    # MindSpore 2.X
+    from mindspore import _checkparam as Validator
+
 
 __all__ = [
     "TransformerLR",
 ]
+
 
 class TransformerLR(LearningRateSchedule):
     r"""A transformer type dynamic learning rate schedule.
@@ -55,15 +63,13 @@ class TransformerLR(LearningRateSchedule):
         super().__init__()
         if not isinstance(learning_rate, float):
             raise TypeError("learning_rate must be float.")
-        validator.check_non_negative_float(
-            learning_rate, "learning_rate", self.cls_name)
-        validator.check_positive_int(
-            warmup_steps, 'warmup_steps', self.cls_name)
+        Validator.check_non_negative_float(learning_rate, "learning_rate", self.cls_name)
+        Validator.check_positive_int(warmup_steps, 'warmup_steps', self.cls_name)
 
         self.learning_rate = learning_rate
 
-        self.warmup_steps = F.cast(warmup_steps, ms.float32)
-        self.dimension = F.cast(dimension, ms.float32)
+        self.warmup_steps = get_ms_array(warmup_steps, ms.float32)
+        self.dim_scale = msnp.power(dimension, -0.5)
 
     def construct(self, global_step: int):
         """Calculate the learning rate at current step.
@@ -75,10 +81,9 @@ class TransformerLR(LearningRateSchedule):
             lr (Tensor):   Current learning rate.
 
         """
-        step_num = F.cast(global_step, ms.float32)
+        step_num = F.reshape(F.cast(global_step, ms.float32), ())
         warmup_scale = F.pow(self.warmup_steps, -1.5)
-        dim_scale = F.pow(self.dimension, -0.5)
         lr1 = F.pow(step_num, -0.5)
-        lr2 = step_num*warmup_scale
-        lr_percent = dim_scale * msnp.minimum(lr1, lr2)
+        lr2 = step_num * warmup_scale
+        lr_percent = self.dim_scale * F.minimum(lr1, lr2)
         return self.learning_rate * lr_percent

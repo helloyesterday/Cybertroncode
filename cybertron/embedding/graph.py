@@ -25,14 +25,13 @@ Embedding
 
 from typing import Union, Tuple
 
-import mindspore as ms
 from mindspore import nn
 from mindspore import Tensor
 from mindspore.nn import Cell
 
 
-from mindsponge.function import Units, GLOBAL_UNITS, Length, get_length
-from mindsponge.function import get_integer, get_ms_array
+from mindsponge.function import Units, GLOBAL_UNITS
+from mindsponge.function import get_integer
 
 from ..activation import get_activation
 
@@ -108,7 +107,7 @@ class GraphEmbedding(nn.Cell):
     def dim_edge(self) -> int:
         r"""dimension of edge embedding vectors"""
         return self._dim_edge
-    
+
     def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
         """print the information of molecular model"""
         ret = char * num_retraction

@@ -23,7 +23,7 @@
 Loss functions
 """
 
-from typing import Union, Tuple, List
+from typing import Union
 from numpy import ndarray
 
 import mindspore as ms
@@ -39,7 +39,7 @@ from mindsponge.function import keepdims_mean, keepdims_sum
 __all__ = [
     'MolecularLoss',
     'MAELoss',
-    'MSELoss'
+    'MSELoss',
     'CrossEntropyLoss',
 ]
 
@@ -112,6 +112,7 @@ class MolecularLoss(LossBase):
                             Loss function.
 
         """
+        #pylint: disable=unused-argument
 
         if (not self._atomwise) or predict.ndim > 3 or predict.ndim < 2:
             loss = self._calc_loss(predict - label)

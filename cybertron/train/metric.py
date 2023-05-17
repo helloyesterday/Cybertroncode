@@ -35,7 +35,7 @@ from mindsponge.function import get_integer, get_arguments
 
 __all__ = [
     'MaxError',
-    'Error'
+    'Error',
     'MAE',
     'MSE',
     'MNE',
@@ -114,7 +114,7 @@ class Error(Metric):
 
         if not isinstance(index, int):
             raise TypeError(f'The type of index should be int but got: {type(index)}')
-    
+
         self._index = get_integer(index)
 
         self._reduction = reduction
@@ -154,8 +154,8 @@ class Error(Metric):
                loss: Tensor,
                predicts: Tuple[Tensor],
                labels: List[Tensor],
-               atom_mask: Tensor = None,
-               *args):
+               atom_mask: Tensor,
+               ):
         """update metric"""
         #pylint: disable=unused-argument
 
@@ -290,7 +290,7 @@ class MSE(Error):
         )
         self._kwargs = get_arguments(locals(), kwargs)
 
-    def _calc_error(predict: ndarray, label: ndarray) -> ndarray:
+    def _calc_error(self, predict: ndarray, label: ndarray) -> ndarray:
         return np.square(label.reshape(predict.shape) - predict)
 
 

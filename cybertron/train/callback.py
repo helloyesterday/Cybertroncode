@@ -32,6 +32,7 @@ import mindspore as ms
 from mindspore import Model
 from mindspore import Tensor
 from mindspore.nn import Cell
+from mindspore.nn import Optimizer
 from mindspore.nn import TrainOneStepCell
 from mindspore.ops import functional as F
 from mindspore.dataset import Dataset
@@ -43,9 +44,11 @@ from mindspore.train._utils import _make_directory
 
 _cur_dir = os.getcwd()
 
+
 __all__ = [
     "TrainMonitor",
 ]
+
 
 class TrainMonitor(Callback):
     r"""A callback to show and record the information during training process.
@@ -120,6 +123,7 @@ class TrainMonitor(Callback):
         self.best_ckpt_metrics = best_ckpt_metrics
 
         self.last_loss = 0
+        self._last_print_time = 0
         self.record = []
 
         self.output_title = True
@@ -138,6 +142,47 @@ class TrainMonitor(Callback):
             run_context (RunContext): Include some information of the model.
         """
 
+    def step_end(self, run_context: RunContext):
+        """step end"""
+        cb_params: InternalCallbackParam = run_context.original_args()
+        loss = cb_params.net_outputs
+
+        if isinstance(loss, (tuple, list)):
+            if isinstance(loss[0], Tensor) and isinstance(loss[0].asnumpy(), np.ndarray):
+                loss = loss[0]
+
+        if isinstance(loss, Tensor) and isinstance(loss.asnumpy(), np.ndarray):
+            loss = np.mean(loss.asnumpy())
+
+        nbatch = len(cb_params.train_dataset_element[0])
+        batch_loss = loss * nbatch
+
+        self.last_loss = loss
+        if self.avg_steps > 0:
+            self.loss_record.append(batch_loss)
+            self.train_num.append(nbatch)
+        else:
+            self.loss_record += batch_loss
+            self.train_num += nbatch
+
+        # In disaster recovery scenario, the cb_params.cur_step_num may be rollback to previous step
+        # and be less than self._last_print_time, so self._last_print_time need to be updated.
+        if self._per_step != 0 and (cb_params.cur_step_num <= self._last_print_time):
+            while cb_params.cur_step_num <= self._last_print_time:
+                self._last_print_time -=\
+                    max(self._per_step, cb_params.batch_num if cb_params.dataset_sink_mode else 1)
+
+        if self._per_step != 0 and (cb_params.cur_step_num - self._last_print_time) >= self._per_step:
+            self._last_print_time = cb_params.cur_step_num
+            self._output_data(cb_params)
+
+    def epoch_end(self, run_context: RunContext):
+        cb_params = run_context.original_args()
+        cur_epoch = cb_params.cur_epoch_num
+
+        if self._per_epoch > 0 and cur_epoch % self._per_epoch == 0:
+            self._output_data(cb_params)
+
     def _write_ckpt_file(self, filename: str, info: str, network: TrainOneStepCell):
         """write checkpoint (.ckpt) file"""
         ckptfile = os.path.join(self._directory, filename + '.ckpt')
@@ -153,9 +198,9 @@ class TrainMonitor(Callback):
 
     def _output_data(self, cb_params: InternalCallbackParam):
         """output data"""
-        cur_epoch = cb_params.cur_epoch_num
+        cur_epoch = cb_params.get("cur_epoch_num", 1)
 
-        opt = cb_params.optimizer
+        opt: Optimizer = cb_params.get('optimizer')
         if opt is None:
             opt = cb_params.train_network.optimizer
 
@@ -254,36 +299,3 @@ class TrainMonitor(Callback):
                     self._ckptfile, info, network)
                 self.best_value = best_value
         return self
-
-    def step_end(self, run_context: RunContext):
-        """step end"""
-        cb_params: InternalCallbackParam = run_context.original_args()
-        loss = cb_params.net_outputs
-
-        if isinstance(loss, (tuple, list)):
-            if isinstance(loss[0], Tensor) and isinstance(loss[0].asnumpy(), np.ndarray):
-                loss = loss[0]
-
-        if isinstance(loss, Tensor) and isinstance(loss.asnumpy(), np.ndarray):
-            loss = np.mean(loss.asnumpy())
-
-        nbatch = len(cb_params.train_dataset_element[0])
-        batch_loss = loss * nbatch
-
-        self.last_loss = loss
-        if self.avg_steps > 0:
-            self.loss_record.append(batch_loss)
-            self.train_num.append(nbatch)
-        else:
-            self.loss_record += batch_loss
-            self.train_num += nbatch
-
-        if self._per_step > 0 and cb_params.cur_step_num % self._per_step == 0:
-            self._output_data(cb_params)
-
-    def epoch_end(self, run_context: RunContext):
-        cb_params = run_context.original_args()
-        cur_epoch = cb_params.cur_epoch_num
-
-        if self._per_epoch > 0 and cur_epoch % self._per_epoch == 0:
-            self._output_data(cb_params)

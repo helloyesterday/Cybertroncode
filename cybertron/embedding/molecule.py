@@ -158,7 +158,7 @@ class MolEmbedding(GraphEmbedding):
         if self.emb_dis and self.dis_filter is None:
             return self.num_basis
         return self._dim_edge
-    
+
     def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
         """print the information of molecular model"""
         ret = char * num_retraction

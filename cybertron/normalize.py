@@ -37,12 +37,6 @@ from mindsponge.function import get_ms_array, get_arguments
 from mindsponge.function import Units, get_energy_unit
 
 
-__all__ = [
-    'OutputScaleShift',
-    'DatasetNormalization',
-]
-
-
 class ScaleShift(Cell):
     r"""A network to scale and shift the label of dataset or prediction.
 
@@ -124,10 +118,10 @@ class ScaleShift(Cell):
     @property
     def type_ref(self) -> Tensor:
         return self.identity(self._type_ref)
-    
+
     @type_ref.setter
     def type_ref(self, type_ref_: Union[float, Tensor, ndarray]):
-        if type_ref_ == None:
+        if type_ref_ is None:
             type_ref_ = 0
         self._type_ref.set_data(get_ms_array(type_ref_, ms.float32), True)
 
@@ -140,7 +134,7 @@ class ScaleShift(Cell):
         if type_ref is not None:
             self._type_ref.set_data(get_ms_array(type_ref, ms.float32), True)
         return self
-    
+
     def set_unit(self, unit: str):
         """set output unit"""
         try:
@@ -175,7 +169,7 @@ class ScaleShift(Cell):
         print(ret+gap+f" Scale the shift by the number of atoms: {self.shift_by_atoms}")
         print('-'*80)
         return self
-    
+
     def scale_force(self, force: Tensor) -> Tensor:
         return force * self._scale
 
@@ -209,7 +203,7 @@ class ScaleShift(Cell):
         shift = self._shift
         if self.shift_by_atoms:
             if num_atoms is None:
-                num_atoms = count_nonzero(F.cast(atom_type>0, ms.int16), axis=-1, keepdims=True)
+                num_atoms = count_nonzero(F.cast(atom_type > 0, ms.int16), axis=-1, keepdims=True)
             if label.ndim > 2:
                 # (B, ...) <- (B, 1)
                 num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * (label.ndim - 1))
@@ -245,7 +239,7 @@ class ScaleShift(Cell):
         shift = self._shift
         if self.shift_by_atoms:
             if num_atoms is None:
-                num_atoms = count_nonzero(F.cast(atom_type>0, ms.int16), axis=-1, keepdims=True)
+                num_atoms = count_nonzero(F.cast(atom_type > 0, ms.int16), axis=-1, keepdims=True)
             if output.ndim > 2:
                 # (B, ...) <- (B, 1)
                 num_atoms = F.reshape(num_atoms, (num_atoms.shape[0],) + (1,) * (output.ndim - 1))

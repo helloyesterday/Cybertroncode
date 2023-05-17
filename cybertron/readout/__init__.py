@@ -32,13 +32,15 @@ from mindsponge.function import Units
 
 from .readout import Readout, _READOUT_BY_KEY
 from .node import NodeReadout, AtomwiseReadout, GraphReadout
+from .gfn import GFNReadout
 
 __all__ = [
     'Readout',
     'NodeReadout',
     'AtomwiseReadout',
     'GraphReadout',
-    'get_readout'
+    'GFNReadout',
+    'get_readout',
 ]
 
 

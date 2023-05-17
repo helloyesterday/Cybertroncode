@@ -465,7 +465,7 @@ class TransformerAggregator(NodeAggregator):
 
         # [B, 1, F]
         return self.mean(x, atom_mask, num_atoms)
-    
+
     def __str__(self):
         return "TransformerAggregator<>"
 

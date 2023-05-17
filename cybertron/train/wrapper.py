@@ -31,7 +31,6 @@ from mindspore import Tensor
 from mindspore import context
 from mindspore.nn import Cell, CellList
 from mindspore.ops import composite as C
-from mindspore.ops import functional as F
 from mindspore.nn.loss.loss import LossBase
 
 from mindsponge.function import get_ms_array
@@ -143,7 +142,7 @@ class MoleculeWrapper(Cell):
                                      f'but got: {self.label_keys}')
             else:
                 raise ValueError(f'The number of network outputs is {self.num_outputs}, '
-                                f'but the number of labels is {self.num_labels}. ')
+                                 f'but the number of labels is {self.num_labels}. ')
 
         self._loss_fn: List[MolecularLoss] = loss_fn
         self._loss_weights = loss_weights
@@ -164,29 +163,30 @@ class MoleculeWrapper(Cell):
     @property
     def num_outputs(self) -> int:
         return self._network.num_outputs
-    
+
     @property
     def num_readouts(self) -> int:
         return self._network.num_readouts
-    
+
     @property
     def backbone_network(self):
         return self._network
-    
+
     @property
     def scaled_outputs(self) -> bool:
         return self._network.use_scaleshift
-    
+
     @property
     def scaleshift(self) -> List[ScaleShift]:
         return self._network.scaleshift
-    
+
     @staticmethod
     def get_index(arg: str, data_keys: List[str]) -> int:
+        """get index of key in list"""
         if arg in data_keys:
             return data_keys.index(arg)
         return -1
-    
+
     def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = ' '):
         """print the information of Cybertron"""
         ret = char * num_retraction
@@ -208,12 +208,13 @@ class MoleculeWrapper(Cell):
                 print(f'{ret} Labels, loss function and weights:')
                 for i in range(self.num_labels):
                     print(f'{ret}{gap}'
-                        f' Label {i}: {self.label_keys[i]}, '
-                        f' loss: {self._loss_fn[i].cls_name}, '
-                        f' weight: {self._loss_weights[i]}.')
+                          f' Label {i}: {self.label_keys[i]}, '
+                          f' loss: {self._loss_fn[i].cls_name}, '
+                          f' weight: {self._loss_weights[i]}.')
         print(f'{ret} Calculate force using automatic differentiation: {self.calc_force}')
-    
+
     def _check_loss(self, loss_fn_) -> List[MolecularLoss]:
+        """check loss function"""
         if isinstance(loss_fn_, LossBase):
             loss_fn_ = [loss_fn_]
         if isinstance(loss_fn_, list):
@@ -222,12 +223,12 @@ class MoleculeWrapper(Cell):
             if len(loss_fn_) == 1:
                 return CellList(loss_fn_ * self.num_labels)
             raise ValueError(f'The number of labels is {self.num_labels} but '
-                                f'the number of loss_fn is {len(loss_fn_)}')
-        else:
-            raise TypeError(f'The type of loss_fn must be LossBase or lit of LossBase, '
-                            f'but got: {type(loss_fn_)}')
+                             f'the number of loss_fn is {len(loss_fn_)}')
+        raise TypeError(f'The type of loss_fn must be LossBase or lit of LossBase, '
+                        f'but got: {type(loss_fn_)}')
 
     def _check_weights(self, weights_):
+        """check weights for loss functions"""
         if not isinstance(weights_, (list, tuple)):
             weights_ = [weights_]
         if len(weights_) != self.num_labels and len(weights_) == 1:
@@ -236,7 +237,7 @@ class MoleculeWrapper(Cell):
             weights_ = [get_ms_array(w, ms.float32) for w in weights_]
         else:
             raise ValueError(f'The number of labels is {self.num_labels} but '
-                                f'the number of loss_fn is {len(weights_)}')
+                             f'the number of loss_fn is {len(weights_)}')
 
         if self._normal_factor and self.num_labels > 1:
             normal_factor = 0
@@ -245,8 +246,9 @@ class MoleculeWrapper(Cell):
             weights_ = [w / normal_factor for w in weights_]
 
         return weights_
-    
+
     def _set_molecular_loss(self):
+        """set whether the loss fucntion is molecular loss function"""
         molecular_loss = []
         for i in range(self.num_labels):
             if isinstance(self._loss_fn[i], MolecularLoss):
@@ -254,9 +256,10 @@ class MoleculeWrapper(Cell):
             else:
                 molecular_loss.append(False)
         return molecular_loss
-    
-    def _set_atomwise_loss(self):
-        if self.train_energy:            
+
+    def _set_atomwise(self):
+        """set whether the loss fucntion is molecular loss function"""
+        if self.train_energy:
             for i in range(self.num_readouts):
                 if self._molecular_loss[i]:
                     self._loss_fn[i].set_atomwise(self.atomwise_readout[i])

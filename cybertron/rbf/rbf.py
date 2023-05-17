@@ -27,13 +27,10 @@ from typing import Union
 from numpy import ndarray
 
 import mindspore as ms
-import mindspore.numpy as msnp
 from mindspore.nn import Cell
 from mindspore import Tensor
-from mindspore.ops import functional as F
-from mindspore.ops import composite as C
 
-from mindsponge.function import get_integer, get_ms_array, get_arguments
+from mindsponge.function import get_integer, get_ms_array
 from mindsponge.function import Units, GLOBAL_UNITS, Length, get_length
 
 

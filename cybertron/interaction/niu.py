@@ -29,7 +29,6 @@ import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import Tensor
 from mindspore.nn import Cell
-from mindspore.ops import operations as P
 from mindspore.ops import functional as F
 
 from mindsponge.function import get_integer, gather_vector, get_arguments
