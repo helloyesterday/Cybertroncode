@@ -23,11 +23,11 @@
 Embedding
 """
 
-from typing import Union
+from typing import Union, Tuple
 
+from mindspore import Tensor
 from mindspore.nn import Cell
 from mindspore.common.initializer import Initializer, Normal
-
 
 from mindsponge.function import GLOBAL_UNITS, Length
 from mindsponge.function import get_arguments
@@ -58,6 +58,7 @@ class ConformationEmbedding(MolEmbedding):
         length_unit: Union[str, Units]: Length unit. Default: Global length unit
 
     """
+
     def __init__(self,
                  dim_feature: int,
                  emb_bond: bool = False,
@@ -98,3 +99,26 @@ class ConformationEmbedding(MolEmbedding):
             length_unit=length_unit,
         )
         self._kwargs = get_arguments(locals(), kwargs)
+
+    def construct(self,
+                  atom_type: Tensor,
+                  atom_mask: Tensor,
+                  neigh_dis: Tensor,
+                  neigh_vec: Tensor,
+                  neigh_list: Tensor,
+                  neigh_mask: Tensor,
+                  bond: Tensor = None,
+                  bond_mask: Tensor = None,
+                  **kwargs,
+                  ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+
+        return super().construct(atom_type=atom_type,
+                                 atom_mask=atom_mask,
+                                 neigh_dis=neigh_dis,
+                                 neigh_vec=neigh_vec,
+                                 neigh_list=neigh_list,
+                                 neigh_mask=neigh_mask,
+                                 bond=bond,
+                                 bond_mask=bond_mask,
+                                 **kwargs
+                                 )
