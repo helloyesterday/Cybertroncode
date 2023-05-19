@@ -201,7 +201,6 @@ class Cybertron(Cell):
             self.get_vector = GetVector(self.use_pbc)
             self.large_dis = self.cutoff * 10
 
-        # self.norm_last_dim = ops.LpNorm(-1)
         self.norm_last_dim = None
         # MindSpore < 2.0.0-rc1
         if 'ord' not in signature(ops.norm).parameters.keys():
@@ -564,6 +563,7 @@ class Cybertron(Cell):
 
             if self.norm_last_dim is None:
                 neigh_dis = ops.norm(neigh_vec, None, -1)
+                # neigh_dis = ops.LpNorm(-1)(neigh_vec)
                 # neigh_dis = ops.norm(neigh_vec, 2, -1)
             else:
                 neigh_dis = self.norm_last_dim(neigh_vec)
