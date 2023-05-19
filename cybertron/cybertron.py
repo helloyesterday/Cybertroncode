@@ -24,13 +24,15 @@ Main program of Cybertron
 """
 
 import os
+from inspect import signature
 from typing import Union, List, Tuple
 from numpy import ndarray
 
 import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore import Tensor, Parameter
-from mindspore.nn import Cell, CellList, Norm
+from mindspore import nn
+from mindspore.nn import Cell, CellList
 from mindspore import ops
 from mindspore.ops import functional as F
 from mindspore.train import save_checkpoint
@@ -199,7 +201,11 @@ class Cybertron(Cell):
             self.get_vector = GetVector(self.use_pbc)
             self.large_dis = self.cutoff * 10
 
-        self.norm_last_dim = Norm(-1, False)
+        self.norm_last_dim = ops.LpNorm(-1)
+        # self.norm_last_dim = None
+        # MindSpore < 2.0.0-rc1
+        if 'ord' not in signature(ops.norm).parameters.keys():
+            self.norm_last_dim = nn.Norm(-1)
 
         self.activation = self.model.activation
 
@@ -487,9 +493,6 @@ class Cybertron(Cell):
         print(f'{ret} Input unit: {self._units.length_unit_name}')
         print(f'{ret} Output unit: {self._units.energy_unit_name}')
         print(f'{ret} Input unit scale: {self.input_unit_scale}')
-        # print(f'{ret} output unit scale:')
-        # for i in range(self.num_readouts):
-        #     print(ret+gap+f" Readout {i}: {self.output_unit_scale[i]}")
         print("================================================================================")
 
     def construct(self,
@@ -559,8 +562,11 @@ class Cybertron(Cell):
                 # (B, A, N, D) = (B, A, N, D) + (B, A, N, 1)
                 neigh_vec += F.expand_dims(large_dis, -1)
 
-            # neigh_dis = self.norm_last_dim(neigh_vec)
-            neigh_dis = ops.norm(neigh_vec, dim=-1)
+            if self.norm_last_dim is None:
+                # neigh_dis = ops.norm(neigh_vec, None, -1)
+                neigh_dis = ops.norm(neigh_vec, 2, -1)
+            else:
+                neigh_dis = self.norm_last_dim(neigh_vec)
 
         if self.bonds is not None:
             bonds = self.bonds
