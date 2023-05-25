@@ -20,7 +20,13 @@
 # limitations under the License.
 # ============================================================================
 """
-Cybertron tutorial 01: Quick introduction of Cybertron
+Cybertron tutorial 01: Quick start with Cybertron
+
+Key points:
+    1) Graph & atomwise readout.
+    2) Training dataset must be normalized.
+    3) Load training dataset to MolWithLossCell
+
 """
 
 import sys
@@ -38,23 +44,26 @@ if __name__ == '__main__':
     sys.path.append('..')
 
     from cybertron import Cybertron
-    from cybertron.train import WithLabelLossCell
+    from cybertron.train import MolWithLossCell
+    from cybertron.train.loss import MAELoss
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
-    train_file = sys.path[0] + '/dataset_qm9_origin_trainset_1024.npz'
+    # Training dataset must be normalized
+    train_file = sys.path[0] + '/dataset_qm9_normed_trainset_1024.npz'
 
     train_data = np.load(train_file)
 
     idx = [0]  # diple
 
-    num_atom = int(train_data['num_atoms'])
-    scale = train_data['scale'][idx]
-    shift = train_data['shift'][idx]
+    num_atom = train_data['num_atoms']
 
-    net = Cybertron(model='schnet', readout='graph', dim_output=1,
+    # Using graph readout
+    net = Cybertron(model='schnet', readout='graph',
                     num_atoms=num_atom, length_unit='nm', energy_unit='kj/mol')
-    net.set_scaleshift(scale, shift)
+
+    outdir = 'Tutorial_C01'
+    net.save_configure('configure.yaml', outdir)
 
     net.print_info()
 
@@ -69,10 +78,16 @@ if __name__ == '__main__':
     BATCH_SIZE = 32
 
     ds_train = ds.NumpySlicesDataset(
-        {'R': train_data['R'], 'Z': train_data['Z'], 'E': train_data['E'][:, idx]}, shuffle=True)
+        {'coordinate': train_data['coordinate'],
+         'atom_type': train_data['atom_type'],
+         'label': train_data['label'][:, idx]}, shuffle=True)
+    data_keys = ds_train.column_names
+
     ds_train = ds_train.batch(BATCH_SIZE, drop_remainder=True)
     ds_train = ds_train.repeat(REPEAT_TIME)
-    loss_network = WithLabelLossCell('RZE', net, nn.MAELoss())
+
+    loss_network = MolWithLossCell(data_keys, net, MAELoss())
+    loss_network.print_info()
 
     lr = 1e-3
     optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
@@ -81,17 +96,13 @@ if __name__ == '__main__':
 
     monitor_cb = LossMonitor(16)
 
-    outdir = 'Tutorial_C01'
-    params_name = outdir + '_' + net.model_name
-    config_ck = CheckpointConfig(
-        save_checkpoint_steps=32, keep_checkpoint_max=64, append_info=[net.hyper_param])
-    ckpoint_cb = ModelCheckpoint(
-        prefix=params_name, directory=outdir, config=config_ck)
+    ckpt_name = 'cybertron-' + net.model_name.lower()
+    config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
+    ckpoint_cb = ModelCheckpoint(prefix=ckpt_name, directory=outdir, config=config_ck)
 
     print("Start training ...")
     beg_time = time.time()
-    model.train(N_EPOCH, ds_train, callbacks=[
-                monitor_cb, ckpoint_cb], dataset_sink_mode=False)
+    model.train(N_EPOCH, ds_train, callbacks=[monitor_cb, ckpoint_cb], dataset_sink_mode=False)
     end_time = time.time()
     used_time = end_time - beg_time
     m, s = divmod(used_time, 60)

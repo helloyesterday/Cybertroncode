@@ -39,12 +39,14 @@ if __name__ == '__main__':
     sys.path.append('..')
 
     from cybertron import Cybertron
-    from cybertron import MolCT
-    from cybertron import AtomwiseReadout
-    from cybertron.train import MAE, RMSE, MLoss, MSELoss
-    from cybertron.train import WithForceLossCell, WithForceEvalCell
-    from cybertron.train import TrainMonitor
-    from cybertron.train import TransformerLR
+    from cybertron.model import MolCT
+    from cybertron.embedding import MolEmbedding
+    from cybertron.readout import AtomwiseReadout
+    from cybertron.train import MolWithLossCell, MolWithEvalCell
+    from cybertron.train.lr import TransformerLR
+    from cybertron.train.loss import MSELoss
+    from cybertron.train.metric import MAE, RMSE, Loss
+    from cybertron.train.callback import TrainMonitor
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
@@ -56,25 +58,43 @@ if __name__ == '__main__':
     train_data = np.load(train_file)
     valid_data = np.load(valid_file)
 
-    atom_types = Tensor(train_data['Z'], ms.int32)
+    atom_type = Tensor(train_data['atom_type'], ms.int32)
     scale = train_data['scale']
     shift = train_data['shift']
 
-    mod = MolCT(
+    dim_feature = 128
+    activation = 'silu'
+
+    emb = MolEmbedding(
+        dim_node=dim_feature,
+        emb_dis=True,
+        emb_bond=False,
         cutoff=1,
-        n_interaction=3,
-        dim_feature=128,
-        n_heads=8,
-        max_cycles=1,
-        fixed_cycles=True,
+        cutoff_fn='smooth',
+        rbf_fn='log_gaussian',
+        activation=activation,
         length_unit='nm',
     )
 
-    readout = AtomwiseReadout(mod, dim_output=1)
+    mod = MolCT(
+        dim_feature=dim_feature,
+        dim_edge_emb=emb.dim_edge,
+        n_interaction=3,
+        n_heads=8,
+        activation=activation,
+    )
 
-    net = Cybertron(mod, readout=readout, atom_types=atom_types, length_unit='nm')
+    readout = AtomwiseReadout(
+        dim_output=1,
+        dim_node_rep=dim_feature,
+        activation=activation,
+    )
 
-    net.print_info()
+    net = Cybertron(embedding=emb, model=mod, readout=readout, atom_type=atom_type, length_unit='nm')
+    net.set_scaleshift(scale=scale, shift=shift)
+
+    outdir = 'Tutorial_C07'
+    net.save_configure('configure.yaml', outdir)
 
     tot_params = 0
     for i, param in enumerate(net.trainable_params()):
@@ -82,26 +102,50 @@ if __name__ == '__main__':
         print(i, param.name, param.shape)
     print('Total parameters: ', tot_params)
 
+    net.print_info()
+
     N_EPOCH = 8
     REPEAT_TIME = 1
     BATCH_SIZE = 32
 
     ds_train = ds.NumpySlicesDataset(
-        {'R': train_data['R'], 'F': train_data['F'], 'E': train_data['E']}, shuffle=True)
+        {'coordinate': train_data['coordinate'],
+         'energy': train_data['label'],
+         'force': train_data['force'],
+         }, shuffle=True)
+
+    data_keys = ds_train.column_names
     ds_train = ds_train.batch(BATCH_SIZE)
     ds_train = ds_train.repeat(REPEAT_TIME)
 
+    force_dis = train_data['avg_force_dis']
+    loss_network = MolWithLossCell(data_keys=data_keys,
+                                   network=net,
+                                   loss_fn=[MSELoss(), MSELoss(force_dis=force_dis)],
+                                   calc_force=True,
+                                   loss_weights=[1, 100],
+                                   )
+    loss_network.print_info()
+
     ds_valid = ds.NumpySlicesDataset(
-        {'R': valid_data['R'], 'F': valid_data['F'], 'E': valid_data['E']}, shuffle=False)
+        {'coordinate': valid_data['coordinate'],
+         'energy': valid_data['label'],
+         'force': valid_data['force'],
+         }, shuffle=True)
+    data_keys = ds_valid.column_names
     ds_valid = ds_valid.batch(128)
     ds_valid = ds_valid.repeat(1)
 
-    force_dis = train_data['avg_force_dis']
-    loss_fn = MSELoss(ratio_energy=1, ratio_forces=100, force_dis=force_dis)
-    loss_network = WithForceLossCell('RFE', net, loss_fn)
-    eval_network = WithForceEvalCell('RFE', net, loss_fn, scale=scale, shift=shift)
+    eval_network = MolWithEvalCell(data_keys=data_keys,
+                                   network=net,
+                                   loss_fn=[MSELoss(), MSELoss(force_dis=force_dis)],
+                                   calc_force=True,
+                                   loss_weights=[1, 100],
+                                   normed_evaldata=True
+                                   )
+    eval_network.print_info()
 
-    lr = TransformerLR(learning_rate=1., warmup_steps=4000, dimension=128)
+    lr = TransformerLR(learning_rate=1., warmup_steps=4000, dimension=dim_feature)
     optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
 
     energy_mae = 'EnergyMAE'
@@ -109,18 +153,16 @@ if __name__ == '__main__':
     forces_rmse = 'ForcesRMSE'
     eval_loss = 'EvalLoss'
     model = Model(loss_network, eval_network=eval_network, optimizer=optim,
-                  metrics={eval_loss: MLoss(), energy_mae: MAE([1, 2]), forces_mae: MAE([3, 4]),
-                           forces_rmse: RMSE([3, 4], atom_aggregate='sum')})
+                  metrics={eval_loss: Loss(), energy_mae: MAE(0), forces_mae: MAE(1),
+                           forces_rmse: RMSE(1)})
 
     outdir = 'Tutorial_C07'
-    outname = outdir + '_' + net.model_name
-    record_cb = TrainMonitor(model, outname, per_epoch=1, avg_steps=32,
+    ckpt_name = 'cybertron-' + net.model_name.lower()
+    record_cb = TrainMonitor(model, ckpt_name, per_epoch=1, avg_steps=32,
                              directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=forces_rmse)
 
-    config_ck = CheckpointConfig(
-        save_checkpoint_steps=32, keep_checkpoint_max=64, append_info=[net.hyper_param])
-    ckpoint_cb = ModelCheckpoint(
-        prefix=outname, directory=outdir, config=config_ck)
+    config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
+    ckpoint_cb = ModelCheckpoint(prefix=ckpt_name, directory=outdir, config=config_ck)
 
     print("Start training ...")
     beg_time = time.time()

@@ -24,15 +24,13 @@ Extra activation function
 """
 
 import mindspore.numpy as msnp
-from mindspore import nn
 from mindspore.nn import Cell
 from mindspore.nn.layer import activation
-from mindspore.ops import operations as P
+from mindspore import ops
 from mindspore.ops.primitive import Primitive, PrimitiveWithInfer, PrimitiveWithCheck
 
 __all__ = [
     "ShiftedSoftplus",
-    "Swish",
     "get_activation",
 ]
 
@@ -53,9 +51,7 @@ class ShiftedSoftplus(Cell):
 
     def __init__(self):
         super().__init__()
-        # self.softplus = P.Softplus()
-        self.log1p = P.Log1p()
-        self.exp = P.Exp()
+        # self.softplus = ops.Softplus()
         self.log2 = msnp.log(2.0)
 
     def __str__(self):
@@ -63,37 +59,11 @@ class ShiftedSoftplus(Cell):
 
     def construct(self, x):
         # return self.softplus(x) - self.log2
-        return self.log1p(self.exp(x)) - self.log2
-
-
-class Swish(Cell):
-    r"""Compute swish\SILU\SiL function.
-
-    .. math::
-       y_i = x_i / (1 + e^{-beta * x_i})
-
-    Args:
-        x (mindspore.Tensor): input tensor.
-
-    Returns:
-        mindspore.Tensor: shifted soft-plus of input.
-
-    """
-
-    def __init__(self):
-        super().__init__()
-        self.sigmoid = nn.Sigmoid()
-
-    def __str__(self):
-        return 'Swish<>'
-
-    def construct(self, x):
-        return x * self.sigmoid(x)
+        return ops.log1p(ops.exp(x)) - self.log2
 
 
 _ACTIVATIONS_BY_KEY = {
     'ssp': ShiftedSoftplus,
-    'swish': Swish,
 }
 
 #pylint: disable=protected-access
@@ -102,7 +72,7 @@ _ACTIVATIONS_BY_KEY.update(activation._activation)
 _ACTIVATIONS_BY_NAME = {a.__name__: a for a in _ACTIVATIONS_BY_KEY.values()}
 
 
-def get_activation(activation_) -> Cell:
+def get_activation(cls_name, **kwargs) -> Cell:
     """
     Gets the activation function.
 
@@ -121,19 +91,19 @@ def get_activation(activation_) -> Cell:
         Sigmoid<>
     """
 
-    if activation_ is None:
+    if cls_name is None:
         return None
 
-    if isinstance(activation_, (Cell, Primitive, PrimitiveWithCheck,
-                                PrimitiveWithInfer, PrimitiveWithCheck)):
-        return activation_
-    if isinstance(activation_, str):
-        if activation_.lower() == 'none':
+    if isinstance(cls_name, (Cell, Primitive, PrimitiveWithCheck,
+                             PrimitiveWithInfer, PrimitiveWithCheck)):
+        return cls_name
+    if isinstance(cls_name, str):
+        if cls_name.lower() == 'none':
             return None
-        if activation_.lower() in _ACTIVATIONS_BY_KEY.keys():
-            return _ACTIVATIONS_BY_KEY[activation_.lower()]()
-        if activation_ in _ACTIVATIONS_BY_NAME.keys():
-            return _ACTIVATIONS_BY_NAME[activation_]()
+        if cls_name.lower() in _ACTIVATIONS_BY_KEY.keys():
+            return _ACTIVATIONS_BY_KEY[cls_name.lower()](**kwargs)
+        if cls_name in _ACTIVATIONS_BY_NAME.keys():
+            return _ACTIVATIONS_BY_NAME[cls_name](**kwargs)
         raise ValueError(
-            "The activation corresponding to '{}' was not found.".format(activation_))
-    raise TypeError("Unsupported activation type: "+str(type(activation_)))
+            "The activation corresponding to '{}' was not found.".format(cls_name))
+    raise TypeError("Unsupported activation type: "+str(type(cls_name)))

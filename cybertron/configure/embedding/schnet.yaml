@@ -1,0 +1,25 @@
+cls_name: MolEmbedding
+dim_node: 64
+dim_edge: null
+emb_dis: true
+emb_bond: false
+cutoff: 1
+cutoff_fn: cosine
+rbf_fn: gaussian
+num_basis: null
+atom_filter: null
+dis_filter: null
+bond_filter: null
+interaction: null
+dis_self:
+  cls_name: Length
+  value: 0.05
+  unit: nm
+num_atom_types: 64
+num_bond_types: 16
+initializer:
+  cls_name: Normal
+  sigma: 1.0
+  mean: 0.0
+activation: ssp
+length_unit: nm

@@ -20,15 +20,19 @@
 # limitations under the License.
 # ============================================================================
 """
-Cybertron tutorial 06: Multi-task with multiple readouts (example 2)
+Cybertron tutorial 05: Multi-task training
+
+Key points:
+    1) Set multi readouts.
+    2) Set dataset with multi labels.
+    3) set metrics for multi labels.
+
 """
 
 import sys
 import time
 import numpy as np
-import mindspore as ms
 from mindspore import nn
-from mindspore import Tensor
 from mindspore import context
 from mindspore import dataset as ds
 from mindspore.train import Model
@@ -39,11 +43,14 @@ if __name__ == '__main__':
     sys.path.append('..')
 
     from cybertron import Cybertron
-    from cybertron import MolCT
-    from cybertron.train import MAE, MLoss
-    from cybertron.train import WithLabelLossCell, WithLabelEvalCell
-    from cybertron.train import TrainMonitor
-    from cybertron.train import TransformerLR
+    from cybertron.model import MolCT
+    from cybertron.embedding import MolEmbedding
+    from cybertron.readout import AtomwiseReadout
+    from cybertron.train import MolWithLossCell, MolWithEvalCell
+    from cybertron.train.lr import TransformerLR
+    from cybertron.train.loss import MAELoss
+    from cybertron.train.metric import MAE, Loss
+    from cybertron.train.callback import TrainMonitor
 
     context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
 
@@ -54,28 +61,53 @@ if __name__ == '__main__':
     train_data = np.load(train_file)
     valid_data = np.load(valid_file)
 
-    # diplole,polarizability,HOMO,LUMO,gap,R2,zpve,capacity
-    idx = [0, 1, 2, 3, 4, 5, 6, 11]
+    idx = [7, 8, 9, 10]  # U0, U, G, H
 
-    num_atom = int(train_data['num_atoms'])
-    scale = Tensor(train_data['scale'][idx], ms.float32)
-    shift = Tensor(train_data['shift'][idx], ms.float32)
-    ref = Tensor(train_data['type_ref'][:, idx], ms.float32)
+    num_atom = train_data['num_atoms']
 
-    mod = MolCT(
+    # Set multi scale, shift and type_ref
+    scale = [train_data['scale'][[i]] for i in idx]
+    shift = [train_data['shift'][[i]] for i in idx]
+    type_ref = [train_data['type_ref'][:, [i]] for i in idx]
+
+    dim_feature = 128
+    activation = 'silu'
+
+    emb = MolEmbedding(
+        dim_node=dim_feature,
+        emb_dis=True,
+        emb_bond=False,
         cutoff=1,
-        n_interaction=3,
-        dim_feature=128,
-        n_heads=8,
-        activation='swish',
-        max_cycles=1,
+        cutoff_fn='smooth',
+        rbf_fn='log_gaussian',
+        activation=activation,
         length_unit='nm',
     )
 
-    net = Cybertron(mod, readout='graph', dim_output=[1, 1, 3, 1, 1, 1],
-                    num_atoms=num_atom, length_unit='nm')
+    mod = MolCT(
+        dim_feature=dim_feature,
+        dim_edge_emb=emb.dim_edge,
+        n_interaction=3,
+        n_heads=8,
+        activation=activation,
+    )
 
-    net.print_info()
+    # Set multi readouts
+    readout0 = AtomwiseReadout(1, dim_feature, activation)
+    readout1 = AtomwiseReadout(1, dim_feature, activation)
+    readout2 = AtomwiseReadout(1, dim_feature, activation)
+    readout3 = AtomwiseReadout(1, dim_feature, activation)
+
+    net = Cybertron(embedding=emb,
+                    model=mod,
+                    readout=[readout0, readout1, readout2, readout3],
+                    num_atoms=num_atom, length_unit='nm'
+                    )
+
+    net.set_scaleshift(scale=scale, shift=shift, type_ref=type_ref)
+
+    outdir = 'Tutorial_C06'
+    net.save_configure('configure.yaml', outdir)
 
     tot_params = 0
     for i, param in enumerate(net.get_parameters()):
@@ -83,46 +115,65 @@ if __name__ == '__main__':
         print(i, param.name, param.shape)
     print('Total parameters: ', tot_params)
 
+    net.print_info()
+
     N_EPOCH = 8
     REPEAT_TIME = 1
-    BATCH_SIZE = 16
+    BATCH_SIZE = 32
 
+    # set training dataset with multi labels
     ds_train = ds.NumpySlicesDataset(
-        {'R': train_data['R'], 'Z': train_data['Z'], 'E': train_data['E'][:, idx]}, shuffle=True)
+        {'coordinate': train_data['coordinate'],
+         'atom_type': train_data['atom_type'],
+         'label0': train_data['label'][:, [7]],
+         'label1': train_data['label'][:, [8]],
+         'label2': train_data['label'][:, [9]],
+         'label3': train_data['label'][:, [10]],
+         }, shuffle=True)
+    data_keys = ds_train.column_names
     ds_train = ds_train.batch(BATCH_SIZE, drop_remainder=True)
     ds_train = ds_train.repeat(REPEAT_TIME)
 
+    loss_network = MolWithLossCell(data_keys, net, MAELoss())
+    loss_network.print_info()
+
+    # set valiation dataset with multi labels
     ds_valid = ds.NumpySlicesDataset(
-        {'R': valid_data['R'], 'Z': valid_data['Z'], 'E': valid_data['E'][:, idx]}, shuffle=False)
+        {'coordinate': valid_data['coordinate'],
+         'atom_type': valid_data['atom_type'],
+         'label0': valid_data['label'][:, [7]],
+         'label1': valid_data['label'][:, [8]],
+         'label2': valid_data['label'][:, [9]],
+         'label3': valid_data['label'][:, [10]],
+         }, shuffle=True)
+    data_keys = ds_valid.column_names
     ds_valid = ds_valid.batch(128)
     ds_valid = ds_valid.repeat(1)
 
-    loss_network = WithLabelLossCell('RZE', net, nn.MAELoss())
-    eval_network = WithLabelEvalCell(
-        'RZE', net, nn.MAELoss(), scale=scale, shift=shift, type_ref=ref)
+    eval_network = MolWithEvalCell(data_keys, net, MAELoss(), normed_evaldata=True)
+    eval_network.print_info()
 
-    lr = TransformerLR(learning_rate=1., warmup_steps=4000, dimension=128)
+    lr = TransformerLR(learning_rate=1., warmup_steps=4000, dimension=dim_feature)
     optim = nn.Adam(params=net.trainable_params(), learning_rate=lr)
 
-    eval_mae = 'EvalMAE'
-    atom_mae = 'AtomMAE'
-    eval_loss = 'Evalloss'
-    model = Model(loss_network, optimizer=optim, eval_network=eval_network,
-                  metrics={eval_mae: MAE([1, 2], reduce_all_dims=False),
-                           atom_mae: MAE([1, 2, 3], reduce_all_dims=False, averaged_by_atoms=True),
-                           eval_loss: MLoss(0)},)
+    # set metrics for multi labels.
+    model = Model(loss_network,
+                  optimizer=optim,
+                  eval_network=eval_network,
+                  metrics={'EvalLoss': Loss(),
+                           'Label0MAE': MAE(0),
+                           'Label1MAE': MAE(1),
+                           'Label2MAE': MAE(2),
+                           'Label3MAE': MAE(3),}
+                  )
 
-    outdir = 'Tutorial_C06'
-    outname = outdir + '_' + net.model_name
-    record_cb = TrainMonitor(model, outname, per_step=32, avg_steps=32,
-                             directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics=eval_loss)
+    outdir = 'Tutorial_C05'
+    ckpt_name = 'cybertron-' + net.model_name.lower()
+    record_cb = TrainMonitor(model, ckpt_name, per_step=16, avg_steps=16,
+                             directory=outdir, eval_dataset=ds_valid, best_ckpt_metrics='Evalloss')
 
-    config_ck = CheckpointConfig(
-        save_checkpoint_steps=32, keep_checkpoint_max=64, append_info=[net.hyper_param])
-    ckpoint_cb = ModelCheckpoint(
-        prefix=outname, directory=outdir, config=config_ck)
-
-    np.set_printoptions(linewidth=200)
+    config_ck = CheckpointConfig(save_checkpoint_steps=32, keep_checkpoint_max=64)
+    ckpoint_cb = ModelCheckpoint(prefix=ckpt_name, directory=outdir, config=config_ck)
 
     print("Start training ...")
     beg_time = time.time()

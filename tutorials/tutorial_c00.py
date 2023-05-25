@@ -21,9 +21,11 @@
 # ============================================================================
 """
 Cybertron tutorial 00: The preprocessing of dataset
-                       The NPZ file can be download from:
-                       dataset_qm9.npz: http://gofile.me/6Utp7/tJ5hoDIAo
-                       ethanol_dft.npz: http://gofile.me/6Utp7/hbQBofAFM
+
+The NPZ file can be download from:
+    dataset_qm9.npz: http://gofile.me/6Utp7/tJ5hoDIAo
+    ethanol_dft.npz: http://gofile.me/6Utp7/hbQBofAFM
+
 """
 
 import sys
@@ -38,8 +40,8 @@ if __name__ == '__main__':
     qm9_file = 'dataset_qm9.npz'
     qm9_data = np.load(qm9_file)
 
-    for k, v in qm9_data.items():
-        print(k, v.shape)
+    for k, value in qm9_data.items():
+        print(k, value.shape)
 
     atom_ref = qm9_data['atom_ref']
     ref = np.zeros((atom_ref.shape[0], 6))
@@ -47,7 +49,7 @@ if __name__ == '__main__':
 
     ds_qm9 = DatasetProcessor(
         name='qm9',
-        atom_types=qm9_data['Z'],
+        atom_type=qm9_data['Z'],
         position=qm9_data['R'],
         label=qm9_data['properties'][:, 3:],
         length_unit='A',
@@ -72,12 +74,12 @@ if __name__ == '__main__':
 
     md17_data = np.load('ethanol_dft.npz')
 
-    for k, v in md17_data.items():
-        print(k, v.shape)
+    for k, value in md17_data.items():
+        print(k, value.shape)
 
     ds_md17 = DatasetProcessor(
         name='md17',
-        atom_types=md17_data['z'],
+        atom_type=md17_data['z'],
         position=md17_data['R'],
         label=md17_data['E'],
         force=md17_data['F'],
