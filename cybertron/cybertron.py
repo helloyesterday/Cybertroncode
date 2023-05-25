@@ -562,9 +562,7 @@ class Cybertron(Cell):
                 neigh_vec += F.expand_dims(large_dis, -1)
 
             if self.norm_last_dim is None:
-                neigh_dis = ops.norm(neigh_vec, None, -1)
-                # neigh_dis = ops.LpNorm(-1)(neigh_vec)
-                # neigh_dis = ops.norm(neigh_vec, 2, -1)
+                neigh_dis = ops.norm(neigh_vec, 2, -1)
             else:
                 neigh_dis = self.norm_last_dim(neigh_vec)
 
