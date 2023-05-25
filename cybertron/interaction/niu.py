@@ -188,8 +188,7 @@ class NeuralInteractionUnit(Interaction):
             node_mat = gather_vector(node_vec, neigh_list)
             query, key, value = self.positional_embedding(
                 node_vec, node_mat, edge_self, edge_vec, time_signal)
-            dv = self.multi_head_attention(
-                query, key, value, mask=edge_mask, cutoff=edge_cutoff)
+            dv = self.multi_head_attention(query, key, value, mask=edge_mask, cutoff=edge_cutoff)
             dv = squeeze_penulti(dv)
 
             node_new = node_vec + dv
