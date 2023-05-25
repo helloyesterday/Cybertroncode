@@ -27,14 +27,14 @@ import mindspore as ms
 import mindspore.numpy as msnp
 from mindspore.nn.learning_rate_schedule import LearningRateSchedule
 from mindspore.ops import functional as F
-from mindsponge.function import get_ms_array
-
 try:
     # MindSpore 1.X
     from mindspore._checkparam import Validator
 except ImportError:
     # MindSpore 2.X
     from mindspore import _checkparam as Validator
+
+from mindsponge.function import get_ms_array
 
 
 __all__ = [

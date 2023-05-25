@@ -179,6 +179,7 @@ class Error(Metric):
         total_num = batch_size
         if atom_mask is not None:
             atom_mask = self._convert_data(atom_mask)
+            # pylint: disable=unexpected-keyword-arg
             # (B, 1) <- (B, A) OR (1, 1) <- (1, A)
             num_atoms = np.count_nonzero(atom_mask, -1, keepdims=True)
             total_num = np.sum(num_atoms)

@@ -759,10 +759,10 @@ class CybertronFF(PotentialCell):
             raise TypeError(f'The type of `readout` must be Readout, dict or str but got: {type(readout)}')
 
         readout = get_readout(cls_name=readout,
-                                   dim_node_rep=self.dim_node_rep,
-                                   dim_edge_rep=self.dim_edge_rep,
-                                   activation=self.activation,
-                                   )
+                              dim_node_rep=self.dim_node_rep,
+                              dim_edge_rep=self.dim_edge_rep,
+                              activation=self.activation,
+                              )
         self.readout: List[Readout] = CellList([readout])
 
         self.output_ndim = self.readout[0].ndim
