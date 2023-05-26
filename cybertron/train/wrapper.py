@@ -77,11 +77,9 @@ class MoleculeWrapper(Cell):
             self.atomwise_readout.append(self._network.readout[i].shift_by_atoms)
 
         self._input_args = (
-            'coordinate',
             'atom_type',
+            'coordinate',
             'pbc_box',
-            'neighbours',
-            'neighbour_mask',
             'bonds',
             'bond_mask',
         )
@@ -104,11 +102,9 @@ class MoleculeWrapper(Cell):
         self.num_inputs = len(self.input_keys)
         self.num_labels = len(self.label_keys)
 
-        self.coordinate_id = self.get_index('coordinate', self.data_keys)
         self.atom_type_id = self.get_index('atom_type', self.data_keys)
+        self.coordinate_id = self.get_index('coordinate', self.data_keys)
         self.pbc_box_id = self.get_index('pbc_box', self.data_keys)
-        self.neighbours_id = self.get_index('neighbours', self.data_keys)
-        self.neighbour_mask_id = self.get_index('neighbour_mask', self.data_keys)
         self.bonds_id = self.get_index('bonds', self.data_keys)
         self.bond_mask_id = self.get_index('bond_mask', self.data_keys)
 

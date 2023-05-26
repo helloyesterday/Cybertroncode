@@ -30,7 +30,6 @@ from mindspore.nn import Cell, CellList
 from mindspore import Tensor
 from mindspore.ops import functional as F
 
-from mindsponge.function import concat_last_dim
 from mindsponge.function import get_integer, get_ms_array, get_arguments
 
 from .model import MolecularGNN, _model_register
@@ -179,61 +178,28 @@ class MolCT(MolecularGNN):
     def construct(self,
                   node_emb: Tensor,
                   node_mask: Tensor = None,
-                  neigh_list: Tensor = None,
                   edge_emb: Tensor = None,
                   edge_mask: Tensor = None,
                   edge_cutoff: Tensor = None,
-                  edge_self: Tensor = None,
                   **kwargs
                   ):
-        """Compute the representation of atoms.
 
-        Args:
-
-            node_emb (Tensor):    Tensor of shape (B, A, F). Data type is float
-                                        Atom embedding.
-            distances (Tensor):         Tensor of shape (B, A, N). Data type is float
-                                        Distances between atoms.
-                                        Atomic number.
-            atom_mask (Tensor):         Tensor of shape (B, A). Data type is bool
-                                        Mask of atomic number
-            neighbours (Tensor):        Tensor of shape (B, A, N). Data type is int
-                                        Neighbour index.
-            neighbour_mask (Tensor):    Tensor of shape (B, A, N). Data type is bool
-                                        Nask of neighbour index.
-
-        Returns:
-            representation: (Tensor)    Tensor of shape (B, A, F). Data type is float
-
-        Symbols:
-
-            B:  Batch size.
-            A:  Number of atoms in system.
-            N:  Number of neighbour atoms.
-            D:  Dimension of position coordinates, usually is 3.
-            F:  Feature dimension of representation.
-
-        """
-
-        # (B,A) -> (B,A,1)
-        node_mask = F.expand_dims(node_mask, -1)
-
-        c_ii = F.cast(node_mask, edge_cutoff.dtype)
-        edge_cutoff = concat_last_dim((c_ii, edge_cutoff))
-        edge_mask = concat_last_dim((node_mask, edge_mask))
+        # (A, A)
+        diagonal = F.eye(edge_mask.shape[-1], edge_mask.shape[-1], ms.bool_)
+        # (B, A, A)
+        edge_mask = F.logical_or(edge_mask, diagonal)
 
         node_vec = node_emb
         edge_vec = self.filter_net(edge_emb)
-        edge_self = self.filter_net(edge_self)
         for i in range(len(self.interaction)):
             node_vec, edge_vec = self.interaction[i](
                 node_vec=node_vec,
-                edge_vec=edge_vec,
-                edge_cutoff=edge_cutoff,
-                neigh_list=neigh_list,
-                edge_mask=edge_mask,
                 node_emb=node_emb,
-                edge_self=edge_self,
+                node_mask=node_mask,
+                edge_vec=edge_vec,
+                edge_emb=edge_emb,
+                edge_mask=edge_mask,
+                edge_cutoff=edge_cutoff,
             )
 
         return node_vec, edge_vec

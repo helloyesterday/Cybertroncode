@@ -145,7 +145,7 @@ class Cybertron(Cell):
         self.bonds = None
         self.bond_mask = None
         if bond_types is not None:
-            self.bonds = get_ms_array(bond_types, ms.int32).reshape(1, natoms, -1)
+            self.bonds = get_ms_array(bond_types, ms.int16).reshape(1, natoms, -1)
             self.bond_mask = bond_types > 0
 
         model = get_molecular_model(model)
@@ -495,14 +495,12 @@ class Cybertron(Cell):
         print("================================================================================")
 
     def construct(self,
-                  coordinate: Tensor = None,
                   atom_type: Tensor = None,
+                  coordinate: Tensor = None,
                   pbc_box: Tensor = None,
-                  neighbours: Tensor = None,
-                  neighbour_mask: Tensor = None,
                   bonds: Tensor = None,
                   bond_mask: Tensor = None,
-                  ):
+                  ) -> Union[Tensor, Tuple[Tensor]]:
         """Compute the properties of the molecules.
 
         Args:
@@ -527,73 +525,71 @@ class Cybertron(Cell):
         """
 
         if self.atom_type is None:
-            # (1, A)
+            # (B, A)
             atom_mask = atom_type > 0
         else:
             # (1, A)
             atom_type = self.atom_type
             atom_mask = self.atom_mask
 
-        neigh_dis = None
-        neigh_vec = None
+        num_atoms = atom_mask.shape[-1]
+
+        distance = None
+        vectors = None
+        dis_mask = None
         if coordinate is not None:
+            # (B, A, D)
             coordinate *= self.input_unit_scale
-            if neighbours is None:
-                neighbours = self.neighbours
-                neighbour_mask = self.neighbour_mask
-                if self.atom_type is None:
-                    neighbours, neighbour_mask = self.get_neigh_list(atom_mask)
+
             if self.pbc_box is not None:
                 pbc_box = self.pbc_box
+            
+            vectors = coordinate.expand_dims(-3) - coordinate.expand_dims(-2)
 
-            # (B, A, N, D) <- (B, A, N, D)
-            neigh_pos = gather_vector(coordinate, neighbours)
-            # (B, A, N, D) = (B, A, N, D) - (B, A, 1, D)
-            neigh_vec = self.get_vector(F.expand_dims(coordinate, -2), neigh_pos, pbc_box)
+            # (B, A, A, D) = (B, 1, A, D) - (B, A, 1, D)
+            vectors = self.get_vector(coordinate.expand_dims(-2), coordinate.expand_dims(-3), pbc_box)
 
-            # Add a non-zero value to the neighbour_vector whose mask value is False
-            # to prevent them from becoming zero values after Norm operation,
-            # which could lead to auto-differentiation errors
-            if neighbour_mask is not None:
-                # (B, A, N)
-                large_dis = msnp.broadcast_to(self.large_dis, neighbour_mask.shape)
-                large_dis = F.select(neighbour_mask, F.zeros_like(large_dis), large_dis)
-                # (B, A, N, D) = (B, A, N, D) + (B, A, N, 1)
-                neigh_vec += F.expand_dims(large_dis, -1)
+            # (B, A, A) = (B, A, 1) & (B, 1, A)
+            dis_mask = F.logical_and(atom_mask.expand_dims(-1), atom_mask.expand_dims(-2))
+            dis_mask = F.logical_and(dis_mask, F.logical_not(F.eye(num_atoms, num_atoms, ms.bool_)))
+
+            if not dis_mask.all():
+                # Add a non-zero value to the neighbour_vector whose mask value is False
+                # to prevent them from becoming zero values after Norm operation,
+                # which could lead to auto-differentiation errors
+                # (B, A, A)
+                large_dis = msnp.broadcast_to(self.large_dis, dis_mask.shape)
+                large_dis = F.select(dis_mask, F.zeros_like(large_dis), large_dis)
+                # (B, A, A, D) = (B, A, A, D) + (B, A, A, 1)
+                vectors += F.expand_dims(large_dis, -1)
 
             if self.norm_last_dim is None:
-                neigh_dis = ops.norm(neigh_vec, 2, -1)
+                distance = ops.norm(vectors, 2, -1)
             else:
-                neigh_dis = self.norm_last_dim(neigh_vec)
+                distance = self.norm_last_dim(vectors)
 
         if self.bonds is not None:
             bonds = self.bonds
             bond_mask = self.bond_mask
 
-        node_emb, node_mask, edge_emb, \
-            edge_mask, edge_cutoff, edge_self = self.embedding(atom_type=atom_type,
-                                                               atom_mask=atom_mask,
-                                                               neigh_dis=neigh_dis,
-                                                               neigh_vec=neigh_vec,
-                                                               neigh_list=neighbours,
-                                                               neigh_mask=neighbour_mask,
-                                                               bond=bonds,
-                                                               bond_mask=bond_mask,
-                                                               )
+        node_emb, node_mask, edge_emb, edge_mask, edge_cutoff = self.embedding(atom_type=atom_type,
+                                                                               atom_mask=atom_mask,
+                                                                               distance=distance,
+                                                                               dis_mask=dis_mask,
+                                                                               bond=bonds,
+                                                                               bond_mask=bond_mask,
+                                                                               )
 
         node_rep, edge_rep = self.model(node_emb=node_emb,
                                         node_mask=node_mask,
-                                        neigh_list=neighbours,
                                         edge_emb=edge_emb,
                                         edge_mask=edge_mask,
                                         edge_cutoff=edge_cutoff,
-                                        edge_self=edge_self,
                                         )
 
         if self.readout is None:
             return node_rep, node_rep
 
-        num_atoms = node_rep.shape[-2]
         if atom_mask is not None:
             num_atoms = msnp.count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
 
@@ -605,10 +601,9 @@ class Cybertron(Cell):
                                      edge_emb=edge_emb,
                                      atom_type=atom_type,
                                      atom_mask=atom_mask,
-                                     neigh_dis=neigh_dis,
-                                     neigh_vec=neigh_vec,
-                                     neigh_list=neighbours,
-                                     neigh_mask=neighbour_mask,
+                                     distance=distance,
+                                     dis_mask=dis_mask,
+                                     dis_vec=vectors,
                                      bond=bonds,
                                      bond_mask=bond_mask,
                                      )
@@ -619,7 +614,7 @@ class Cybertron(Cell):
             outputs += (output,)
 
         if self.num_readouts == 1:
-            outputs = outputs[0]
+            return outputs[0]
 
         return outputs
 
@@ -701,7 +696,7 @@ class CybertronFF(PotentialCell):
             raise ValueError('The readout function in CybertronFF cannot be None!')
 
         # (1,A)
-        self.atom_type: Tensor = get_ms_array(atom_type, ms.int32).reshape(1, -1)
+        self.atom_type: Tensor = get_ms_array(atom_type, ms.int16).reshape(1, -1)
         self.atom_mask: Tensor = self.atom_type > 0
         max_atoms = self.atom_type.shape[-1]
         if self.atom_mask.all():
@@ -713,7 +708,7 @@ class CybertronFF(PotentialCell):
         self.bonds = None
         self.bond_mask = None
         if bond_types is not None:
-            self.bonds = Tensor(bond_types, ms.int32).reshape(1, max_atoms, -1)
+            self.bonds = Tensor(bond_types, ms.int16).reshape(1, max_atoms, -1)
             self.bond_mask = bond_types > 0
 
         model = get_molecular_model(model)

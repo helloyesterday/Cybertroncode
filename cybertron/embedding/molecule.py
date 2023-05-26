@@ -189,61 +189,17 @@ class MolEmbedding(GraphEmbedding):
     def construct(self,
                   atom_type: Tensor,
                   atom_mask: Tensor,
-                  neigh_dis: Tensor,
-                  neigh_vec: Tensor,
-                  neigh_list: Tensor,
-                  neigh_mask: Tensor,
+                  distance: Tensor,
+                  dis_mask: Tensor,
                   bond: Tensor,
                   bond_mask: Tensor,
                   **kwargs,
-                  ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
-        """Compute the properties of the molecules.
-
-        Args:
-            atom_type (Tensor): Tensor of shape (B, A). Data type is int.
-                Index of atom types. Default: None
-            atom_mask (Tensor): Tensor of shape (B, A). Data type is bool
-                Mask for atom types
-            neigh_dis (Tensor): Tensor of shape (B, A, N). Data type is float.
-                Distances between central atom and its neighouring atoms.
-            neigh_vec (Tensor): Tensor of shape (B, A, N, D). Data type is bool.
-                Vectors from central atom to its neighouring atoms.
-            neigh_list (Tensor): Tensor of shape (B, A, N). Data type is int.
-                Indices of neighbouring atoms.
-            neigh_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
-                Mask for neighbour list.
-            bond_types (Tensor): Tensor of shape (B, A, N). Data type is int.
-                Types index of bond connected with two atoms
-            bond_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
-                Mask for bonds
-
-        Returns:
-            node_emb (Tensor): Tensor of shape (B, A, E). Data type is float.
-                Node embedding vector.
-            node_mask (Tensor): Tensor of shape (B, A, E). Data type is float.
-                Mask for Node embedding vector.
-            edge_emb (Tensor): Tensor of shape (B, A, N, K). Data type is float.
-                Edge embedding vector.
-            edge_mask (Tensor): Tensor of shape (B, A, N, K). Data type is float.
-                Mask for edge embedding vector.
-            edge_cutoff (Tensor): Tensor of shape (B, A, N). Data type is float.
-                Cutoff for edge.
-            edge_self (Tensor): Tensor of shape (1, K). Data type is float.
-                The edge embedding vector of the atom itself.
-
-        Symbols:
-            B:  Batch size.
-            A:  Number of atoms in system.
-            E:  Dimension of node embedding vector
-            K:  Dimension of edge embedding vector
-            D:  Spatial dimension of the simulation system. Usually is 3.
-
-        """
+                  ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         #pylint: disable=unused-argument
 
         if self.emb_dis:
-            batch_size = neigh_dis.shape[0]
-            num_atoms = neigh_dis.shape[-2]
+            batch_size = distance.shape[0]
+            num_atoms = distance.shape[-2]
         else:
             batch_size = bond.shape[0]
             num_atoms = bond.shape[-2]
@@ -259,33 +215,29 @@ class MolEmbedding(GraphEmbedding):
                 node_mask = msnp.broadcast_to(atom_mask, (batch_size,)+atom_mask.shape[1:])
 
         dis_emb = None
-        neigh_mask = None
+        dis_mask = None
         dis_cutoff = None
-        dis_self = None
         if self.emb_dis:
-            # (B, A, N, K)
-            dis_emb = self.get_rbf(neigh_dis)
-            # (1, K)
-            dis_self = self.get_rbf(self.dis_self)
-            if self.dis_filter is not None:
-                # (B, A, N, F)
-                dis_emb = self.dis_filter(dis_emb)
-                # (1, F)
-                dis_self = self.dis_filter(dis_self)
+            # (A, A)
+            distance = msnp.where(F.eye(num_atoms, num_atoms, ms.bool_), self.dis_self, distance)
 
-            # (B, A, N)
+            # (B, A, A, K)
+            dis_emb = self.get_rbf(distance)
+            if self.dis_filter is not None:
+                # (B, A, A, F)
+                dis_emb = self.dis_filter(dis_emb)
+
+            # (B, A, A)
             if self.cutoff_fn is None:
-                dis_cutoff = F.ones_like(neigh_dis)
+                dis_cutoff = F.ones_like(distance)
             else:
-                dis_cutoff, neigh_mask = self.cutoff_fn(neigh_dis, neigh_mask)
+                dis_cutoff, dis_mask = self.cutoff_fn(distance, dis_mask)
 
         bond_emb = None
         bond_mask = None
         bond_cutoff = None
-        bond_self = None
         if self.emb_bond:
             bond_emb = self.bond_embedding(bond)
-            bond_self = self.bond_embedding(F.zeros((batch_size, num_atoms), ms.int32))
 
             if bond_mask is not None:
                 bond_emb = bond_emb * F.expand_dims(bond_mask, -1)
@@ -293,20 +245,17 @@ class MolEmbedding(GraphEmbedding):
 
             if self.bond_filter is not None:
                 bond_emb = self.bond_filter(bond_emb)
-                bond_self = self.bond_filter(bond_self)
 
         edge_cutoff = dis_cutoff
-        edge_mask = neigh_mask
-        edge_self = dis_self
+        edge_mask = dis_mask
         if not self.emb_dis:
             edge_emb = bond_emb
             edge_mask = bond_mask
             edge_cutoff = bond_cutoff
-            edge_self = bond_self
         elif not self.emb_bond:
             edge_emb = dis_emb
         else:
-            node_emb, edge_emb = self.interaction(node_emb, neigh_list, bond_emb,
-                                                  bond_mask, bond_cutoff, bond_self)
+            node_emb, edge_emb = self.interaction(node_emb, node_emb, bond_emb,
+                                                  bond_mask, bond_cutoff)
 
-        return node_emb, node_mask, edge_emb, edge_mask, edge_cutoff, edge_self
+        return node_emb, node_mask, edge_emb, edge_mask, edge_cutoff

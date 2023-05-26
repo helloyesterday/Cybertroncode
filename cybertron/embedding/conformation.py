@@ -103,21 +103,17 @@ class ConformationEmbedding(MolEmbedding):
     def construct(self,
                   atom_type: Tensor,
                   atom_mask: Tensor,
-                  neigh_dis: Tensor,
-                  neigh_vec: Tensor,
-                  neigh_list: Tensor,
-                  neigh_mask: Tensor,
-                  bond: Tensor = None,
-                  bond_mask: Tensor = None,
+                  distance: Tensor,
+                  dis_mask: Tensor,
+                  bond: Tensor,
+                  bond_mask: Tensor,
                   **kwargs,
-                  ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+                  ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
 
         return super().construct(atom_type=atom_type,
                                  atom_mask=atom_mask,
-                                 neigh_dis=neigh_dis,
-                                 neigh_vec=neigh_vec,
-                                 neigh_list=neigh_list,
-                                 neigh_mask=neigh_mask,
+                                 distance=distance,
+                                 dis_mask=dis_mask,
                                  bond=bond,
                                  bond_mask=bond_mask,
                                  **kwargs

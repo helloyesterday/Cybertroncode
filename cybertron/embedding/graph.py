@@ -132,14 +132,12 @@ class GraphEmbedding(nn.Cell):
     def construct(self,
                   atom_type: Tensor,
                   atom_mask: Tensor,
-                  neigh_dis: Tensor,
-                  neigh_vec: Tensor,
-                  neigh_list: Tensor,
-                  neigh_mask: Tensor,
+                  distance: Tensor,
+                  dis_mask: Tensor,
                   bond: Tensor,
                   bond_mask: Tensor,
                   **kwargs,
-                  ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
+                  ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Compute the properties of the molecules.
 
         Args:
@@ -147,17 +145,13 @@ class GraphEmbedding(nn.Cell):
                 Index of atom types. Default: None
             atom_mask (Tensor): Tensor of shape (B, A). Data type is bool
                 Mask for atom types
-            neigh_dis (Tensor): Tensor of shape (B, A, N). Data type is float.
+            distance (Tensor): Tensor of shape (B, A, A). Data type is float.
                 Distances between central atom and its neighouring atoms.
-            neigh_vec (Tensor): Tensor of shape (B, A, N, D). Data type is bool.
-                Vectors from central atom to its neighouring atoms.
-            neigh_list (Tensor): Tensor of shape (B, A, N). Data type is int.
-                Indices of neighbouring atoms.
-            neigh_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
+            dis_mask (Tensor): Tensor of shape (B, A, A). Data type is bool.
                 Mask for neighbour list.
-            bond_types (Tensor): Tensor of shape (B, A, N). Data type is int.
+            bond (Tensor): Tensor of shape (B, A, A). Data type is int.
                 Types index of bond connected with two atoms
-            bond_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
+            bond_mask (Tensor): Tensor of shape (B, A, A). Data type is bool.
                 Mask for bonds
 
         Returns:
@@ -165,14 +159,12 @@ class GraphEmbedding(nn.Cell):
                 Node embedding vector.
             node_mask (Tensor): Tensor of shape (B, A, E). Data type is float.
                 Mask for Node embedding vector.
-            edge_emb (Tensor): Tensor of shape (B, A, N, K). Data type is float.
+            edge_emb (Tensor): Tensor of shape (B, A, A, K). Data type is float.
                 Edge embedding vector.
-            edge_mask (Tensor): Tensor of shape (B, A, N, K). Data type is float.
+            edge_mask (Tensor): Tensor of shape (B, A, A, K). Data type is float.
                 Mask for edge embedding vector.
-            edge_cutoff (Tensor): Tensor of shape (B, A, N). Data type is float.
+            edge_cutoff (Tensor): Tensor of shape (B, A, A). Data type is float.
                 Cutoff for edge.
-            edge_self (Tensor): Tensor of shape (1, K). Data type is float.
-                The edge embedding vector of the atom itself.
 
         Symbols:
             B:  Batch size.

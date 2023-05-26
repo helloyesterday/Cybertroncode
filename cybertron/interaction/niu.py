@@ -23,7 +23,7 @@
 Interaction layers
 """
 
-from typing import Union
+from typing import Union, Tuple
 
 import mindspore as ms
 import mindspore.numpy as msnp
@@ -31,7 +31,7 @@ from mindspore import Tensor
 from mindspore.nn import Cell
 from mindspore.ops import functional as F
 
-from mindsponge.function import get_integer, gather_vector, get_arguments
+from mindsponge.function import get_integer, get_arguments
 from mindsponge.function import concat_last_dim, squeeze_penulti
 
 from .interaction import Interaction, _interaction_register
@@ -165,29 +165,24 @@ class NeuralInteractionUnit(Interaction):
     def construct(self,
                   node_vec: Tensor,
                   node_emb: Tensor,
-                  neigh_list: Tensor,
+                  node_mask: Tensor,
                   edge_vec: Tensor,
+                  edge_emb: Tensor,
                   edge_mask: Tensor = None,
                   edge_cutoff: Tensor = None,
-                  edge_self: Tensor = None,
                   **kwargs
-                  ):
+                  ) -> Tuple[Tensor, Tensor]:
 
         def _encoder(node_vec: Tensor,
-                     neigh_list: Tensor,
                      edge_vec: Tensor = 1,
                      edge_mask: Tensor = None,
                      edge_cutoff: Tensor = None,
-                     edge_self: Tensor = 1,
                      time_signal: Tensor = 0,
                      ) -> Tensor:
 
             """encoder for transformer"""
 
-            # (B, A, N, F) <- (B, A, F)
-            node_mat = gather_vector(node_vec, neigh_list)
-            query, key, value = self.positional_embedding(
-                node_vec, node_mat, edge_self, edge_vec, time_signal)
+            query, key, value = self.positional_embedding(node_vec, edge_vec, time_signal)
             dv = self.multi_head_attention(query, key, value, mask=edge_mask, cutoff=edge_cutoff)
             dv = squeeze_penulti(dv)
 
@@ -202,11 +197,9 @@ class NeuralInteractionUnit(Interaction):
             def _act_encoder(node_new: Tensor,
                              node_vec: Tensor,
                              node_emb: Tensor,
-                             neigh_list: Tensor,
                              edge_vec: Tensor,
                              edge_mask: Tensor,
                              edge_cutoff: Tensor,
-                             edge_self: Tensor,
                              halting_prob: Tensor,
                              n_updates: Tensor,
                              cycle: int,
@@ -223,11 +216,9 @@ class NeuralInteractionUnit(Interaction):
 
                 node_vec = _encoder(
                     node_vec=node_vec,
-                    neigh_list=neigh_list,
                     edge_vec=edge_vec,
                     edge_mask=edge_mask,
                     edge_cutoff=edge_cutoff,
-                    edge_self=edge_self,
                     time_signal=time_signal
                     )
 
@@ -246,11 +237,9 @@ class NeuralInteractionUnit(Interaction):
                         node_new=node_new,
                         node_vec=node_vec,
                         node_emb=node_emb,
-                        neigh_list=neigh_list,
                         edge_vec=edge_vec,
                         edge_mask=edge_mask,
                         edge_cutoff=edge_cutoff,
-                        edge_self=edge_self,
                         halting_prob=halting_prob,
                         n_updates=n_updates,
                         cycle=cycle,
@@ -262,11 +251,9 @@ class NeuralInteractionUnit(Interaction):
                         node_new=node_new,
                         node_vec=node_vec,
                         node_emb=node_emb,
-                        neigh_list=neigh_list,
                         edge_vec=edge_vec,
                         edge_mask=edge_mask,
                         edge_cutoff=edge_cutoff,
-                        edge_self=edge_self,
                         halting_prob=halting_prob,
                         n_updates=n_updates,
                         cycle=cycle,
@@ -275,11 +262,9 @@ class NeuralInteractionUnit(Interaction):
         else:
             time_signal = self.time_embedding[0]
             node_new = _encoder(node_vec=node_vec,
-                                neigh_list=neigh_list,
                                 edge_vec=edge_vec,
                                 edge_mask=edge_mask,
                                 edge_cutoff=edge_cutoff,
-                                edge_self=edge_self,
                                 time_signal=time_signal
                                 )
 

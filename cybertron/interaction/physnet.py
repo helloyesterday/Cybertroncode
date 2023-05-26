@@ -23,7 +23,7 @@
 Interaction layers
 """
 
-from typing import Union
+from typing import Union, Tuple
 
 from mindspore import Tensor
 from mindspore import Parameter
@@ -107,26 +107,29 @@ class PhysNetModule(Interaction):
     def construct(self,
                   node_vec: Tensor,
                   node_emb: Tensor,
-                  neigh_list: Tensor,
+                  node_mask: Tensor,
                   edge_vec: Tensor,
+                  edge_emb: Tensor,
                   edge_mask: Tensor = None,
                   edge_cutoff: Tensor = None,
-                  edge_self: Tensor = None,
                   **kwargs
-                  ):
+                  ) -> Tuple[Tensor, Tensor]:
 
+        # (B, A, F)
         xi = self.activation(node_vec)
-        xij = gather_vector(xi, neigh_list)
-
         ux = self.gating_vector * node_vec
-
         dxi = self.xi_dense(xi)
-        dxij = self.xij_dense(xij)
 
+        # (B, A, 1, F)
+        dxij = self.xij_dense(F.expand_dims(xi, -2))
+
+        # (B, A, A, F) * (B, A, A, 1)
         attention_mask = self.attention_mask(edge_vec * F.expand_dims(edge_cutoff, -1))
 
+        # (B, A, A, F) * (B, A, 1, F)
         side = attention_mask * dxij
         if edge_mask is not None:
+
             side = side * F.expand_dims(edge_mask, -1)
         v = dxi + F.reduce_sum(side, -2)
 

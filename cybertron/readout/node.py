@@ -147,14 +147,13 @@ class NodeReadout(Readout):
                   edge_emb: Tensor = None,
                   atom_type: Tensor = None,
                   atom_mask: Tensor = None,
-                  neigh_dis: Tensor = None,
-                  neigh_vec: Tensor = None,
-                  neigh_list: Tensor = None,
-                  neigh_mask: Tensor = None,
+                  distance: Tensor = None,
+                  dis_mask: Tensor = None,
+                  dis_vec: Tensor = None,
                   bond: Tensor = None,
                   bond_mask: Tensor = None,
                   **kwargs,
-                  ):
+                  ) -> Tensor:
 
         raise NotImplementedError
 
@@ -234,14 +233,13 @@ class AtomwiseReadout(NodeReadout):
                   edge_emb: Tensor = None,
                   atom_type: Tensor = None,
                   atom_mask: Tensor = None,
-                  neigh_dis: Tensor = None,
-                  neigh_vec: Tensor = None,
-                  neigh_list: Tensor = None,
-                  neigh_mask: Tensor = None,
+                  distance: Tensor = None,
+                  dis_mask: Tensor = None,
+                  dis_vec: Tensor = None,
                   bond: Tensor = None,
                   bond_mask: Tensor = None,
                   **kwargs,
-                  ):
+                  ) -> Tensor:
 
         if atom_mask is None:
             num_atoms = node_rep.shape[-2]
@@ -340,14 +338,13 @@ class GraphReadout(NodeReadout):
                   edge_emb: Tensor = None,
                   atom_type: Tensor = None,
                   atom_mask: Tensor = None,
-                  neigh_dis: Tensor = None,
-                  neigh_vec: Tensor = None,
-                  neigh_list: Tensor = None,
-                  neigh_mask: Tensor = None,
+                  distance: Tensor = None,
+                  dis_mask: Tensor = None,
+                  dis_vec: Tensor = None,
                   bond: Tensor = None,
                   bond_mask: Tensor = None,
                   **kwargs,
-                  ):
+                  ) -> Tensor:
 
         if atom_mask is None:
             num_atoms = node_rep.shape[-2]

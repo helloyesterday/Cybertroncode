@@ -23,7 +23,7 @@
 Interaction layers
 """
 
-from typing import Union
+from typing import Union, Tuple
 
 from mindspore import Tensor
 from mindspore.nn import Cell
@@ -98,13 +98,13 @@ class Interaction(Cell):
     def construct(self,
                   node_vec: Tensor,
                   node_emb: Tensor,
-                  neigh_list: Tensor,
+                  node_mask: Tensor,
                   edge_vec: Tensor,
+                  edge_emb: Tensor,
                   edge_mask: Tensor = None,
                   edge_cutoff: Tensor = None,
-                  edge_self: Tensor = None,
                   **kwargs
-                  ):
+                  ) -> Tuple[Tensor, Tensor]:
 
         """Compute interaction layer.
 

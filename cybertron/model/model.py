@@ -221,28 +221,24 @@ class MolecularGNN(Cell):
     def construct(self,
                   node_emb: Tensor,
                   node_mask: Tensor = None,
-                  neigh_list: Tensor = None,
                   edge_emb: Tensor = None,
                   edge_mask: Tensor = None,
                   edge_cutoff: Tensor = None,
-                  edge_self: Tensor = None,
                   **kwargs
                   ):
         """Compute the representation of atoms.
 
         Args:
-
-            node_emb (Tensor):    Tensor of shape (B, A, F). Data type is float
-                                        Atom embedding.
-            distances (Tensor):         Tensor of shape (B, A, N). Data type is float
-                                        Distances between atoms.
-                                        Atomic number.
-            atom_mask (Tensor):         Tensor of shape (B, A). Data type is bool
-                                        Mask of atomic number
-            neighbours (Tensor):        Tensor of shape (B, A, N). Data type is int
-                                        Neighbour index.
-            neighbour_mask (Tensor):    Tensor of shape (B, A, N). Data type is bool
-                                        Nask of neighbour index.
+            node_emb (Tensor): Tensor of shape (B, A, E). Data type is float.
+                Node embedding vector.
+            node_mask (Tensor): Tensor of shape (B, A, E). Data type is float.
+                Mask for Node embedding vector.
+            edge_emb (Tensor): Tensor of shape (B, A, A, K). Data type is float.
+                Edge embedding vector.
+            edge_mask (Tensor): Tensor of shape (B, A, A, K). Data type is float.
+                Mask for edge embedding vector.
+            edge_cutoff (Tensor): Tensor of shape (B, A, A). Data type is float.
+                Cutoff for edge.
 
         Returns:
             representation: (Tensor)    Tensor of shape (B, A, F). Data type is float
@@ -258,9 +254,6 @@ class MolecularGNN(Cell):
         """
         #pylint: disable=unused-argument
 
-        # (B,A) -> (B,A,1)
-        node_mask = F.expand_dims(node_mask, -1)
-
         node_vec = node_emb
         edge_vec = edge_emb
 
@@ -268,11 +261,11 @@ class MolecularGNN(Cell):
             node_vec, edge_vec = self.interaction[i](
                 node_vec=node_vec,
                 node_emb=node_emb,
-                neigh_list=neigh_list,
+                node_mask=node_mask,
                 edge_vec=edge_vec,
+                edge_emb=edge_emb,
                 edge_mask=edge_mask,
                 edge_cutoff=edge_cutoff,
-                edge_self=edge_self,
             )
 
         return node_vec, edge_vec

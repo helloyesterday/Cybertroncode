@@ -151,14 +151,13 @@ class Readout(Cell):
                   edge_emb: Tensor = None,
                   atom_type: Tensor = None,
                   atom_mask: Tensor = None,
-                  neigh_dis: Tensor = None,
-                  neigh_vec: Tensor = None,
-                  neigh_list: Tensor = None,
-                  neigh_mask: Tensor = None,
+                  distance: Tensor = None,
+                  dis_mask: Tensor = None,
+                  dis_vec: Tensor = None,
                   bond: Tensor = None,
                   bond_mask: Tensor = None,
                   **kwargs,
-                  ):
+                  ) -> Tensor:
 
         r"""Compute readout function.
 
@@ -175,14 +174,12 @@ class Readout(Cell):
                 Index of atom types. Default: None
             atom_mask (Tensor): Tensor of shape `(B, A)`. Data type is bool
                 Mask for atom types
-            neigh_dis (Tensor): Tensor of shape `(B, A, N)`. Data type is float.
+            distance (Tensor): Tensor of shape `(B, A, N)`. Data type is float.
                 Distances between central atom and its neighouring atoms.
-            neigh_vec (Tensor): Tensor of shape `(B, A, N)`. Data type is bool.
-                Vectors from central atom to its neighouring atoms.
-            neigh_list (Tensor): Tensor of shape `(B, A, N)`. Data type is int.
-                Indices of neighbouring atoms.
-            neigh_mask (Tensor): Tensor of shape `(B, A, N)`. Data type is bool.
+            dis_mask (Tensor): Tensor of shape `(B, A, N)`. Data type is bool.
                 Mask for neighbour list.
+            dis_vec (Tensor): Tensor of shape `(B, A, N)`. Data type is bool.
+                Vectors from central atom to its neighouring atoms.
             bond_types (Tensor): Tensor of shape `(B, A, N)`. Data type is int.
                 Types index of bond connected with two atoms
             bond_mask (Tensor): Tensor of shape `(B, A, N)`. Data type is bool.

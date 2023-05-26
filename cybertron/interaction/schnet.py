@@ -23,7 +23,7 @@
 Interaction layers
 """
 
-from typing import Union
+from typing import Union, Tuple
 
 from mindspore import Tensor
 from mindspore.nn import Cell
@@ -99,27 +99,26 @@ class SchNetInteraction(Interaction):
     def construct(self,
                   node_vec: Tensor,
                   node_emb: Tensor,
-                  neigh_list: Tensor,
+                  node_mask: Tensor,
                   edge_vec: Tensor,
+                  edge_emb: Tensor,
                   edge_mask: Tensor = None,
                   edge_cutoff: Tensor = None,
-                  edge_self: Tensor = None,
                   **kwargs
-                  ):
+                  ) -> Tuple[Tensor, Tensor]:
 
         # (B, A, W) <- (B, A, F)
-        ax = self.atomwise_bc(node_vec)
-        # (B, A, N, W)
-        x_ij = gather_vector(ax, neigh_list)
+        x_i = self.atomwise_bc(node_vec)
 
-        # (B, A, N, W) <- (B, A, N, K)
+        # (B, A, A, W) <- (B, A, A, K)
         g_ij = self.filter_net(edge_vec)
-        # (B, A, N, W) * (B, A, N, 1)
+        # (B, A, A, W) * (B, A, A, 1)
         w_ij = g_ij * F.expand_dims(edge_cutoff, -1)
-        # (B, A, N, W) * (B, A, N, W)
-        y = x_ij * w_ij
 
-        # (B, A, W) <- (B, A, N, W)
+        # (B, A, 1, W) * (B, A, A, W)
+        y = F.expand_dims(x_i, -2) * w_ij
+
+        # (B, A, W) <- (B, A, A, W)
         y = self.agg(y, edge_mask)
         # (B, A, F) <- (B, A, W)
         v = self.atomwise_ac(y)

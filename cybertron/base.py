@@ -280,17 +280,15 @@ class PositionalEmbedding(Cell):
         self.x2v = Dense(dim, dim, has_bias=False)
 
     def construct(self,
-                  xi: Tensor,
-                  xij: Tensor,
-                  g_ii: Tensor = 1,
-                  g_ij: Tensor = 1,
+                  x_i: Tensor,
+                  g_ij: Tensor,
                   t: float = 0,
                   ):
         """Get query, key and query from atom types and positions
 
         Args:
             xi (Tensor):    Tensor with shape `(B, A, F)`. Data type is float.
-            xij (Tensor):   Tensor with shape `(B, A, N, F])`. Data type is float.
+            xij (Tensor):   Tensor with shape `(B, A, A, F))`. Data type is float.
             g_ii (Tensor):  Tensor with shape `(B, A, 1, F)` or `(1, F)`. Data type is float.
             g_ij (Tensor):  Tensor with shape `(B, A, N, F)`. Data type is float.
             b_ii (Tensor):  Tensor with shape `(B, A, 1, F)`. Data type is float.
@@ -311,27 +309,26 @@ class PositionalEmbedding(Cell):
 
         """
 
-        # [B, A, v] * [B, A, v] = [B, A, v]
-        xgii = F.mul(xi, g_ii)
-        # [B, A, N, v] * [B, A, N, v] = [B, A, N, v]
-        xgij = F.mul(xij, g_ij)
+        # (B, A, F) <- (B, F, A) <- (B, A, A, F)
+        g_i = g_ij.diagonal(0, -2, -3).swapaxes(-1, -2)
 
-        # [B, A, 1, v]
-        xgii = F.expand_dims(xgii, -2)
-        # [B, A, N', v]
-        xgij = concat_penulti((xgii, xgij))
-        # if c_ij is not None:
-        #     # [B, A, N', v] * [B, A, N', 1]
-        #     xgij = xgij * F.expand_dims(c_ij,-1)
+        # (B, A, F) * (B, A, F)
+        xgi = F.mul(x_i, g_i)
+        # (B, A, 1, F)
+        xgii = F.expand_dims(xgi, -2)
 
+        # (B, A, A, F) = (B, A, 1, F) * (B, A, A, F)
+        xgij = F.mul(F.expand_dims(x_i, -2), g_ij)
+
+        # (B, A, A, F)
         xgii = self.norm(xgii + t)
         xgij = self.norm(xgij + t)
 
-        # [B, A, 1, v]
+        # (B, A, 1, F)
         query = self.x2q(xgii)
-        # [B, A, N', v]
+        # (B, A, A, F)
         key = self.x2k(xgij)
-        # [B, A, N', v]
+        # (B, A, A, F)
         value = self.x2v(xgij)
 
         return query, key, value
@@ -479,13 +476,13 @@ class MultiheadAttention(Cell):
             context = self.bmm(attention_probs, V)
             # [..., 1, h, f] or [..., X, h, f]
             context = self.transpose(context, self.trans_shape)
-            # [..., 1, F] or [..., X, F]
+            # [..., 1, F) or [..., X, F)
             context = F.reshape(context, query.shape)
 
         else:
-            # [..., 1, F] x [..., F, X] / sqrt(F) = [..., 1, X]
+            # [..., 1, F) x [..., F, X] / sqrt(F) = [..., 1, X]
             # or
-            # [..., X, F] x [..., F, X] / sqrt(F) = [..., X, X]
+            # [..., X, F) x [..., F, X] / sqrt(F) = [..., X, X]
             attention_scores = self.bmmt(query, key) * self.scores_mul
 
             if mask is None:
@@ -503,12 +500,12 @@ class MultiheadAttention(Cell):
                     attention_probs = attention_probs * \
                         F.expand_dims(cutoff, -2)
 
-            # [..., 1, X] x [..., X, F] = [..., 1, F]
+            # [..., 1, X] x [..., X, F) = [..., 1, F)
             # or
-            # [..., X, X] x [..., X, F] = [..., X, F]
+            # [..., X, X] x [..., X, F) = [..., X, F)
             context = self.bmm(attention_probs, value)
 
-        # [..., 1, F] or [..., X, F]
+        # [..., 1, F) or [..., X, F)
         return self.output(context)
 
 
