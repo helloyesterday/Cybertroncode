@@ -137,8 +137,8 @@ class MolWithEvalCell(MoleculeWrapper):
                 normed_labels.append(force_label)
 
         outputs = self._network(
-            atom_type=atom_type,
             coordinate=coordinate,
+            atom_type=atom_type,
             pbc_box=pbc_box,
             bonds=bonds,
             bond_mask=bond_mask,
@@ -165,8 +165,8 @@ class MolWithEvalCell(MoleculeWrapper):
 
         if self.calc_force:
             force = -1 * self.grad_op(self._network)(
-                atom_type,
                 coordinate,
+                atom_type,
                 pbc_box,
                 bonds,
                 bond_mask,

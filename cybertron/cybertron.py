@@ -40,7 +40,8 @@ from mindspore.train._utils import _make_directory
 
 from mindsponge.function import Units, GLOBAL_UNITS
 from mindsponge.function import get_integer, get_tensor, get_ms_array, get_arguments
-from mindsponge.function import GetVector, gather_vector
+from mindsponge.function import GetVector, gather_value, vector_in_pbc
+from mindsponge.function import concat_penulti, concat_last_dim
 from mindsponge.partition import FullConnectNeighbours
 from mindsponge.potential import PotentialCell
 from mindsponge.data import write_yaml
@@ -495,8 +496,8 @@ class Cybertron(Cell):
         print("================================================================================")
 
     def construct(self,
-                  atom_type: Tensor = None,
                   coordinate: Tensor = None,
+                  atom_type: Tensor = None,
                   pbc_box: Tensor = None,
                   bonds: Tensor = None,
                   bond_mask: Tensor = None,
@@ -544,24 +545,24 @@ class Cybertron(Cell):
             if self.pbc_box is not None:
                 pbc_box = self.pbc_box
             
-            vectors = coordinate.expand_dims(-3) - coordinate.expand_dims(-2)
-
             # (B, A, A, D) = (B, 1, A, D) - (B, A, 1, D)
             vectors = self.get_vector(coordinate.expand_dims(-2), coordinate.expand_dims(-3), pbc_box)
 
             # (B, A, A) = (B, A, 1) & (B, 1, A)
-            dis_mask = F.logical_and(atom_mask.expand_dims(-1), atom_mask.expand_dims(-2))
-            dis_mask = F.logical_and(dis_mask, F.logical_not(F.eye(num_atoms, num_atoms, ms.bool_)))
+            dis_mask = F.logical_and(F.expand_dims(atom_mask, -1), F.expand_dims(atom_mask, -2))
+            # (A, A)
+            diagonal = F.logical_not(F.eye(num_atoms, num_atoms, ms.bool_))
+            # (B, A, A) & (A, A)
+            dis_mask = F.logical_and(dis_mask, diagonal)
 
-            if not dis_mask.all():
-                # Add a non-zero value to the neighbour_vector whose mask value is False
-                # to prevent them from becoming zero values after Norm operation,
-                # which could lead to auto-differentiation errors
-                # (B, A, A)
-                large_dis = msnp.broadcast_to(self.large_dis, dis_mask.shape)
-                large_dis = F.select(dis_mask, F.zeros_like(large_dis), large_dis)
-                # (B, A, A, D) = (B, A, A, D) + (B, A, A, 1)
-                vectors += F.expand_dims(large_dis, -1)
+            # Add a non-zero value to the neighbour_vector whose mask value is False
+            # to prevent them from becoming zero values after Norm operation,
+            # which could lead to auto-differentiation errors
+            # (B, A, A)
+            large_dis = msnp.broadcast_to(self.large_dis, dis_mask.shape)
+            large_dis = F.select(dis_mask, F.zeros_like(large_dis), large_dis)
+            # (B, A, A, D) = (B, A, A, D) + (B, A, A, 1)
+            vectors += F.expand_dims(large_dis, -1)
 
             if self.norm_last_dim is None:
                 distance = ops.norm(vectors, 2, -1)
@@ -681,6 +682,7 @@ class CybertronFF(PotentialCell):
                  scale: Union[float, Tensor, List[Union[float, Tensor]]] = 1.,
                  shift: Union[float, Tensor, List[Union[float, Tensor]]] = 0.,
                  type_ref: Union[Tensor, ndarray, List[Union[Tensor, ndarray]]] = None,
+                 use_sub_graph: bool = False,
                  length_unit: Union[str, Units] = None,
                  energy_unit: Union[str, Units] = 'none',
                  **kwargs
@@ -704,6 +706,11 @@ class CybertronFF(PotentialCell):
         else:
             num_atoms = F.cast(atom_type > 0, ms.int16)
             self.num_atoms = msnp.sum(num_atoms, -1, keepdims=True)
+
+        # (B, A, A) = (B, A, 1) & (B, 1, A)
+        dis_mask = F.logical_and(self.atom_mask.expand_dims(-1), self.atom_mask.expand_dims(-2))
+        num_atoms = self.atom_type.shape[-1]
+        self.dis_mask = F.logical_and(dis_mask, F.logical_not(F.eye(num_atoms, num_atoms, ms.bool_)))
 
         self.bonds = None
         self.bond_mask = None
@@ -736,6 +743,9 @@ class CybertronFF(PotentialCell):
         self.dim_edge_rep = self.model.dim_edge_rep
 
         self.cutoff = self.embedding.cutoff
+        self.large_dis = self.cutoff * 10
+
+        self.use_sub_graph = use_sub_graph
 
         if pbc_box is not None:
             # (1,D)
@@ -768,6 +778,11 @@ class CybertronFF(PotentialCell):
 
         self.input_unit_scale = self.embedding.convert_length_from(self.units)
 
+        self.norm_last_dim = None
+        # MindSpore < 2.0.0-rc1
+        if 'ord' not in signature(ops.norm).parameters.keys():
+            self.norm_last_dim = nn.Norm(-1)
+
     @property
     def model_name(self) -> str:
         return self.model.cls_name
@@ -786,6 +801,47 @@ class CybertronFF(PotentialCell):
     def type_ref(self) -> Union[Tensor, List[Tensor]]:
         """returns the type_ref"""
         return self.scaleshift.type_ref
+
+    def calc_distance(self,
+                      coordinate: Tensor,
+                      dis_mask: Tensor = None,
+                      pbc_box: Tensor = None
+                      ) -> Tuple[Tensor, Tensor]:
+        
+        vec_shift = 0
+        if dis_mask is not None:
+            # Add a non-zero value to the neighbour_vector whose mask value is False
+            # to prevent them from becoming zero values after Norm operation,
+            # which could lead to auto-differentiation errors
+            vec_shift = msnp.where(dis_mask, 0, self.large_dis)
+        vectors  = F.expand_dims(coordinate, -3) - F.expand_dims(coordinate, -2)
+
+        if pbc_box is None:
+            # (B, N, D)
+            coord2 = F.square(coordinate)
+            # (B, N, 1, D)
+            a2 = F.expand_dims(coord2, -2)
+            # (B, 1, N, D)
+            b2 = F.expand_dims(coord2, -3)
+            # (B, N, N, D) = (B, N, 1, D) * (B, 1, N, D)
+            ab = F.expand_dims(coordinate, -2) * F.expand_dims(coordinate, -3)
+            # (B, N, N, D) + (B, N, 1, D) + (B, 1, N, D)
+            dis2 = -2 * ab + a2 + b2
+            # (B, N, N, D) + (B, N, N, D)
+            dis2 += vec_shift
+            distance = F.sqrt(dis2)
+        else:
+            # (B, A, A, D) = (B, 1, A, D) - (B, A, 1, D)
+            vectors = vector_in_pbc(vectors)
+            # (B, A, A, D) = (B, A, A, D) + (B, A, A, 1)
+            vectors += F.expand_dims(vec_shift, -1)
+
+            if self.norm_last_dim is None:
+                distance = ops.norm(vectors, 2, -1)
+            else:
+                distance = self.norm_last_dim(vectors)
+
+        return distance, vectors
 
     def set_scaleshift(self,
                        scale: Union[float, Tensor, List[Union[float, Tensor]]] = 1,
@@ -842,15 +898,59 @@ class CybertronFF(PotentialCell):
 
     def set_length_unit(self, length_unit: str):
         """set length unit"""
-        self._units = self._units.set_length_unit(length_unit)
-        self.input_unit_scale = self.embedding.convert_length_from(self._units)
+        self.units.set_length_unit(length_unit)
+        self.input_unit_scale = self.embedding.convert_length_from(self.units)
         return self
 
     def set_energy_unit(self, energy_units: str):
         """set energy unit"""
-        self._units.set_energy_unit(energy_units)
-        self.output_unit_scale = self.scaleshift.convert_energy_to(self._units)
+        self.units.set_energy_unit(energy_units)
+        self.output_unit_scale = self.scaleshift.convert_energy_to(self.units)
         return self
+    
+    def calculate(self,
+                  num_atoms: int,
+                  atom_type: Tensor,
+                  atom_mask: Tensor,
+                  distance: Tensor,
+                  vectors: Tensor,
+                  dis_mask: Tensor,
+                  bonds: Tensor = None,
+                  bond_mask: Tensor = None,
+                  ):
+
+        node_emb, node_mask, edge_emb, edge_mask, edge_cutoff = self.embedding(atom_type=atom_type,
+                                                                               atom_mask=atom_mask,
+                                                                               distance=distance,
+                                                                               dis_mask=dis_mask,
+                                                                               bond=bonds,
+                                                                               bond_mask=bond_mask,
+                                                                               )
+
+        node_rep, edge_rep = self.model(node_emb=node_emb,
+                                        node_mask=node_mask,
+                                        edge_emb=edge_emb,
+                                        edge_mask=edge_mask,
+                                        edge_cutoff=edge_cutoff,
+                                        )
+
+        output = self.readout[0](node_rep=node_rep,
+                                edge_rep=edge_rep,
+                                node_emb=node_emb,
+                                edge_emb=edge_emb,
+                                atom_type=atom_type,
+                                atom_mask=atom_mask,
+                                distance=distance,
+                                dis_mask=dis_mask,
+                                dis_vec=vectors,
+                                bond=bonds,
+                                bond_mask=bond_mask,
+                                )
+
+        if self.scaleshift is not None:
+            return self.scaleshift(output, atom_type, num_atoms)
+
+        return output
 
     def construct(self,
                   coordinate: Tensor,
@@ -863,15 +963,15 @@ class CybertronFF(PotentialCell):
         r"""Calculate potential energy.
 
         Args:
-            coordinate (Tensor):           Tensor of shape (B, A, D). Data type is float.
+            coordinate (Tensor):            Tensor of shape (B, A, D). Data type is float.
                                             Position coordinate of atoms in system.
             neighbour_index (Tensor):       Tensor of shape (B, A, N). Data type is int.
                                             Index of neighbour atoms. Default: None
             neighbour_mask (Tensor):        Tensor of shape (B, A, N). Data type is bool.
                                             Mask for neighbour atoms. Default: None
-            neighbour_coord (Tensor):       Tensor of shape (B, A, N, D). Data type is bool.
+            neighbour_vector (Tensor):      Tensor of shape (B, A, N, D). Data type is bool.
                                             Position coorindates of neighbour atoms.
-            neighbour_distance (Tensor):   Tensor of shape (B, A, N). Data type is float.
+            neighbour_distance (Tensor):    Tensor of shape (B, A, N). Data type is float.
                                             Distance between neighbours atoms. Default: None
             pbc_box (Tensor):               Tensor of shape (B, D). Data type is float.
                                             Tensor of PBC box. Default: None
@@ -888,38 +988,65 @@ class CybertronFF(PotentialCell):
         """
         #pylint: disable=unused-argument
 
-        node_emb, node_mask, edge_emb, \
-            edge_mask, edge_cutoff, edge_self = self.embedding(atom_type=self.atom_type,
-                                                               atom_mask=self.atom_mask,
-                                                               neigh_dis=neighbour_distance,
-                                                               neigh_vec=neighbour_vector,
-                                                               neigh_list=neighbour_index,
-                                                               neigh_mask=neighbour_mask,
-                                                               bond=self.bonds,
-                                                               bond_mask=self.bond_mask,
-                                                               )
+        if self.use_sub_graph:
+            # B
+            batch_size = coordinate.shape[0]
+            # A
+            num_atoms = coordinate.shape[1]
+            # N
+            num_neigh0 = neighbour_vector.shape[-2]
+            # N' = N + 1
+            num_neigh = num_neigh0 + 1
+            # D
+            dim = neighbour_vector.shape[-1]
+            # G = B * A
+            num_graph = batch_size * num_atoms
 
-        node_rep, edge_rep = self.model(node_emb=node_emb,
-                                        node_mask=node_mask,
-                                        neigh_list=neighbour_index,
-                                        edge_emb=edge_emb,
-                                        edge_mask=edge_mask,
-                                        edge_cutoff=edge_cutoff,
-                                        edge_self=edge_self,
-                                        )
+            # (B, A, N) <- (B, A)
+            atom_types = gather_value(self.atom_type, neighbour_index)
+            # (B, A, N') <- concatenate[(B, A, 1), (B, A, N)]
+            atom_types = concat_last_dim(F.expand_dims(self.atom_type, -1), atom_types)
+            # (G, N') <- (B, A, N')
+            atom_types = F.reshape(atom_types, (num_graph, num_neigh))
+            # (G, N')
+            atom_mask = atom_types > 0
+            # (G, N', N')
+            dis_mask = F.logical_and(F.expand_dims(atom_mask, -1), F.expand_dims(atom_mask, -2))
+            dis_mask = F.logical_and(dis_mask, F.logical_not(F.eye(num_neigh, num_neigh, ms.bool_)))
 
-        output = self.readout[0](node_rep=node_rep,
-                                 edge_rep=edge_rep,
-                                 node_emb=node_emb,
-                                 atom_type=self.atom_type,
-                                 atom_mask=self.atom_mask,
-                                 neigh_dis=neighbour_distance,
-                                 neigh_vec=neighbour_vector,
-                                 neigh_list=neighbour_index,
-                                 neigh_mask=neighbour_mask,
-                                 )
+            # (G, 1, D)
+            centers = msnp.zeros((batch_size, 1, dim), coordinate.dtype)
+            # (G, N, D) <- (B, A, N, D)
+            coordinates = F.reshape(neighbour_vector, (num_graph, num_neigh0, dim))
+            # (G, N', D) <- concatenate[(B', 1, D), (B, N, D)]
+            coordinates = concat_penulti((centers, coordinates))
 
-        if self.scaleshift is not None:
-            output = self.scaleshift(output, self.atom_type, self.num_atoms)
+            # (G, N', N'), (G, N', N', D)
+            distances, vectors = self.calc_distance(coordinates, dis_mask)
 
-        return output
+            # (G, Y)
+            outputs = self.calculate(num_atoms=num_neigh,
+                                     atom_type=atom_types,
+                                     atom_mask=atom_mask,
+                                     distance=distances,
+                                     dis_mask=dis_mask,
+                                     vectors=vectors,
+                                     bonds=self.bonds,
+                                     bond_mask=self.bond_mask,
+                                     )
+            
+            # (B, A, Y)
+            return F.reshape(outputs, (batch_size, num_atoms, -1))
+        
+        distance, vectors = self.calc_distance(coordinate, self.dis_mask, pbc_box)
+
+        return self.calculate(num_atoms=self.num_atoms,
+                                atom_type=self.atom_type,
+                                atom_mask=self.atom_mask,
+                                distance=distance,
+                                dis_mask=self.dis_mask,
+                                vectors=vectors,
+                                bonds=self.bonds,
+                                bond_mask=self.bond_mask,
+                                )
+

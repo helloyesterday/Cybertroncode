@@ -104,8 +104,8 @@ class MolWithLossCell(MoleculeWrapper):
         labels = [inputs[self.labels_id[i]] for i in range(self.num_labels)]
 
         outputs = self._network(
-            atom_type=atom_type,
             coordinate=coordinate,
+            atom_type=atom_type,
             pbc_box=pbc_box,
             bonds=bonds,
             bond_mask=bond_mask
@@ -115,8 +115,8 @@ class MolWithLossCell(MoleculeWrapper):
 
         if self.calc_force:
             force_predict = -1 * self.grad_op(self._network)(
-                atom_type,
                 coordinate,
+                atom_type,
                 pbc_box,
                 bonds,
                 bond_mask
