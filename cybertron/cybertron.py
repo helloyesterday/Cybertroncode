@@ -544,7 +544,7 @@ class Cybertron(Cell):
 
             if self.pbc_box is not None:
                 pbc_box = self.pbc_box
-            
+
             # (B, A, A, D) = (B, 1, A, D) - (B, A, 1, D)
             vectors = self.get_vector(coordinate.expand_dims(-2), coordinate.expand_dims(-3), pbc_box)
 
@@ -559,7 +559,7 @@ class Cybertron(Cell):
             # to prevent them from becoming zero values after Norm operation,
             # which could lead to auto-differentiation errors
             # (B, A, A)
-            large_dis = msnp.broadcast_to(self.large_dis, dis_mask.shape)
+            large_dis = F.broadcast_to(self.large_dis, dis_mask.shape)
             large_dis = F.select(dis_mask, F.zeros_like(large_dis), large_dis)
             # (B, A, A, D) = (B, A, A, D) + (B, A, A, 1)
             vectors += F.expand_dims(large_dis, -1)
@@ -807,14 +807,15 @@ class CybertronFF(PotentialCell):
                       dis_mask: Tensor = None,
                       pbc_box: Tensor = None
                       ) -> Tuple[Tensor, Tensor]:
-        
+        """calculate inter-atomic distances"""
+
         vec_shift = 0
         if dis_mask is not None:
             # Add a non-zero value to the neighbour_vector whose mask value is False
             # to prevent them from becoming zero values after Norm operation,
             # which could lead to auto-differentiation errors
             vec_shift = msnp.where(dis_mask, 0, self.large_dis)
-        vectors  = F.expand_dims(coordinate, -3) - F.expand_dims(coordinate, -2)
+        vectors = F.expand_dims(coordinate, -3) - F.expand_dims(coordinate, -2)
 
         if pbc_box is None:
             # (B, N, D)
@@ -832,7 +833,7 @@ class CybertronFF(PotentialCell):
             distance = F.sqrt(dis2)
         else:
             # (B, A, A, D) = (B, 1, A, D) - (B, A, 1, D)
-            vectors = vector_in_pbc(vectors)
+            vectors = vector_in_pbc(vectors, pbc_box)
             # (B, A, A, D) = (B, A, A, D) + (B, A, A, 1)
             vectors += F.expand_dims(vec_shift, -1)
 
@@ -907,7 +908,7 @@ class CybertronFF(PotentialCell):
         self.units.set_energy_unit(energy_units)
         self.output_unit_scale = self.scaleshift.convert_energy_to(self.units)
         return self
-    
+
     def calculate(self,
                   num_atoms: int,
                   atom_type: Tensor,
@@ -918,6 +919,7 @@ class CybertronFF(PotentialCell):
                   bonds: Tensor = None,
                   bond_mask: Tensor = None,
                   ):
+        """calculate deep molecular model"""
 
         node_emb, node_mask, edge_emb, edge_mask, edge_cutoff = self.embedding(atom_type=atom_type,
                                                                                atom_mask=atom_mask,
@@ -935,17 +937,17 @@ class CybertronFF(PotentialCell):
                                         )
 
         output = self.readout[0](node_rep=node_rep,
-                                edge_rep=edge_rep,
-                                node_emb=node_emb,
-                                edge_emb=edge_emb,
-                                atom_type=atom_type,
-                                atom_mask=atom_mask,
-                                distance=distance,
-                                dis_mask=dis_mask,
-                                dis_vec=vectors,
-                                bond=bonds,
-                                bond_mask=bond_mask,
-                                )
+                                 edge_rep=edge_rep,
+                                 node_emb=node_emb,
+                                 edge_emb=edge_emb,
+                                 atom_type=atom_type,
+                                 atom_mask=atom_mask,
+                                 distance=distance,
+                                 dis_mask=dis_mask,
+                                 dis_vec=vectors,
+                                 bond=bonds,
+                                 bond_mask=bond_mask,
+                                 )
 
         if self.scaleshift is not None:
             return self.scaleshift(output, atom_type, num_atoms)
@@ -1034,19 +1036,18 @@ class CybertronFF(PotentialCell):
                                      bonds=self.bonds,
                                      bond_mask=self.bond_mask,
                                      )
-            
+
             # (B, A, Y)
             return F.reshape(outputs, (batch_size, num_atoms, -1))
-        
+
         distance, vectors = self.calc_distance(coordinate, self.dis_mask, pbc_box)
 
         return self.calculate(num_atoms=self.num_atoms,
-                                atom_type=self.atom_type,
-                                atom_mask=self.atom_mask,
-                                distance=distance,
-                                dis_mask=self.dis_mask,
-                                vectors=vectors,
-                                bonds=self.bonds,
-                                bond_mask=self.bond_mask,
-                                )
-
+                              atom_type=self.atom_type,
+                              atom_mask=self.atom_mask,
+                              distance=distance,
+                              dis_mask=self.dis_mask,
+                              vectors=vectors,
+                              bonds=self.bonds,
+                              bond_mask=self.bond_mask,
+                              )

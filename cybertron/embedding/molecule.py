@@ -210,9 +210,9 @@ class MolEmbedding(GraphEmbedding):
 
         node_mask = atom_mask
         if batch_size > 1 and atom_type.shape[0] != batch_size:
-            node_emb = msnp.broadcast_to(node_emb, (batch_size,) + node_emb.shape[1:])
+            node_emb = F.broadcast_to(node_emb, (batch_size,) + node_emb.shape[1:])
             if atom_mask is not None:
-                node_mask = msnp.broadcast_to(atom_mask, (batch_size,)+atom_mask.shape[1:])
+                node_mask = F.broadcast_to(atom_mask, (batch_size,)+atom_mask.shape[1:])
 
         dis_emb = None
         dis_mask = None

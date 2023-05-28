@@ -25,7 +25,6 @@ GNN-based deep molecular model (DMM)
 
 from typing import Union, List
 
-import mindspore.numpy as msnp
 from mindspore.nn import Cell, CellList
 from mindspore import Tensor
 from mindspore.ops import functional as F
@@ -192,7 +191,7 @@ class MolecularGNN(Cell):
             if size  not in (self.n_interaction, 1):
                 raise ValueError(f'"The size of "{name}" ({size}) must be equal to '
                                  f'"n_interaction" ({self.n_interaction})!')
-            tensor = msnp.broadcast_to(tensor, (self.n_interaction,))
+            tensor = F.broadcast_to(tensor, (self.n_interaction,))
         return tensor
 
     def print_info(self, num_retraction: int = 3, num_gap: int = 3, char: str = '-'):
