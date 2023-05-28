@@ -34,7 +34,7 @@ from mindspore.common.parameter import Parameter
 from mindspore.common.initializer import Initializer, initializer, Constant
 
 from mindsponge.function import get_integer, get_arguments
-from mindsponge.function import concat_penulti, keepdims_mean, squeeze_last_dim
+from mindsponge.function import keepdims_mean, squeeze_last_dim
 
 from .layer import Dense, Residual
 from .cutoff import SmoothCutoff
@@ -287,32 +287,28 @@ class PositionalEmbedding(Cell):
         """Get query, key and query from atom types and positions
 
         Args:
-            xi (Tensor):    Tensor with shape `(B, A, F)`. Data type is float.
-            xij (Tensor):   Tensor with shape `(B, A, A, F))`. Data type is float.
-            g_ii (Tensor):  Tensor with shape `(B, A, 1, F)` or `(1, F)`. Data type is float.
-            g_ij (Tensor):  Tensor with shape `(B, A, N, F)`. Data type is float.
-            b_ii (Tensor):  Tensor with shape `(B, A, 1, F)`. Data type is float.
-            b_ij (Tensor):  Tensor with shape `(B, A, N, F)`. Data type is float.
-            t (Tensor):     Tensor with shape `(F,)`. Data type is float.
+            x_i (Tensor): Tensor with shape `(B, A, F)`. Data type is float.
+            g_ij (Tensor): Tensor with shape `(B, A, A, F)`. Data type is float.
 
         Symbols:
             B:  Batch size
             A:  Number of atoms
-            N:  Number of neighbour atoms
-            N': Number of neighbour atoms and itself (N' = N + 1)
             F:  Dimensions of feature space
 
         Returns:
             query (Tensor): Tensor with shape (B, A, 1, F). Data type is float.
-            key (Tensor):   Tensor with shape (B, A, N', F). Data type is float.
-            value (Tensor): Tensor with shape (B, A, N', F). Data type is float.
+            key (Tensor):   Tensor with shape (B, A, A, F). Data type is float.
+            value (Tensor): Tensor with shape (B, A, A, F). Data type is float.
 
         """
 
         # (B, A, F) <- (B, F, A) <- (B, A, A, F)
-        g_i = g_ij.diagonal(0, -2, -3).swapaxes(-1, -2)
+        # g_i = g_ij.diagonal(0, -2, -3).swapaxes(-1, -2)
 
-        # (B, A, F) * (B, A, F)
+        # (B, 1, F) <- (B, A, A, F)
+        g_i = g_ij[:, 0, [0], :]
+
+        # (B, A, F) * (B, 1, F)
         xgi = F.mul(x_i, g_i)
         # (B, A, 1, F)
         xgii = F.expand_dims(xgi, -2)
@@ -389,15 +385,6 @@ class MultiheadAttention(Cell):
         self.bmm = ops.BatchMatMul()
         self.bmmt = ops.BatchMatMul(transpose_b=True)
 
-        # [0,1,...,D-1]
-        ranges = list(range(dim_tensor+1))
-        tmpid = ranges[-2]
-        ranges[-2] = ranges[-3]
-        ranges[-3] = tmpid
-        # [0,1,...,D-2,D-3,D-1]
-        self.trans_shape = tuple(ranges)
-        self.transpose = ops.Transpose()
-
         self.softmax_with_mask = SoftmaxWithMask()
 
     def construct(self,
@@ -411,7 +398,7 @@ class MultiheadAttention(Cell):
 
         Args:
 
-            query (Tensor):     Tensor with shape (..., X, F). Data type is float.
+            query (Tensor):     Tensor with shape (..., Q, F). Data type is float.
             key (Tensor):       Tensor with shape (..., X, F). Data type is float.
             value (Tensor):     Tensor with shape (..., X, F). Data type is float.
             mask (Tensor):      Tensor with shape (..., X). Data type is bool.
@@ -424,88 +411,59 @@ class MultiheadAttention(Cell):
         #pylint: disable=invalid-name
 
         if self.n_heads > 1:
-            q_reshape = query.shape[:-1] + self.reshape_tail
-            k_reshape = key.shape[:-1] + self.reshape_tail
-            v_reshape = value.shape[:-1] + self.reshape_tail
+            # (..., h, Q, f) <- (..., Q, h, f) <- (..., Q, F)
+            query_ = F.reshape(query, query.shape[:-1] + self.reshape_tail).swapaxes(-2, -3)
+            # (..., h, X, f) <- (..., X, h, f) <- (..., X, F)
+            key_ = F.reshape(key, key.shape[:-1] + self.reshape_tail).swapaxes(-2, -3)
+            # (..., h, X, f) <- (..., X, h, f) <- (..., X, F)
+            value_ = F.reshape(value, value.shape[:-1] + self.reshape_tail).swapaxes(-2, -3)
 
-            # [..., 1, h, f] or [..., X, h, f]
-            Q = F.reshape(query, q_reshape)
-            # [..., h, 1, f] or [..., h, X, f]
-            Q = self.transpose(Q, self.trans_shape)
-
-            # [..., X, h, f]
-            K = F.reshape(key, k_reshape)
-            # [..., h, X, f]
-            K = self.transpose(K, self.trans_shape)
-
-            # [..., X, h, f]
-            V = F.reshape(value, v_reshape)
-            # [..., h, X, f]
-            V = self.transpose(V, self.trans_shape)
-
-            # [..., h, 1, f] x [..., h, X, f]^T = [..., h, 1, X]
-            # or
-            # [..., h, X, f] x [..., h, X, f]^T = [..., h, X, X]
-            attention_scores = self.bmmt(Q, K)
-            # ([..., h, 1, X] or [..., h, X, X]) / sqrt(f)
+            # (..., h, Q, X) = (..., h, Q, f) x (..., h, X, f)^T
+            attention_scores = self.bmmt(query_, key_)
+            # (..., h, Q, X) / sqrt(f)
             attention_scores = F.mul(attention_scores, self.scores_mul)
 
             if mask is None:
-                # [..., h, 1, X] or [..., h, X, X]
+                # (..., h, Q, X)
                 attention_probs = self.softmax(attention_scores)
             else:
-                # [..., X] -> [..., 1, 1, X]
-                exmask = F.expand_dims(F.expand_dims(mask, -2), -2)
-                # [..., 1, 1, X] -> ([..., h, 1, X] or [..., h, X, X])
-                mhmask = (exmask * F.ones_like(attention_scores)) > 0
-                # [..., h, 1, X] or [..., h, X, X]
-                attention_probs = self.softmax_with_mask(
-                    attention_scores, mhmask)
+                # (..., h, Q, X) <- (..., 1, 1, X) <- (..., X)
+                mhmask = F.broadcast_to(mask.expand_dims(-2).expand_dims(-2), attention_scores.shape)
+                # (..., h, Q, X)
+                attention_probs = self.softmax_with_mask(attention_scores, mhmask)
 
                 if cutoff is not None:
-                    # [..., X] -> [..., 1, 1, X]
-                    excut = F.expand_dims(F.expand_dims(cutoff, -2), -2)
-                    # [..., h, 1, X] * [..., 1, 1, X]
-                    # or
-                    # [..., h, X, X] * [..., 1, 1, X] = [..., h, X, X]
+                    # (..., h, Q, X) <- (..., 1, 1, X) <- (..., X)
+                    excut = cutoff.expand_dims(-2).expand_dims(-2)
+                    # (..., h, Q, X) = (..., h, X, X) * (..., 1, 1, X)
                     attention_probs = F.mul(attention_probs, excut)
 
-            # [..., h, 1, X] x [..., h, X, f] = [..., h, 1, f]
-            # or
-            # [..., h, X, X] x [..., h, X, f] = [..., h, X, f]
-            context = self.bmm(attention_probs, V)
-            # [..., 1, h, f] or [..., X, h, f]
-            context = self.transpose(context, self.trans_shape)
-            # [..., 1, F) or [..., X, F)
+            # (..., h, Q, f) = (..., h, Q, X) x (..., h, X, f)
+            context = self.bmm(attention_probs, value_)
+            # (..., Q, h, f)
+            context = context.swapaxes(-2, -3)
+            # (..., Q, F)
             context = F.reshape(context, query.shape)
 
         else:
-            # [..., 1, F) x [..., F, X] / sqrt(F) = [..., 1, X]
-            # or
-            # [..., X, F) x [..., F, X] / sqrt(F) = [..., X, X]
+            # (..., Q, X) = (..., Q, F) x (..., Q, F)^T / sqrt(F)
             attention_scores = self.bmmt(query, key) * self.scores_mul
 
             if mask is None:
-                # [..., 1, X] or [..., X, X]
+                # (..., Q, X)
                 attention_probs = self.softmax(attention_scores)
             else:
-                # [..., X] -> [..., 1, X]
-                mask = F.expand_dims(mask, -2)
-                # [..., 1, X]
-                attention_probs = self.softmax_with_mask(
-                    attention_scores, mask)
+                # (..., 1, X)
+                attention_probs = self.softmax_with_mask(attention_scores, F.expand_dims(mask, -2))
 
                 if cutoff is not None:
-                    # [..., 1, X] * [..., 1, X]
-                    attention_probs = attention_probs * \
-                        F.expand_dims(cutoff, -2)
+                    # (..., 1, X) * (..., 1, X)
+                    attention_probs = attention_probs * F.expand_dims(cutoff, -2)
 
-            # [..., 1, X] x [..., X, F) = [..., 1, F)
-            # or
-            # [..., X, X] x [..., X, F) = [..., X, F)
+            # (..., Q, F) = (..., Q, X) x (..., X, F)
             context = self.bmm(attention_probs, value)
 
-        # [..., 1, F) or [..., X, F)
+        # (..., Q, F)
         return self.output(context)
 
 
