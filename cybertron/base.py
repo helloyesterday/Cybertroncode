@@ -424,13 +424,9 @@ class MultiheadAttention(Cell):
             attention_scores = F.mul(attention_scores, self.scores_mul)
 
             if mask is None:
-                # (..., h, Q, X)
                 attention_probs = self.softmax(attention_scores)
             else:
-                # (..., h, Q, X) <- (..., 1, 1, X) <- (..., X)
-                mhmask = F.broadcast_to(mask.expand_dims(-2).expand_dims(-2), attention_scores.shape)
-                # (..., h, Q, X)
-                attention_probs = self.softmax_with_mask(attention_scores, mhmask)
+                attention_probs = self.softmax_with_mask(attention_scores, mask.expand_dims(-2).expand_dims(-2))
 
                 if cutoff is not None:
                     # (..., h, Q, X) <- (..., 1, 1, X) <- (..., X)
