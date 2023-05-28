@@ -32,7 +32,7 @@ from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
 
-from mindsponge.function import get_integer, gather_vector, get_arguments
+from mindsponge.function import get_integer, get_arguments
 
 from .interaction import Interaction, _interaction_register
 from ..layer import Dense
