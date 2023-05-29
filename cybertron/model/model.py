@@ -71,27 +71,7 @@ class MolecularGNN(Cell):
 
         activation (Cell):          Activation function. Default: None
 
-        cutoff (Length):            Cutoff distance. Default: Length(1, 'nm')
-
-        cutoff_fn (Cell):           Cutoff function. Default: None
-
-        rbf (Cell):                 Radical baiss function. Default: None
-
-        r_self (Length)             Distance of atomic self-interaction. Default: None
-
         coupled_interaction (bool): Whether to use coupled (shared) interaction layer. Default: False
-
-        use_distance (bool):        Whether to use distance between atoms. Default: True
-
-        use_bond (bool):            Whether to use bond information. Default: False
-
-        use_graph_norm (bool):      Whether to use graph normalization. Default: False
-
-        public_dis_filter (bool):   Whether to use public (shared) filter for distance. Default: False
-
-        public_bond_filter (bool):  Whether to use public (shared) filter for bond. Default: False
-
-        num_bond_types (int):       Maximum number of bond types. Default: 16
 
         length_unit (bool):         Unit of position coordinates. Default: 'nm'
 
