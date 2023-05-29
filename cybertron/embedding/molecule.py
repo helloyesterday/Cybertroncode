@@ -56,7 +56,7 @@ class MolEmbedding(GraphEmbedding):
 
         emb_bond (bool): Whether to embed the bond.
 
-        cutoff (Union[Length, float, Tensor]): Cut-off distance. Default: None
+        cutoff (Union[Length, float, Tensor]): Cut-off radius. Default: None
 
         activation: Union[Cell, str]: Activation function. Default: None
 
@@ -77,6 +77,8 @@ class MolEmbedding(GraphEmbedding):
                  bond_filter: Union[Filter, str] = 'residual',
                  interaction: Cell = None,
                  dis_self: Length = Length(0.05, 'nm'),
+                 use_sub_cutoff: bool = False,
+                 cutoff_buffer: Union[Length, float, Tensor] = Length(0.2, 'nm'),
                  num_atom_types: int = 64,
                  num_bond_types: int = 16,
                  initializer: Union[Initializer, str] = Normal(1.0),
@@ -118,6 +120,9 @@ class MolEmbedding(GraphEmbedding):
 
         self.atom_filter = get_filter(atom_filter, self.dim_node,
                                       self.dim_node, activation)
+        
+        self.use_sub_cutoff = use_sub_cutoff
+        self.cutoff_buffer = get_length(cutoff_buffer, self.units)
 
         self.rbf_fn = None
         self.dis_filter = None
@@ -231,7 +236,14 @@ class MolEmbedding(GraphEmbedding):
             if self.cutoff_fn is None:
                 dis_cutoff = F.ones_like(distance)
             else:
-                dis_cutoff, dis_mask = self.cutoff_fn(distance, dis_mask)
+                if self.use_sub_cutoff:
+                    # (B, 1, A)
+                    center_dis = distance[..., [0], :]
+                    cutoff = self.cutoff + self.cutoff_buffer - center_dis
+                    cutoff = F.maximum(0, F.minimum(cutoff, self.cutoff))
+                    dis_cutoff, dis_mask = self.cutoff_fn(distance, dis_mask, cutoff)
+                else:
+                    dis_cutoff, dis_mask = self.cutoff_fn(distance, dis_mask)
 
         bond_emb = None
         bond_mask = None
