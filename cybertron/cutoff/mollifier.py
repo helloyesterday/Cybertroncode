@@ -23,7 +23,7 @@
 Cutoff functions
 """
 
-from typing import Union
+from typing import Union, Tuple
 from numpy import ndarray
 
 import mindspore as ms
@@ -53,38 +53,44 @@ class MollifierCutoff(Cutoff):
 
     """
     def __init__(self,
-                 cutoff: Union[Length, float, Tensor, ndarray],
-                 length_unit: Union[str, Units] = None,
+                 cutoff: Union[Length, float, Tensor, ndarray] = None,
                  eps: float = 1e-8,
                  **kwargs
                  ):
-        super().__init__(
-            cutoff=cutoff,
-            length_unit=length_unit,
-            )
+        super().__init__(cutoff=cutoff)
         self._kwargs = get_arguments(locals(), kwargs)
 
         self.eps = get_ms_array(get_length(eps, self.units), ms.float32)
 
-    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
+    def construct(self,
+                  distance: Tensor,
+                  mask: Tensor = None,
+                  cutoff: Tensor = None
+                  ) -> Tuple[Tensor, Tensor]:
         """Compute cutoff.
 
         Args:
-            distances (Tensor):         Tensor of shape (..., K). Data type is float.
-            neighbour_mask (Tensor):    Tensor of shape (..., K). Data type is bool.
+            distance (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
+            cutoff (Tensor): Tensor of shape (), (1,) or (..., K). Data type is float.
 
         Returns:
-            cutoff (Tensor):    Tensor of shape (..., K). Data type is float.
+            decay (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
 
         """
 
-        exponent = 1.0 - msnp.reciprocal(1.0 - F.square(distances * self.inv_cutoff))
-        cutoffs = F.exp(exponent)
+        if cutoff is None:
+            cutoff = self.cutoff
 
-        mask = (distances + self.eps) < self.cutoff
-        if neighbour_mask is not None:
-            mask = F.logical_and(mask, neighbour_mask)
+        exponent = 1.0 - msnp.reciprocal(1.0 - F.square(distance * msnp.reciprocal(cutoff)))
+        decay = F.exp(exponent)
+        
+        if mask is None:
+            mask = (distance + self.eps) < cutoff
+        else:
+            mask = F.logical_and((distance + self.eps) < cutoff, mask)
 
-        cutoffs = cutoffs * mask
+        decay *= mask
 
-        return cutoffs, mask
+        return decay, mask

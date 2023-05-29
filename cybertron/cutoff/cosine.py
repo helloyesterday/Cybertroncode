@@ -23,10 +23,11 @@
 Cutoff functions
 """
 
-from typing import Union
+from typing import Union, Tuple
 from numpy import ndarray
 
 import mindspore as ms
+import mindspore.numpy as msnp
 from mindspore import Tensor
 from mindspore.ops import functional as F
 
@@ -54,36 +55,42 @@ class CosineCutoff(Cutoff):
 
     def __init__(self,
                  cutoff: Union[Length, float, Tensor, ndarray],
-                 length_unit: Union[str, Units] = None,
                  **kwargs
                  ):
-        super().__init__(
-            cutoff=cutoff,
-            length_unit=length_unit,
-            )
+        super().__init__(cutoff=cutoff)
         self._kwargs = get_arguments(locals(), kwargs)
 
         self.pi = Tensor(PI, ms.float32)
 
-    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
+    def construct(self,
+                  distance: Tensor,
+                  mask: Tensor = None,
+                  cutoff: Tensor = None
+                  ) -> Tuple[Tensor, Tensor]:
         """Compute cutoff.
 
         Args:
-            distances (Tensor):         Tensor of shape (..., K). Data type is float.
-            neighbour_mask (Tensor):    Tensor of shape (..., K). Data type is bool.
+            distance (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
+            cutoff (Tensor): Tensor of shape (), (1,) or (..., K). Data type is float.
 
         Returns:
-            cutoff (Tensor):    Tensor of shape (..., K). Data type is float.
+            decay (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
 
         """
 
-        cuts = 0.5 * (F.cos(distances * self.pi * self.inv_cutoff) + 1.0)
+        if cutoff is None:
+            cutoff = self.cutoff
 
-        mask = distances < self.cutoff
-        if neighbour_mask is not None:
-            mask = F.logical_and(mask, neighbour_mask)
+        decay = 0.5 * (F.cos(distance * self.pi * msnp.reciprocal(cutoff)) + 1.0)
+
+        if mask is None:
+            mask = distance < cutoff
+        else:
+            mask = F.logical_and(distance < cutoff, mask)
 
         # Remove contributions beyond the cutoff radius
-        cutoffs = cuts * mask
+        decay *= mask
 
-        return cutoffs, mask
+        return decay, mask

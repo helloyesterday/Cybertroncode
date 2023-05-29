@@ -23,7 +23,7 @@
 Cutoff functions
 """
 
-from typing import Union
+from typing import Union, Tuple
 from numpy import ndarray
 
 from mindspore import Tensor
@@ -51,31 +51,36 @@ class HardCutoff(Cutoff):
     """
 
     def __init__(self,
-                 cutoff: Union[Length, float, Tensor, ndarray],
-                 length_unit: Union[str, Units] = None,
+                 cutoff: Union[Length, float, Tensor, ndarray] = None,
                  **kwargs
                  ):
-        super().__init__(
-            cutoff=cutoff,
-            length_unit=length_unit,
-            )
+        super().__init__(cutoff=cutoff)
         self._kwargs = get_arguments(locals(), kwargs)
 
-    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
+    def construct(self,
+                  distance: Tensor,
+                  mask: Tensor = None,
+                  cutoff: Tensor = None
+                  ) -> Tuple[Tensor, Tensor]:
         """Compute cutoff.
 
         Args:
-            distances (Tensor):         Tensor of shape (..., K). Data type is float.
-            neighbour_mask (Tensor):    Tensor of shape (..., K). Data type is bool.
+            distance (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
+            cutoff (Tensor): Tensor of shape (), (1,) or (..., K). Data type is float.
 
         Returns:
-            cutoff (Tensor):    Tensor of shape (..., K). Data type is float.
+            decay (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
 
         """
 
-        mask = distances < self.cutoff
+        if cutoff is None:
+            cutoff = self.cutoff
 
-        if neighbour_mask is not None:
-            F.logical_and(mask, neighbour_mask)
+        if mask is None:
+            mask = distance < cutoff
+        else:
+            mask = F.logical_and(distance < cutoff, mask)
 
-        return F.cast(mask, distances.dtype), mask
+        return F.cast(mask, distance.dtype), mask

@@ -23,7 +23,7 @@
 Cutoff functions
 """
 
-from typing import Union
+from typing import Union, Tuple
 from numpy import ndarray
 
 import mindspore as ms
@@ -63,39 +63,35 @@ class Cutoff(nn.Cell):
 
     """
     def __init__(self,
-                 cutoff: Union[Length, float, Tensor, ndarray],
-                 length_unit: Union[str, Units] = None,
+                 cutoff: Union[float, Tensor, ndarray] = None,
                  **kwargs
                  ):
         super().__init__()
         self._kwargs = kwargs
 
-        if length_unit is None:
-            length_unit = GLOBAL_UNITS.length_unit
-        self.units = Units(length_unit)
-
-        self.reg_key = 'none'
-        self.name = 'cutoff'
-
-        self.cutoff = get_ms_array(get_length(cutoff, self.units), ms.float32)
-        self.inv_cutoff = msnp.reciprocal(self.cutoff)
+        self.cutoff = get_ms_array(cutoff, ms.float32)
 
     def set_cutoff(self, cutoff: Union[Length, float, Tensor, ndarray],
                    unit: Union[str, Units] = None):
         """set cutoff distance"""
         self.cutoff = get_ms_array(get_length(cutoff, unit), ms.float32)
-        self.inv_cutoff = msnp.reciprocal(self.cutoff)
         return self
 
-    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
+    def construct(self,
+                  distance: Tensor,
+                  mask: Tensor = None,
+                  cutoff: Tensor = None
+                  ) -> Tuple[Tensor, Tensor]:
         """Compute cutoff.
 
         Args:
-            distances (Tensor):         Tensor of shape (..., K). Data type is float.
-            neighbour_mask (Tensor):    Tensor of shape (..., K). Data type is bool.
+            distance (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
+            cutoff (Tensor): Tensor of shape (), (1,) or (..., K). Data type is float.
 
         Returns:
-            cutoff (Tensor):    Tensor of shape (..., K). Data type is float.
+            decay (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
 
         """
         raise NotImplementedError

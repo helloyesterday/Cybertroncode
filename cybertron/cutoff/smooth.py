@@ -23,7 +23,7 @@
 Cutoff functions
 """
 
-from typing import Union
+from typing import Union, Tuple
 from numpy import ndarray
 
 import mindspore.numpy as msnp
@@ -66,38 +66,42 @@ class SmoothCutoff(Cutoff):
     """
 
     def __init__(self,
-                 cutoff: Union[Length, float, Tensor, ndarray],
-                 length_unit: Union[str, Units] = None,
+                 cutoff: Union[Length, float, Tensor, ndarray] = None,
                  **kwargs
                  ):
-        super().__init__(
-            cutoff=cutoff,
-            length_unit=length_unit,
-            )
+        super().__init__(cutoff=cutoff)
         self._kwargs = get_arguments(locals(), kwargs)
 
-    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
+    def construct(self,
+                  distance: Tensor,
+                  mask: Tensor = None,
+                  cutoff: Tensor = None
+                  ) -> Tuple[Tensor, Tensor]:
         """Compute cutoff.
 
         Args:
-            distances (Tensor):         Tensor of shape (..., K). Data type is float.
-            neighbour_mask (Tensor):    Tensor of shape (..., K). Data type is bool.
+            distance (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
+            cutoff (Tensor): Tensor of shape (), (1,) or (..., K). Data type is float.
 
         Returns:
-            cutoff (Tensor):    Tensor of shape (..., K). Data type is float.
+            decay (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
 
         """
-        dd = distances * self.inv_cutoff
-        cuts = -  6. * F.pow(dd, 5) + 15. * F.pow(dd, 4) - 10. * F.pow(dd, 3)
 
-        cutoffs = 1 + cuts
-        mask_upper = distances > 0
-        mask_lower = distances < self.cutoff
+        if cutoff is None:
+            cutoff = self.cutoff
 
-        if neighbour_mask is not None:
-            mask_lower = F.logical_and(mask_lower, neighbour_mask)
+        dis = distance * msnp.reciprocal(cutoff)
+        decay = 1. - 6. * F.pow(dis, 5) + 15. * F.pow(dis, 4) - 10. * F.pow(dis, 3)
 
-        cutoffs = msnp.where(mask_upper, cutoffs, 1)
-        cutoffs = msnp.where(mask_lower, cutoffs, 0)
+        mask_upper = distance > 0
+        mask_lower = distance < cutoff
+        if mask is not None:
+            mask_lower = F.logical_and(mask_lower, mask)
 
-        return cutoffs, mask_lower
+        decay = msnp.where(mask_upper, decay, 1)
+        decay = msnp.where(mask_lower, decay, 0)
+
+        return decay, mask_lower

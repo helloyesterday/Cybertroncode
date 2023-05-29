@@ -23,7 +23,7 @@
 Cutoff functions
 """
 
-from typing import Union
+from typing import Union, Tuple
 from numpy import ndarray
 
 import mindspore as ms
@@ -47,36 +47,51 @@ class GaussianCutoff(Cutoff):
     """
 
     def __init__(self,
-                 cutoff: Union[Length, float, Tensor, ndarray],
+                 cutoff: Union[Length, float, Tensor, ndarray] = None,
                  sigma: Union[Length, float, Tensor, ndarray] = None,
-                 length_unit: Union[str, Units] = None,
                  **kwargs
                  ):
-        super().__init__(
-            cutoff=cutoff,
-            length_unit=length_unit,
-            )
+        super().__init__(cutoff=cutoff)
         self._kwargs = get_arguments(locals(), kwargs)
 
         self.reg_key = 'gaussian'
         self.name = 'Gaussian Cutoff'
 
-        self.sigma = get_ms_array(get_length(sigma, self.units), ms.float32)
+        self.sigma = get_ms_array(sigma, ms.float32)
+
+    def construct(self,
+                  distance: Tensor,
+                  mask: Tensor = None,
+                  cutoff: Tensor = None
+                  ) -> Tuple[Tensor, Tensor]:
+        """Compute cutoff.
+
+        Args:
+            distance (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
+            cutoff (Tensor): Tensor of shape (), (1,) or (..., K). Data type is float.
+
+        Returns:
+            decay (Tensor): Tensor of shape (..., K). Data type is float.
+            mask (Tensor): Tensor of shape (..., K). Data type is bool.
+
+        """
+        if cutoff is None:
+            cutoff = self.cutoff
+        
+        sigma = self.sigma
         if self.sigma is None:
-            self.sigma = self.cutoff
-        self.inv_sigma2 = msnp.reciprocal(self.sigma * self.sigma)
+            sigma = cutoff
+        
+        dis = distance - cutoff
+        dis2 = dis * dis
+        decay = 1. - F.exp(-0.5 * dis2 * msnp.reciprocal(F.square(sigma)))
 
-    def construct(self, distances: Tensor, neighbour_mask: Tensor = None):
-        dd = distances - self.cutoff
-        dd2 = dd * dd
+        if mask is None:
+            mask = distance < cutoff
+        else:
+            mask = F.logical_and(distance < cutoff, mask)
 
-        gauss = F.exp(-0.5 * dd2 * self.inv_sigma2)
+        decay *= mask
 
-        cuts = 1. - gauss
-        mask = distances < self.cutoff
-        if neighbour_mask is not None:
-            mask = F.logical_and(mask, neighbour_mask)
-
-        cuts = cuts * mask
-
-        return cuts, mask
+        return decay, mask

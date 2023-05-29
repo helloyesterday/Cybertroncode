@@ -53,8 +53,7 @@ _CUTOFF_BY_NAME = {cut.__name__: cut for cut in _CUTOFF_BY_KEY.values()}
 
 
 def get_cutoff(cls_name: Union[Cutoff, str, dict],
-               cutoff: Union[Length, float, Tensor, ndarray],
-               length_unit: Union[str, Units] = None,
+               cutoff: Union[Length, float, Tensor, ndarray] = None,
                **kwargs
                ) -> Cutoff:
     """get cutoff network by name"""
@@ -71,11 +70,9 @@ def get_cutoff(cls_name: Union[Cutoff, str, dict],
             return None
         if cls_name.lower() in _CUTOFF_BY_KEY.keys():
             return _CUTOFF_BY_KEY[cls_name.lower()](cutoff=cutoff,
-                                                    length_unit=length_unit,
                                                     **kwargs)
         if cls_name in _CUTOFF_BY_NAME.keys():
             return _CUTOFF_BY_NAME[cls_name](cutoff=cutoff,
-                                             length_unit=length_unit,
                                              **kwargs)
         raise ValueError(
             "The Cutoff corresponding to '{}' was not found.".format(cls_name))
