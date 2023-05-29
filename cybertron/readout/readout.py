@@ -149,6 +149,7 @@ class Readout(Cell):
                   edge_rep: Tensor,
                   node_emb: Tensor = None,
                   edge_emb: Tensor = None,
+                  edge_cutoff: Tensor = None,
                   atom_type: Tensor = None,
                   atom_mask: Tensor = None,
                   distance: Tensor = None,
