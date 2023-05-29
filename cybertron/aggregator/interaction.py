@@ -224,10 +224,8 @@ class LinearTransformation(InteractionAggregator):
 
         self.reg_key = 'linear'
 
-        self.scale = ms.Parameter(initializer(
-            Normal(1.0), [self.dim]), name="scale")
-        self.shift = ms.Parameter(initializer(
-            Normal(1.0), [self.dim]), name="shift")
+        self.scale = ms.Parameter(initializer(Normal(1.0), [self.dim]), name="scale")
+        self.shift = ms.Parameter(initializer(Normal(1.0), [self.dim]), name="shift")
 
     def __str__(self):
         return "linear"
