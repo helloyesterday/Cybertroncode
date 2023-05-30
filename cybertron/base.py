@@ -305,8 +305,8 @@ class PositionalEmbedding(Cell):
         # (B, A, F) <- (B, F, A) <- (B, A, A, F)
         # g_i = g_ij.diagonal(0, -2, -3).swapaxes(-1, -2)
 
-        # (B, 1, F) <- (B, A, A, F)
-        g_i = g_ij[:, 0, [0], :]
+        # (B, 1, F) <- (B, F) <- (B, A, A, F)
+        g_i = F.expand_dims(g_ij[..., 0, 0, :], -2)
 
         # (B, A, F) * (B, 1, F)
         xgi = F.mul(x_i, g_i)
