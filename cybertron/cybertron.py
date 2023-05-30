@@ -35,13 +35,14 @@ from mindspore import nn
 from mindspore.nn import Cell, CellList
 from mindspore import ops
 from mindspore.ops import functional as F
+from mindspore.ops import composite as C
 from mindspore.train import save_checkpoint
 from mindspore.train._utils import _make_directory
 
 from mindsponge.function import Units, GLOBAL_UNITS
 from mindsponge.function import get_integer, get_tensor, get_ms_array, get_arguments
 from mindsponge.function import GetVector, gather_value, vector_in_pbc
-from mindsponge.function import concat_penulti, concat_last_dim
+from mindsponge.function import concat_first_dim, concat_last_dim, concat_penulti
 from mindsponge.partition import FullConnectNeighbours
 from mindsponge.potential import PotentialCell
 from mindsponge.data import write_yaml
@@ -50,6 +51,22 @@ from .embedding import GraphEmbedding, get_embedding
 from .readout import Readout, get_readout
 from .model import MolecularGNN, get_molecular_model
 from .normalize import ScaleShift
+
+
+_calc_graph = C.MultitypeFuncGraph("calc_graph")
+
+
+@_calc_graph.register("Function", "Function", "Tensor", "Tensor", "Tensor", "Tensor")
+def _graph_fn(calc_distance, calculate, atom_type, atom_mask, coordinate, dis_mask):
+    distance, vectors = calc_distance(coordinate, dis_mask)
+    return calculate(atom_type, atom_mask, distance, dis_mask, vectors)
+
+@_calc_graph.register("Function", "Function", "Tensor", "Tensor", "Tensor", "Tensor", "Tensor", "Tensor")
+def _graph_fn_with_bonds(calc_distance, calculate, atom_type, atom_mask, coordinate,
+                         dis_mask, bonds, bond_mask):
+    distance, vectors = calc_distance(coordinate, dis_mask)
+    return calculate(atom_type, atom_mask, distance, dis_mask, vectors, bonds, bond_mask)
+
 
 _cur_dir = os.getcwd()
 
@@ -511,13 +528,9 @@ class Cybertron(Cell):
                 Type index (atomic number) of atom types.
             pbc_box (Tensor): Tensor of shape (B, D). Data type is float.
                 Box size of periodic boundary condition
-            neighbours (Tensor): Tensor of shape (B, A, N). Data type is int.
-                Indices of other near neighbour atoms around a atom
-            neighbour_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
-                Mask for neighbours
-            bonds (Tensor): Tensor of shape (B, A, N). Data type is int.
+            bonds (Tensor): Tensor of shape (B, A, A). Data type is int.
                 Types index of bond connected with two atoms
-            bond_mask (Tensor): Tensor of shape (B, A, N). Data type is bool.
+            bond_mask (Tensor): Tensor of shape (B, A, A). Data type is bool.
                 Mask for bonds
 
         Returns:
@@ -684,6 +697,8 @@ class CybertronFF(PotentialCell):
                  shift: Union[float, Tensor, List[Union[float, Tensor]]] = 0.,
                  type_ref: Union[Tensor, ndarray, List[Union[Tensor, ndarray]]] = None,
                  use_sub_graph: bool = False,
+                 max_graph_atoms: int = None,
+                 num_walker: int = 1,
                  length_unit: Union[str, Units] = None,
                  energy_unit: Union[str, Units] = 'none',
                  **kwargs
@@ -712,6 +727,8 @@ class CybertronFF(PotentialCell):
         dis_mask = F.logical_and(self.atom_mask.expand_dims(-1), self.atom_mask.expand_dims(-2))
         num_atoms = self.atom_type.shape[-1]
         self.dis_mask = F.logical_and(dis_mask, F.logical_not(F.eye(num_atoms, num_atoms, ms.bool_)))
+
+        self.num_walker = get_integer(num_walker)
 
         self.bonds = None
         self.bond_mask = None
@@ -747,6 +764,12 @@ class CybertronFF(PotentialCell):
         self.large_dis = self.cutoff * 10
 
         self.use_sub_graph = use_sub_graph
+        self.max_graph_atoms = get_integer(max_graph_atoms)
+
+        self.graph_sections = None
+        if self.use_sub_graph and self.max_graph_atoms is not None:
+            total_atoms = self.num_walker * num_atoms
+            self.graph_sections = list(range(self.max_graph_atoms, total_atoms, self.max_graph_atoms))
 
         if pbc_box is not None:
             # (1,D)
@@ -783,6 +806,8 @@ class CybertronFF(PotentialCell):
         # MindSpore < 2.0.0-rc1
         if 'ord' not in signature(ops.norm).parameters.keys():
             self.norm_last_dim = nn.Norm(-1)
+
+        self.map = C.Map()
 
     @property
     def model_name(self) -> str:
@@ -911,7 +936,6 @@ class CybertronFF(PotentialCell):
         return self
 
     def calculate(self,
-                  num_atoms: int,
                   atom_type: Tensor,
                   atom_mask: Tensor,
                   distance: Tensor,
@@ -950,6 +974,10 @@ class CybertronFF(PotentialCell):
                                  bond=bonds,
                                  bond_mask=bond_mask,
                                  )
+
+        num_atoms = atom_type.shape[-1]
+        if atom_mask is not None:
+            num_atoms = msnp.count_nonzero(F.cast(atom_mask, ms.int16), axis=-1, keepdims=True)
 
         if self.scaleshift is not None:
             return self.scaleshift(output, atom_type, num_atoms)
@@ -1007,45 +1035,68 @@ class CybertronFF(PotentialCell):
             num_graph = batch_size * num_atoms
 
             # (B, A, N) <- (B, A)
-            atom_types = gather_value(self.atom_type, neighbour_index)
+            atom_type = gather_value(self.atom_type, neighbour_index)
             # (B, A, N') <- concatenate[(B, A, 1), (B, A, N)]
-            atom_types = concat_last_dim(F.expand_dims(self.atom_type, -1), atom_types)
+            atom_type = concat_last_dim(F.expand_dims(self.atom_type, -1), atom_type)
             # (G, N') <- (B, A, N')
-            atom_types = F.reshape(atom_types, (num_graph, num_neigh))
+            atom_type = F.reshape(atom_type, (num_graph, num_neigh))
             # (G, N')
-            atom_mask = atom_types > 0
+            atom_mask = atom_type > 0
             # (G, N', N')
             dis_mask = F.logical_and(F.expand_dims(atom_mask, -1), F.expand_dims(atom_mask, -2))
             dis_mask = F.logical_and(dis_mask, F.logical_not(F.eye(num_neigh, num_neigh, ms.bool_)))
 
             # (G, 1, D)
-            centers = msnp.zeros((batch_size, 1, dim), coordinate.dtype)
+            center = msnp.zeros((batch_size, 1, dim), coordinate.dtype)
             # (G, N, D) <- (B, A, N, D)
-            coordinates = F.reshape(neighbour_vector, (num_graph, num_neigh0, dim))
+            coordinate = F.reshape(neighbour_vector, (num_graph, num_neigh0, dim))
             # (G, N', D) <- concatenate[(B', 1, D), (B, N, D)]
-            coordinates = concat_penulti((centers, coordinates))
+            coordinate = concat_penulti((center, coordinate))
 
-            # (G, N', N'), (G, N', N', D)
-            distances, vectors = self.calc_distance(coordinates, dis_mask)
+            if self.max_graph_atoms is None:
+                # (G, N', N'), (G, N', N', D)
+                distance, vectors = self.calc_distance(coordinate, dis_mask)
 
-            # (G, Y)
-            outputs = self.calculate(num_atoms=num_neigh,
-                                     atom_type=atom_types,
-                                     atom_mask=atom_mask,
-                                     distance=distances,
-                                     dis_mask=dis_mask,
-                                     vectors=vectors,
-                                     bonds=self.bonds,
-                                     bond_mask=self.bond_mask,
-                                     )
+                # (G, ...)
+                output = self.calculate(atom_type=atom_type,
+                                        atom_mask=atom_mask,
+                                        distance=distance,
+                                        dis_mask=dis_mask,
+                                        vectors=vectors,
+                                        bonds=self.bonds,
+                                        bond_mask=self.bond_mask,
+                                        )
+            else:
+                # [(g, N')] <- (G, N')
+                atom_type = msnp.split(atom_type, self.graph_sections, 0)
+                # [(g, N')] <- (G, N')
+                atom_mask = msnp.split(atom_mask, self.graph_sections, 0)
+                # [(g, N', N'] <- (G, N', N')
+                dis_mask = msnp.split(dis_mask, self.graph_sections, 0)
+                # [(g, N', D] <- (G, N', D)
+                coordinate = msnp.split(coordinate, self.graph_sections, 0)
 
-            # (B, A, Y)
-            return F.reshape(outputs, (batch_size, num_atoms, -1))
+                if self.bonds is None:
+                    outputs = self.map(F.partial(_calc_graph, self.calc_distance, self.calculate),
+                                       atom_type, atom_mask, coordinate, dis_mask)
+                else:
+                    bonds = F.broadcast_to(self.bonds, (batch_size, num_atoms, num_atoms))
+                    bond_mask = F.broadcast_to(self.bond_mask, (batch_size, num_atoms, num_atoms))
+
+                    bonds = msnp.split(bonds, self.graph_sections, 0)
+                    bond_mask = msnp.split(bond_mask, self.graph_sections, 0)
+                    outputs = self.map(F.partial(_calc_graph, self.calc_distance, self.calculate),
+                                       atom_type, atom_mask, coordinate, dis_mask, bonds, bond_mask)
+
+                # (G, ...) <- [(g, ...)]
+                output = concat_first_dim(outputs)
+
+            # (B, A, ...) <- (G, ...)
+            return F.reshape(output, (batch_size, num_atoms) + output.shape[1:])
 
         distance, vectors = self.calc_distance(coordinate, self.dis_mask, pbc_box)
 
-        return self.calculate(num_atoms=self.num_atoms,
-                              atom_type=self.atom_type,
+        return self.calculate(atom_type=self.atom_type,
                               atom_mask=self.atom_mask,
                               distance=distance,
                               dis_mask=self.dis_mask,
