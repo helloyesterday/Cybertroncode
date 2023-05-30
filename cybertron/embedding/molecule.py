@@ -238,12 +238,14 @@ class MolEmbedding(GraphEmbedding):
             else:
                 if self.use_sub_cutoff:
                     # (B, 1, A)
-                    center_dis = distance[..., [0], :]
+                    # print('debug')
+                    center_dis = F.expand_dims(distance[..., 0, :], -2)
                     cutoff = self.cutoff + self.cutoff_buffer - center_dis
                     cutoff = F.maximum(0, F.minimum(cutoff, self.cutoff))
                     dis_cutoff, dis_mask = self.cutoff_fn(distance, dis_mask, cutoff)
                 else:
                     dis_cutoff, dis_mask = self.cutoff_fn(distance, dis_mask)
+        # print('debug')
 
         bond_emb = None
         bond_mask = None
