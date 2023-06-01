@@ -66,20 +66,20 @@ if __name__ == '__main__':
     atom_type = np.array(train_data['atom_type'], np.int32).reshape(1, -1)
     pbc_box = np.ones((1, 3), dtype=np.float32) * 99.9
     scale = train_data['scale']
-    scale2 = np.sqrt(np.var(train_data['force']))
+    scale2 = np.sqrt(np.var(train_data['force'][:,0]))
 
     ds_train = ds.NumpySlicesDataset(
         {'coordinate': train_data['coordinate'],
          'atom_type': atom_type.repeat(num_sample, 0),
          'pbc_box': pbc_box.repeat(num_sample, 0),
-         'label': train_data['force']/scale2,
+         'label': (train_data['force'][:,0]/scale2).reshape(-1,1,3),
          }, shuffle=True)
 
     ds_valid = ds.NumpySlicesDataset(
         {'coordinate': valid_data['coordinate'],
          'atom_type': atom_type.repeat(128, 0),
          'pbc_box': pbc_box.repeat(128, 0),
-         'label': valid_data['force']/scale2,
+         'label': (valid_data['force'][:,0]/scale2).reshape(-1,1,3),
          }, shuffle=True)
 
     data_keys = ds_train.column_names
@@ -95,13 +95,15 @@ if __name__ == '__main__':
         dim_node=dim_feature,
         emb_dis=True,
         emb_bond=False,
-        cutoff=Length(1, 'nm'),
+        cutoff=Length(0.6,'nm'),
         cutoff_fn='smooth',
-        rbf_fn='log_gaussian',
+        rbf_fn='gaussian',
         num_basis=128,
         activation=activation,
         length_unit='nm',
-    )
+        use_sub_cutoff=True,
+        cutoff_buffer=Length(0.15,'nm'),
+        )
 
     mod = MolCT(
         dim_feature=dim_feature,
@@ -109,10 +111,18 @@ if __name__ == '__main__':
         n_interaction=3,
         n_heads=8,
         activation=activation,
-    )
+        coupled_interaction=False,
+        )
 
-    readout = GFNReadout(dim_feature, 128, 'silu', 'relu', 3, Length(1, 'nm'),
-                         'smooth', 'nm', ndim=2, shape=(9, 3), shared_parms=True)
+    readout = GFNReadout(
+        dim_node_rep=dim_feature, 
+        dim_edge_rep=128, 
+        node_activation=activation, 
+        edge_activation='relu', 
+        iterations=3,
+        shared_parms=True,
+        )
+    
     net = Cybertron(embedding=emb, model=mod, readout=readout,
                     num_atoms=9, scale=scale*scale2, shift=0)
 
