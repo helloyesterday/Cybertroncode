@@ -23,7 +23,7 @@
 Metric functions
 """
 
-from typing import List, Tuple
+from typing import Tuple
 
 import numpy as np
 from numpy import ndarray
@@ -67,7 +67,7 @@ class MaxError(Metric):
     def update(self,
                loss: Tensor,
                predicts: Tuple[Tensor],
-               labels: List[Tensor],
+               labels: Tuple[Tensor],
                num_atoms: Tensor,
                *args):
         """update metric"""
@@ -153,7 +153,7 @@ class Error(Metric):
     def update(self,
                loss: Tensor,
                predicts: Tuple[Tensor],
-               labels: List[Tensor],
+               labels: Tuple[Tensor],
                atom_mask: Tensor,
                ):
         """update metric"""
@@ -396,7 +396,7 @@ class Loss(Metric):
     def update(self,
                loss: Tensor,
                predicts: Tuple[Tensor],
-               labels: List[Tensor],
+               labels: Tuple[Tensor],
                num_atoms: Tensor,
                *args):
         #pylint: disable=unused-argument

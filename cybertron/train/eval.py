@@ -114,7 +114,9 @@ class MolWithEvalCell(MoleculeWrapper):
         bonds = inputs[self.bonds_id]
         bond_mask = inputs[self.bond_mask_id]
 
-        labels = [inputs[self.labels_id[i]] for i in range(self.num_labels)]
+        labels = ()
+        for i in range(self.num_labels):
+            labels += (inputs[self.labels_id[i]],)
 
         if atom_type is None:
             atom_type = self.atom_type
@@ -124,17 +126,17 @@ class MolWithEvalCell(MoleculeWrapper):
         normed_labels = None
         if self._normed_evaldata:
             normed_labels = labels
-            labels = [self.scaleshift[i](normed_labels[i], atom_type, num_atoms)
-                      for i in range(self.num_readouts)]
+            labels = ()
+            for i in range(self.num_readouts):
+                labels += (self.scaleshift[i](normed_labels[i], atom_type, num_atoms),)
             if self.calc_force:
-                force_label = self.scaleshift[0].scale_force(normed_labels[-1])
-                labels.append(force_label)
+                labels += (self.scaleshift[0].scale_force(normed_labels[-1]),)
         elif self._loss_fn is not None:
-            normed_labels = [self.scaleshift[i].normalize(labels[i], atom_type, num_atoms)
-                             for i in range(self.num_readouts)]
+            normed_labels = ()
+            for i in range(self.num_readouts):
+                normed_labels += (self.scaleshift[i].normalize(labels[i], atom_type, num_atoms),)
             if self.calc_force:
-                force_label = self.scaleshift[0].normalize_force(labels[-1])
-                normed_labels.append(force_label)
+                normed_labels += (self.scaleshift[0].normalize_force(labels[-1]),)
 
         outputs = self._network(
             coordinate=coordinate,
@@ -189,10 +191,10 @@ class MolWithEvalCell(MoleculeWrapper):
 
         if self.add_cast_fp32:
             outputs_ = ()
-            labels_ = []
+            labels_ = ()
             for i in range(self.num_readouts):
                 outputs_ += (F.cast(outputs[i], ms.float32),)
-                labels_.append(F.cast(labels[i], ms.float32))
+                labels_ += (F.cast(labels[i], ms.float32),)
             outputs = outputs_
             labels = labels_
 
@@ -201,10 +203,10 @@ class MolWithEvalCell(MoleculeWrapper):
         else:
             if self.add_cast_fp32:
                 normed_outputs_ = ()
-                normed_labels_ = []
+                normed_labels_ = ()
                 for i in range(self.num_readouts):
                     normed_outputs_ += (F.cast(normed_outputs[i], ms.float32),)
-                    normed_labels_.append(F.cast(normed_labels[i], ms.float32))
+                    normed_labels_ += (F.cast(normed_labels[i], ms.float32),)
                 normed_outputs = normed_outputs_
                 normed_labels = normed_labels_
 

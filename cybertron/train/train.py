@@ -101,7 +101,9 @@ class MolWithLossCell(MoleculeWrapper):
         bonds = inputs[self.bonds_id]
         bond_mask = inputs[self.bond_mask_id]
 
-        labels = [inputs[self.labels_id[i]] for i in range(self.num_labels)]
+        labels = ()
+        for i in range(self.num_labels):
+            labels += (inputs[self.labels_id[i]],)
 
         outputs = self._network(
             coordinate=coordinate,
