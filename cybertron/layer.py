@@ -30,7 +30,7 @@ from mindspore import Tensor
 from mindspore.nn import Cell
 from mindspore.common.initializer import Initializer
 
-from mindsponge.function import get_integer, get_arguments
+from sponge.function import get_integer, get_arguments
 
 from .activation import get_activation
 

@@ -26,7 +26,7 @@ Deep molecular model
 from typing import Union, List
 
 from mindspore.nn import Cell, CellList
-from mindsponge.function import get_integer, get_arguments
+from sponge.function import get_integer, get_arguments
 
 from .model import MolecularGNN, _model_register
 from ..interaction import Interaction, SchNetInteraction

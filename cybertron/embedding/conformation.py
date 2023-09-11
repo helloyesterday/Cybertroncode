@@ -29,8 +29,8 @@ from mindspore import Tensor
 from mindspore.nn import Cell
 from mindspore.common.initializer import Initializer, Normal
 
-from mindsponge.function import GLOBAL_UNITS, Length
-from mindsponge.function import get_arguments
+from sponge.function import GLOBAL_UNITS, Length
+from sponge.function import get_arguments
 
 from .graph import _embedding_register
 from .molecule import MolEmbedding

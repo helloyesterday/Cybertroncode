@@ -30,8 +30,8 @@ from mindspore import Tensor
 from mindspore.nn import Cell
 
 
-from mindsponge.function import Units, GLOBAL_UNITS
-from mindsponge.function import get_integer
+from sponge.function import Units, GLOBAL_UNITS
+from sponge.function import get_integer
 
 from ..activation import get_activation
 

@@ -34,7 +34,7 @@ except ImportError:
     # MindSpore 2.X
     from mindspore import _checkparam as Validator
 
-from mindsponge.function import get_ms_array
+from sponge.function import get_ms_array
 
 
 __all__ = [
@@ -69,6 +69,7 @@ class TransformerLR(LearningRateSchedule):
         self.learning_rate = learning_rate
 
         self.warmup_steps = get_ms_array(warmup_steps, ms.float32)
+        dimension = get_ms_array(dimension, ms.float32)
         self.dim_scale = msnp.power(dimension, -0.5)
 
     def construct(self, global_step: int):

@@ -7,7 +7,7 @@ from mindspore.ops import operations as P
 from .readout import Readout
 from ..layer import MLP
 
-from mindsponge.function import functions as func
+from sponge.function import functions as func
 
 class GFNLayer(Cell):
     def __init__(self, 

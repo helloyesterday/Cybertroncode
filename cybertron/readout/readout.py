@@ -28,7 +28,7 @@ from typing import Union, Tuple
 from mindspore import Tensor
 from mindspore.nn import Cell
 
-from mindsponge.function import get_integer
+from sponge.function import get_integer
 
 from ..activation import get_activation
 

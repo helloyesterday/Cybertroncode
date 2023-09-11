@@ -28,7 +28,7 @@ from typing import Union
 from mindspore import nn
 from mindspore.nn import Cell
 
-from mindsponge.function import get_arguments
+from sponge.function import get_arguments
 
 from .decoder import Decoder, _decoder_register
 from ..layer import PreActResidual

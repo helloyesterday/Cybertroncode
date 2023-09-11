@@ -28,7 +28,7 @@ from numpy import ndarray
 from mindspore import Tensor
 from mindspore.nn import Cell
 
-from mindsponge.function import Units
+from sponge.function import Units
 
 from .readout import Readout, _READOUT_BY_KEY
 from .node import NodeReadout, AtomwiseReadout, GraphReadout

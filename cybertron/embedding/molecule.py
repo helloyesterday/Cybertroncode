@@ -34,8 +34,8 @@ from mindspore.ops import functional as F
 from mindspore.common.initializer import Initializer, Normal
 
 
-from mindsponge.function import GLOBAL_UNITS, Length, get_length
-from mindsponge.function import get_integer, get_ms_array, get_arguments, get_initializer
+from sponge.function import GLOBAL_UNITS, Length, get_length
+from sponge.function import get_integer, get_ms_array, get_arguments, get_initializer
 
 from .graph import GraphEmbedding, _embedding_register
 from ..cutoff import Cutoff, get_cutoff
@@ -238,14 +238,12 @@ class MolEmbedding(GraphEmbedding):
             else:
                 if self.use_sub_cutoff:
                     # (B, 1, A)
-                    # print('debug')
                     center_dis = F.expand_dims(distance[..., 0, :], -2)
                     cutoff = self.cutoff + self.cutoff_buffer - center_dis
                     cutoff = F.maximum(0, F.minimum(cutoff, self.cutoff))
                     dis_cutoff, dis_mask = self.cutoff_fn(distance, dis_mask, cutoff)
                 else:
                     dis_cutoff, dis_mask = self.cutoff_fn(distance, dis_mask)
-        # print('debug')
 
         bond_emb = None
         bond_mask = None
@@ -271,5 +269,9 @@ class MolEmbedding(GraphEmbedding):
         else:
             node_emb, edge_emb = self.interaction(node_emb, node_emb, bond_emb,
                                                   bond_mask, bond_cutoff)
+            
+        # (B, A, A)
+        diagonal = F.eye(num_atoms, num_atoms, ms.bool_)
+        edge_mask = F.logical_and(edge_mask, F.logical_not(diagonal))
 
         return node_emb, node_mask, edge_emb, edge_mask, edge_cutoff

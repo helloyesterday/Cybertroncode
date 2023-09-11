@@ -30,8 +30,8 @@ import mindspore as ms
 from mindspore.nn import Cell
 from mindspore import Tensor
 
-from mindsponge.function import get_integer, get_ms_array
-from mindsponge.function import Units, GLOBAL_UNITS, Length, get_length
+from sponge.function import get_integer, get_ms_array
+from sponge.function import Units, GLOBAL_UNITS, Length, get_length
 
 
 _RBF_BY_KEY = dict()

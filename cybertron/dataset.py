@@ -27,7 +27,7 @@ from operator import itemgetter
 import numpy as np
 from numpy import ndarray
 
-from mindsponge.function import Units
+from sponge.function import Units
 
 
 class DatasetProcessor:

@@ -32,7 +32,7 @@ from mindspore.ops import functional as F
 from mindspore.numpy import count_nonzero
 from mindspore.nn.loss.loss import LossBase
 
-from mindsponge.function import get_arguments
+from sponge.function import get_arguments
 
 from .wrapper import MoleculeWrapper
 from ..cybertron import Cybertron

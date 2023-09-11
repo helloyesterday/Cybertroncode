@@ -32,7 +32,7 @@ from mindspore import ops
 from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 
-from mindsponge.function import get_integer, get_arguments
+from sponge.function import get_integer, get_arguments
 
 from ..layer import Dense
 from ..base import SoftmaxWithMask

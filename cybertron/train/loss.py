@@ -32,8 +32,8 @@ from mindspore.nn.loss.loss import LossBase
 from mindspore import ops
 from mindspore.ops import functional as F
 
-from mindsponge.function import get_ms_array, get_arguments
-from mindsponge.function import keepdims_mean, keepdims_sum
+from sponge.function import get_ms_array, get_arguments
+from sponge.function import keepdims_mean, keepdims_sum
 
 
 __all__ = [

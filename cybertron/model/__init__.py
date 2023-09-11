@@ -25,7 +25,7 @@ Deep molecular model
 
 from typing import Union
 from mindspore.nn import Cell
-from mindsponge.function import Units
+from sponge.function import Units
 
 from .model import MolecularGNN, _MODEL_BY_KEY
 from .schnet import SchNet

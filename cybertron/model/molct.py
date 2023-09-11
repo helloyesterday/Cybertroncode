@@ -30,7 +30,7 @@ from mindspore.nn import Cell, CellList
 from mindspore import Tensor
 from mindspore.ops import functional as F
 
-from mindsponge.function import get_integer, get_ms_array, get_arguments
+from sponge.function import get_integer, get_ms_array, get_arguments
 
 from .model import MolecularGNN, _model_register
 from ..interaction import Interaction, NeuralInteractionUnit
@@ -184,8 +184,9 @@ class MolCT(MolecularGNN):
                   **kwargs
                   ):
 
-        # (A, A)
-        diagonal = F.eye(edge_mask.shape[-1], edge_mask.shape[-1], ms.bool_)
+        # (B, A, A)
+        diagonal = F.logical_and(node_mask.expand_dims(-1), node_mask.expand_dims(-2))
+
         # (B, A, A)
         edge_mask = F.logical_or(edge_mask, diagonal)
 

@@ -27,7 +27,7 @@ from typing import Union
 from numpy import ndarray
 
 from mindspore import Tensor
-from mindsponge.function import Units, Length
+from sponge.function import Units, Length
 
 from .rbf import RadicalBasisFunctions, _RBF_BY_KEY
 from .gaussian import GaussianBasis

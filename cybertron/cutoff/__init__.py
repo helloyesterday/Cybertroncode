@@ -28,7 +28,7 @@ from numpy import ndarray
 
 from mindspore import Tensor
 
-from mindsponge.function import Units, Length
+from sponge.function import Units, Length
 
 from .cutoff import Cutoff, _CUTOFF_BY_KEY
 from .cosine import CosineCutoff

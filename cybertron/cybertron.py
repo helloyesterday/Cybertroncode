@@ -39,13 +39,13 @@ from mindspore.ops import composite as C
 from mindspore.train import save_checkpoint
 from mindspore.train._utils import _make_directory
 
-from mindsponge.function import Units, GLOBAL_UNITS
-from mindsponge.function import get_integer, get_tensor, get_ms_array, get_arguments
-from mindsponge.function import GetVector, gather_value, vector_in_pbc
-from mindsponge.function import concat_first_dim, concat_last_dim, concat_penulti
-from mindsponge.partition import FullConnectNeighbours
-from mindsponge.potential import PotentialCell
-from mindsponge.data import write_yaml
+from sponge.function import Units, GLOBAL_UNITS
+from sponge.function import get_integer, get_tensor, get_ms_array, get_arguments
+from sponge.function import GetVector, gather_value, vector_in_pbc
+from sponge.function import concat_first_dim, concat_last_dim, concat_penulti
+from sponge.partition import FullConnectNeighbours
+from sponge.potential import PotentialCell
+from sponge.data import write_yaml
 
 from .embedding import GraphEmbedding, get_embedding
 from .readout import Readout, get_readout

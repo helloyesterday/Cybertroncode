@@ -33,8 +33,8 @@ from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
 
-from mindsponge.function import get_arguments
-from mindsponge.function import concat_last_dim, stack_last_dim
+from sponge.function import get_arguments
+from sponge.function import concat_last_dim, stack_last_dim
 
 from ..layer import MLP, Dense
 

@@ -28,7 +28,7 @@ from typing import Union
 from mindspore import Tensor
 from mindspore.nn import Cell
 
-from mindsponge.function import get_integer, get_arguments
+from sponge.function import get_integer, get_arguments
 
 from .layer import MLP, Dense, Residual
 

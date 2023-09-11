@@ -33,7 +33,7 @@ from mindspore.nn import Cell, CellList
 from mindspore.ops import composite as C
 from mindspore.nn.loss.loss import LossBase
 
-from mindsponge.function import get_ms_array
+from sponge.function import get_ms_array
 
 from .loss import MolecularLoss
 from ..normalize import ScaleShift

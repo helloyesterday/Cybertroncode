@@ -32,8 +32,8 @@ from mindspore import Tensor
 from mindspore.ops import functional as F
 from mindspore.ops import composite as C
 
-from mindsponge.function import get_integer, get_ms_array, get_arguments
-from mindsponge.function import Length, get_length
+from sponge.function import get_integer, get_ms_array, get_arguments
+from sponge.function import Length, get_length
 
 from .rbf import RadicalBasisFunctions, _rbf_register
 

@@ -30,7 +30,7 @@ from numpy import ndarray
 from mindspore import Tensor
 from mindspore.nn.metrics import Metric
 
-from mindsponge.function import get_integer, get_arguments
+from sponge.function import get_integer, get_arguments
 
 
 __all__ = [
