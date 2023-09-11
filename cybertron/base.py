@@ -33,8 +33,8 @@ from mindspore.ops import functional as F
 from mindspore.common.parameter import Parameter
 from mindspore.common.initializer import Initializer, initializer, Constant
 
-from mindsponge.function import get_integer, get_arguments
-from mindsponge.function import keepdims_mean, squeeze_last_dim
+from sponge.function import get_integer, get_arguments
+from sponge.function import keepdims_mean, squeeze_last_dim
 
 from .layer import Dense, Residual
 from .cutoff import SmoothCutoff
@@ -314,7 +314,7 @@ class PositionalEmbedding(Cell):
         xgii = F.expand_dims(xgi, -2)
 
         # (B, A, A, F) = (B, A, 1, F) * (B, A, A, F)
-        xgij = F.mul(F.expand_dims(x_i, -2), g_ij)
+        xgij = F.mul(F.expand_dims(x_i, -3), g_ij)
 
         # (B, A, A, F)
         xgii = self.norm(xgii + t)
