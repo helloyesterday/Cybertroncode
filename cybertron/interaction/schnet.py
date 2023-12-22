@@ -115,8 +115,8 @@ class SchNetInteraction(Interaction):
         # (B, A, A, W) * (B, A, A, 1)
         w_ij = g_ij * F.expand_dims(edge_cutoff, -1)
 
-        # (B, A, 1, W) * (B, A, A, W)
-        y = F.expand_dims(x_i, -2) * w_ij
+        # (B, 1, A, W) * (B, A, A, W)
+        y = F.expand_dims(x_i, -3) * w_ij
 
         # (B, A, W) <- (B, A, A, W)
         y = self.agg(y, edge_mask)
