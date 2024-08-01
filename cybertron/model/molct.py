@@ -30,8 +30,13 @@ from mindspore.nn import Cell, CellList
 from mindspore import Tensor
 from mindspore.ops import functional as F
 
-from mindsponge.function import concat_last_dim
-from mindsponge.function import get_integer, get_ms_array, get_arguments
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
+from sponge.function import concat_last_dim
+from sponge.function import get_integer, get_ms_array, get_arguments
 
 from .model import MolecularGNN, _model_register
 from ..interaction import Interaction, NeuralInteractionUnit
