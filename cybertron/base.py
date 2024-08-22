@@ -39,7 +39,7 @@ if path:
     import sys
     sys.path.insert(0, path)
 from sponge.function import get_integer, get_arguments
-from sponge.function import concat_penulti, keepdims_mean, squeeze_last_dim
+from sponge.function import keepdims_mean, squeeze_last_dim
 
 from .layer import Dense, Residual
 from .cutoff import SmoothCutoff

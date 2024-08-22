@@ -45,7 +45,8 @@ if path:
     sys.path.insert(0, path)
 from sponge.function import Units, GLOBAL_UNITS
 from sponge.function import get_integer, get_tensor, get_ms_array, get_arguments
-from sponge.function import GetVector, gather_vector
+from sponge.function import GetVector, gather_value, vector_in_pbc
+from sponge.function import concat_first_dim, concat_last_dim, concat_penulti
 from sponge.partition import FullConnectNeighbours
 from sponge.potential import PotentialCell
 from sponge.data import write_yaml
