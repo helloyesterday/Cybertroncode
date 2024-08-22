@@ -43,7 +43,7 @@ path = os.getenv('MINDSPONGE_HOME')
 if path:
     sys.path.insert(0, path)
 sys.path.append('../..')
-data_dir = './data'
+data_dir = '/home/yuansh/cybertron/tutorials/summerschool2024/data'
 
 from cybertron.model import MolCT
 from cybertron.embedding import MolEmbedding
@@ -83,7 +83,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", help="Set the backend.", default="GPU")
     args = parser.parse_args()
-    context.set_context(mode=context.GRAPH_MODE, device_target=args.e)
+    context.set_context(mode=context.PYNATIVE_MODE, device_target=args.e)
 
     ori_train_set = data_dir + '/dataset/data_normed_trainset_83197_64_64.npz'
     ori_train_set = np.load(ori_train_set)

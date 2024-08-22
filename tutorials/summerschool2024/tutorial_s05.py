@@ -38,7 +38,7 @@ data_dir = './data'
 
 
 from sponge.data import read_yaml
-from cybertron import load_checkpoint
+from mindspore import load_checkpoint
 from cybertron.cybertron import Cybertron
 
 yaml = data_dir + "/conf/configure_discr_discir.yaml"
@@ -102,4 +102,4 @@ ax4.set_xlabel('predicted label (D)')
 ax4.set_ylabel('Count')
 
 fig.savefig('tutorial_s05.png')
-input()
+

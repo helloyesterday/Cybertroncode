@@ -88,7 +88,7 @@ if __name__ == "__main__":
     system = Molecule(atomic_number=atom_types, coordinate=rand_coord)
 
     from sponge.data import read_yaml
-    from cybertron import CybertronFF, load_checkpoint
+    from cybertron import CybertronFF
 
     ckpt_file = data_dir + '/ckpt/cybertron-molct-trained-best.ckpt'
     config_file = data_dir + '/conf/configure_MolCT_trained.yaml'

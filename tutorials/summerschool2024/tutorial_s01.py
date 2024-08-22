@@ -39,6 +39,9 @@ if __name__ == '__main__':
     sys.path.append('../..')
     data_dir = './data'
 
+    import os
+    os.environ['GLOG_v'] = '4'
+
     from cybertron import Cybertron
     from cybertron.model import MolCT, SchNet
     from cybertron.embedding import MolEmbedding

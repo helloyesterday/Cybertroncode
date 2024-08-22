@@ -49,7 +49,7 @@ from cybertron.model import MolCT
 from cybertron.readout import AtomwiseReadout
 from cybertron.cybertron import Cybertron
 from sponge.data import read_yaml
-from cybertron import load_checkpoint
+from mindspore import load_checkpoint
 from mindspore import context
 from mindspore.ops import grad
 
@@ -117,4 +117,3 @@ fig.savefig('tutorial_s02.png')
 
 print(f"Energy MAE: {np.mean(np.abs(pred_shift - real_shift))/4.184}")
 print(f"Force RMSE: {np.mean(np.linalg.norm(pred_F - real_F,axis=-1))/41.84}")
-input()
