@@ -85,14 +85,7 @@ if __name__ == "__main__":
     rand_idx = np.random.choice(traj_array.shape[0], size=simu_batch, replace=False)
     coordinates = traj_array[rand_idx]
     rand_coord = Tensor(coordinates, dtype=ms.float32)
-    distance = coordinates[:,:,None,:] - coordinates[:,None,:,:]
-    distance = np.linalg.norm(distance, axis=-1)
-    bond = np.where(distance < 0.18, 1, 0)
-    bond = np.triu(bond[0], 1)
-    bond = np.vstack((np.where(bond == 1)[0], np.where(bond==1)[1])).T
-    bond = Tensor(np.repeat(bond.reshape(1,-1,2),4, axis=0), dtype=ms.int32)
-    rand_coord = Tensor(coordinates, dtype=ms.float32)
-    system = Molecule(atomic_number=atom_types, coordinate=rand_coord, bonds=bond)
+    system = Molecule(atomic_number=atom_types, coordinate=rand_coord)
 
     from sponge.data import read_yaml
     from cybertron import CybertronFF, load_checkpoint
@@ -112,14 +105,12 @@ if __name__ == "__main__":
     v_gen = VelocityGenerator(simu_temp,seed=seed)
     velocity = v_gen(system.coordinate.shape, system.atom_mass)
 
-    d1 = Distance([5,6])
-    d2 = Distance([0,6])
-    d3 = Distance([0,2])
-    d4 = Distance([2,4])
-    d5 = Distance([3,4])
-    d6 = Distance([3,5])
-    bd1 = Distance([1,3])
-    bd2 = Distance([1,5])
+    d1 = Distance([[5,6]])
+    d2 = Distance([[0,6]])
+    d3 = Distance([[0,2]])
+    d4 = Distance([[2,4]])
+    d5 = Distance([[3,4]])
+    d6 = Distance([[3,5]])
 
     combine = ColvarCombine(colvar=[d3,d6],weights=[-1.0, 1.0])
     metad = Metadynamics(
