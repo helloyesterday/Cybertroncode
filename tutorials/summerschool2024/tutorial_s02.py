@@ -27,9 +27,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import sys
-sys.path.append('../../../mindscience/mindsponge')
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    sys.path.insert(0, path)
 sys.path.append('../..')
-data_dir = '../../../mindscience/mindsponge/data'
+data_dir = './data'
 
 test_dataset = data_dir + "/dataset/data_origin_testset_1024.npz"
 testing = "not" # "trained" or others
@@ -50,7 +53,11 @@ from cybertron import load_checkpoint
 from mindspore import context
 from mindspore.ops import grad
 
-context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("-e", help="Set the backend.", default="GPU")
+args = parser.parse_args()
+context.set_context(mode=context.GRAPH_MODE, device_target=args.e)
 
 config = read_yaml(yaml)
 net = Cybertron(**config)
@@ -106,11 +113,7 @@ ax2.plot(take_real_F / 41.84, np.zeros_like(take_real_F), color='purple')
 ax2.set_xlabel('B3LYP Force (kcal/mol/$\AA$)')
 ax2.set_ylabel('Force Error (kcal/mol/$\AA$)')
 
-
-#fig.savefig('revision/' + testing + 'ener_err.png',dpi=300, transparent=True)
-#fig.savefig('revision/' + testing + 'force_err.png', dpi=300, transparent=True)
-fig.show()
-
+fig.savefig('tutorial_s02.png')
 
 print(f"Energy MAE: {np.mean(np.abs(pred_shift - real_shift))/4.184}")
 print(f"Force RMSE: {np.mean(np.linalg.norm(pred_F - real_F,axis=-1))/41.84}")

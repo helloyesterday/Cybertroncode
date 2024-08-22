@@ -29,9 +29,12 @@ import mindspore as ms
 from mindspore import nn, Tensor, context
 import h5py
 import sys
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    sys.path.insert(0, path)
 sys.path.append('../..')
-sys.path.append('../../../mindscience/mindsponge')
-data_dir = '../../../mindscience/mindsponge/data'
+data_dir = './data'
 
 
 from sponge.data import read_yaml
@@ -51,7 +54,11 @@ test_dataset = {'pos': pos_data, 'neg': neg_data}
 
 Z = np.array([6,1,1,1,6,8,6,8,6,8,6,8,6,8,25])
 
-context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("-e", help="Set the backend.", default="GPU")
+args = parser.parse_args()
+context.set_context(mode=context.GRAPH_MODE, device_target=args.e)
 
 config = read_yaml(yaml)
 net = Cybertron(**config)
@@ -94,5 +101,5 @@ ax4.legend()
 ax4.set_xlabel('predicted label (D)')
 ax4.set_ylabel('Count')
 
-fig.show()
+fig.savefig('tutorial_s05.png')
 input()

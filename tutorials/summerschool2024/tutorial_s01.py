@@ -36,9 +36,8 @@ from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 
 if __name__ == '__main__':
 
-    sys.path.append('../../../mindscience/mindsponge')
     sys.path.append('../..')
-    data_dir = '../../../mindscience/mindsponge/data'
+    data_dir = './data'
 
     from cybertron import Cybertron
     from cybertron.model import MolCT, SchNet
@@ -50,7 +49,11 @@ if __name__ == '__main__':
     from cybertron.train.metric import MAE, RMSE, Loss
     from cybertron.train.callback import TrainMonitor
 
-    context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-e", help="Set the backend.", default="GPU")
+    args = parser.parse_args()
+    context.set_context(mode=context.GRAPH_MODE, device_target=args.e)
 
     sys_name = data_dir + '/dataset/data_normed_'
 

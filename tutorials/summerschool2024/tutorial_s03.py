@@ -36,9 +36,12 @@ if __name__ == "__main__":
     number = '1'
     
     import sys
+    import os
+    path = os.getenv('MINDSPONGE_HOME')
+    if path:
+        sys.path.insert(0, path)
     sys.path.append('../..')
-    sys.path.append('../../../mindscience/mindsponge')
-    data_dir = '../../../mindscience/mindsponge/data'
+    data_dir = './data'
 
     from sponge import Sponge
     from sponge import Molecule
@@ -65,7 +68,11 @@ if __name__ == "__main__":
 
     import h5py
 
-    context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-e", help="Set the backend.", default="GPU")
+    args = parser.parse_args()
+    context.set_context(mode=context.GRAPH_MODE, device_target=args.e)
 
     set_global_units('nm', 'kj/mol')
 

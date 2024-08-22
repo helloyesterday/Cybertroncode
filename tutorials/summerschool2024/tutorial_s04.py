@@ -37,8 +37,13 @@ from mindspore.train import Model
 from mindspore.train.callback import ModelCheckpoint, CheckpointConfig
 from mindspore import context
 
-sys.path.append('../../../mindscience/mindsponge')
+import sys
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    sys.path.insert(0, path)
 sys.path.append('../..')
+data_dir = './data'
 
 from cybertron.model import MolCT
 from cybertron.embedding import MolEmbedding
@@ -74,9 +79,12 @@ class BCELossForDiscriminator(nn.Cell):
 
 if __name__ == '__main__':
 
-    context.set_context(mode=context.GRAPH_MODE, device_target="GPU")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-e", help="Set the backend.", default="GPU")
+    args = parser.parse_args()
+    context.set_context(mode=context.GRAPH_MODE, device_target=args.e)
 
-    data_dir = '../../../mindscience/mindsponge/data'
     ori_train_set = data_dir + '/dataset/data_normed_trainset_83197_64_64.npz'
     ori_train_set = np.load(ori_train_set)
     Z = ori_train_set['atom_type']
