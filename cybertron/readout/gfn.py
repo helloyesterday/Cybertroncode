@@ -7,7 +7,13 @@ from mindspore.ops import operations as P
 from .readout import Readout
 from ..layer import MLP
 
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import functions as func
+from sponge.function import Length, Units, GLOBAL_UNITS
 
 class GFNLayer(Cell):
     def __init__(self, 

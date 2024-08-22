@@ -33,6 +33,11 @@ from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 from mindspore.common.initializer import Normal
 
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import get_arguments
 from sponge.function import concat_last_dim, stack_last_dim
 

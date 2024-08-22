@@ -33,6 +33,11 @@ from mindspore.nn import Cell
 from mindspore import ops
 from mindspore.ops import functional as F
 
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import get_ms_array, get_arguments
 from sponge.function import Units, get_energy_unit
 

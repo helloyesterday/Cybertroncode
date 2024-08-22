@@ -28,6 +28,11 @@ from numpy import ndarray
 from mindspore import Tensor
 from mindspore.nn import Cell
 
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import Units
 
 from .readout import Readout, _READOUT_BY_KEY

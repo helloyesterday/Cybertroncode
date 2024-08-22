@@ -34,6 +34,11 @@ except ImportError:
     # MindSpore 2.X
     from mindspore import _checkparam as Validator
 
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import get_ms_array
 
 

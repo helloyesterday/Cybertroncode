@@ -27,6 +27,11 @@ from typing import Union
 from numpy import ndarray
 
 from mindspore import Tensor
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import Units, Length
 
 from .rbf import RadicalBasisFunctions, _RBF_BY_KEY

@@ -33,6 +33,11 @@ from mindspore.nn import Cell, CellList
 from mindspore.ops import composite as C
 from mindspore.nn.loss.loss import LossBase
 
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import get_ms_array
 
 from .loss import MolecularLoss

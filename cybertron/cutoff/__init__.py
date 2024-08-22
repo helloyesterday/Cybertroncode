@@ -28,6 +28,11 @@ from numpy import ndarray
 
 from mindspore import Tensor
 
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import Units, Length
 
 from .cutoff import Cutoff, _CUTOFF_BY_KEY

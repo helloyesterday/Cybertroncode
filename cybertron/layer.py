@@ -30,6 +30,11 @@ from mindspore import Tensor
 from mindspore.nn import Cell
 from mindspore.common.initializer import Initializer
 
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import get_integer, get_arguments
 
 from .activation import get_activation

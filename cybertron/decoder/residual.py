@@ -28,6 +28,11 @@ from typing import Union
 from mindspore import nn
 from mindspore.nn import Cell
 
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import get_arguments
 
 from .decoder import Decoder, _decoder_register

@@ -29,6 +29,11 @@ from mindspore.nn import Cell, CellList
 from mindspore import Tensor
 from mindspore.ops import functional as F
 
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import get_integer, get_ms_array
 
 from ..interaction import Interaction

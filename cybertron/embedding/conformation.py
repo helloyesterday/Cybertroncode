@@ -29,6 +29,11 @@ from mindspore import Tensor
 from mindspore.nn import Cell
 from mindspore.common.initializer import Initializer, Normal
 
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
 from sponge.function import GLOBAL_UNITS, Length
 from sponge.function import get_arguments
 
