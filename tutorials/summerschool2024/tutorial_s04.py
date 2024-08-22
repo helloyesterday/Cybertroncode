@@ -43,7 +43,7 @@ path = os.getenv('MINDSPONGE_HOME')
 if path:
     sys.path.insert(0, path)
 sys.path.append('../..')
-data_dir = '/home/yuansh/cybertron/tutorials/summerschool2024/data'
+data_dir = './data'
 
 from cybertron.model import MolCT
 from cybertron.embedding import MolEmbedding
