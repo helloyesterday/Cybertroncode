@@ -31,8 +31,13 @@ import mindspore.numpy as msnp
 from mindspore import nn
 from mindspore import Tensor
 
-from mindsponge.function import get_ms_array
-from mindsponge.function import Units, GLOBAL_UNITS, Length, get_length
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
+from sponge.function import get_ms_array
+from sponge.function import Units, GLOBAL_UNITS, Length, get_length
 
 
 _CUTOFF_BY_KEY = dict()

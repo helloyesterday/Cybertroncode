@@ -32,7 +32,12 @@ from mindspore import ops
 from mindspore.ops import functional as F
 from mindspore.common.initializer import initializer
 
-from mindsponge.function import get_integer, get_arguments
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
+from sponge.function import get_integer, get_arguments
 
 from ..layer import Dense
 from ..base import SoftmaxWithMask

@@ -27,7 +27,11 @@ Default configure for graph embedding
 import os
 from typing import Union
 
-from mindsponge.data import read_yaml
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
+from sponge.data import read_yaml
 
 
 def get_embedding_config(configure: Union[str, dict], key: str = None) -> dict:

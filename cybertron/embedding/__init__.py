@@ -27,7 +27,12 @@ from typing import Union
 from mindspore import Tensor
 from mindspore.nn import Cell
 
-from mindsponge.function import Units, GLOBAL_UNITS, Length
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
+from sponge.function import Units, GLOBAL_UNITS, Length
 
 from .graph import GraphEmbedding, _EMBEDDING_BY_KEY
 from .molecule import MolEmbedding

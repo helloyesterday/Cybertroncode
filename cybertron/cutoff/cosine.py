@@ -30,8 +30,13 @@ import mindspore as ms
 from mindspore import Tensor
 from mindspore.ops import functional as F
 
-from mindsponge.function import get_arguments
-from mindsponge.function import Units, Length, PI
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
+from sponge.function import get_arguments
+from sponge.function import Units, Length, PI
 
 from .cutoff import Cutoff, _cutoff_register
 

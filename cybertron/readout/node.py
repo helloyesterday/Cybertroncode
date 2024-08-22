@@ -31,7 +31,12 @@ from mindspore.nn import Cell
 from mindspore.numpy import count_nonzero
 from mindspore.ops import functional as F
 
-from mindsponge.function import get_integer, get_arguments
+import os
+path = os.getenv('MINDSPONGE_HOME')
+if path:
+    import sys
+    sys.path.insert(0, path)
+from sponge.function import get_integer, get_arguments
 
 from .readout import Readout, _readout_register
 from ..aggregator import NodeAggregator, get_node_aggregator
