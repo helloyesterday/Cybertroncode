@@ -39,10 +39,6 @@ from mindspore.ops import composite as C
 from mindspore.train import save_checkpoint
 from mindspore.train._utils import _make_directory
 
-path = os.getenv('MINDSPONGE_HOME')
-if path:
-    import sys
-    sys.path.insert(0, path)
 from sponge.function import Units, GLOBAL_UNITS
 from sponge.function import get_integer, get_tensor, get_ms_array, get_arguments
 from sponge.function import GetVector, gather_value, vector_in_pbc
@@ -718,7 +714,7 @@ class CybertronFF(PotentialCell):
             raise ValueError('The readout function in CybertronFF cannot be None!')
 
         # (1,A)
-        self.atom_type: Tensor = get_ms_array(atom_type, ms.int16).reshape(1, -1)
+        self.atom_type: Tensor = get_ms_array(atom_type, ms.int32).reshape(1, -1)
         self.atom_mask: Tensor = self.atom_type > 0
         max_atoms = self.atom_type.shape[-1]
         if self.atom_mask.all():
@@ -834,38 +830,47 @@ class CybertronFF(PotentialCell):
 
     def calc_distance(self,
                       coordinate: Tensor,
+                      atom_type: Tensor = None,
                       dis_mask: Tensor = None,
                       pbc_box: Tensor = None
                       ) -> Tuple[Tensor, Tensor]:
         """calculate inter-atomic distances"""
 
-        vec_shift = 0
-        if dis_mask is not None:
+        if self.atom_type is None:
+            # (B, A)
+            atom_mask = atom_type > 0
+        else:
+            # (1, A)
+            atom_type = self.atom_type
+            atom_mask = self.atom_mask
+
+        num_atoms = atom_mask.shape[-1]
+
+        distance = None
+        vectors = None
+        dis_mask = None
+        if coordinate is not None:
+            # (B, A, D)
+            coordinate *= self.input_unit_scale
+
+            # (B, A, A, D) = (B, 1, A, D) - (B, A, 1, D)
+            vectors = self.get_vector(coordinate.expand_dims(-2), coordinate.expand_dims(-3), pbc_box)
+
+            # (B, A, A) = (B, A, 1) & (B, 1, A)
+            dis_mask = F.logical_and(F.expand_dims(atom_mask, -1), F.expand_dims(atom_mask, -2))
+            # (A, A)
+            diagonal = F.logical_not(F.eye(num_atoms, num_atoms, ms.bool_))
+            # (B, A, A) & (A, A)
+            dis_mask = F.logical_and(dis_mask, diagonal)
+
             # Add a non-zero value to the neighbour_vector whose mask value is False
             # to prevent them from becoming zero values after Norm operation,
             # which could lead to auto-differentiation errors
-            vec_shift = msnp.where(dis_mask, 0, self.large_dis)
-        vectors = F.expand_dims(coordinate, -3) - F.expand_dims(coordinate, -2)
-
-        if pbc_box is None:
-            # (B, N, D)
-            coord2 = F.square(coordinate)
-            # (B, N, 1, D)
-            a2 = F.expand_dims(coord2, -2)
-            # (B, 1, N, D)
-            b2 = F.expand_dims(coord2, -3)
-            # (B, N, N, D) = (B, N, 1, D) * (B, 1, N, D)
-            ab = F.expand_dims(coordinate, -2) * F.expand_dims(coordinate, -3)
-            # (B, N, N, D) + (B, N, 1, D) + (B, 1, N, D)
-            dis2 = -2 * ab + a2 + b2
-            # (B, N, N, D) + (B, N, N, D)
-            dis2 += vec_shift
-            distance = F.sqrt(dis2)
-        else:
-            # (B, A, A, D) = (B, 1, A, D) - (B, A, 1, D)
-            vectors = vector_in_pbc(vectors, pbc_box)
+            # (B, A, A)
+            large_dis = F.broadcast_to(self.large_dis, dis_mask.shape)
+            large_dis = F.select(dis_mask, F.zeros_like(large_dis), large_dis)
             # (B, A, A, D) = (B, A, A, D) + (B, A, A, 1)
-            vectors += F.expand_dims(vec_shift, -1)
+            vectors += F.expand_dims(large_dis, -1)
 
             if self.norm_last_dim is None:
                 distance = ops.norm(vectors, 2, -1)
@@ -1098,7 +1103,7 @@ class CybertronFF(PotentialCell):
             # (B, A, ...) <- (G, ...)
             return F.reshape(output, (batch_size, num_atoms) + output.shape[1:])
 
-        distance, vectors = self.calc_distance(coordinate, self.dis_mask, pbc_box)
+        distance, vectors = self.calc_distance(coordinate, self.atom_type, self.dis_mask, pbc_box)
 
         return self.calculate(atom_type=self.atom_type,
                               atom_mask=self.atom_mask,
