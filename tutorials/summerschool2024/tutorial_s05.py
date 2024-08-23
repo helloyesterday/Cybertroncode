@@ -41,8 +41,8 @@ from sponge.data import read_yaml
 from mindspore import load_checkpoint
 from cybertron.cybertron import Cybertron
 
-yaml = data_dir + "/conf/configure_discr_discir.yaml"
-ckpt = data_dir + "/ckpt/discr_discir_MolCT-best.ckpt"
+yaml = data_dir + "/conf/configure_discr.yaml"
+ckpt = data_dir + "/ckpt/discr_MolCT-best.ckpt"
 traj = data_dir + "/traj/PES_4-100000-800K-bias-NORMAL2.h5md"
 traj = h5py.File(traj, 'r')['particles']['trajectory1']['position']['value'] # choose different testing trajectory
 traj = np.array(traj,dtype=np.float32)
