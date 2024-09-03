@@ -4,7 +4,7 @@ from mindspore.nn import Cell, LayerNorm, CellList, Dense
 from mindspore.ops import functional as F
 from mindspore.ops import operations as P
 
-from .readout import Readout
+from .readout import Readout, _readout_register
 from ..layer import MLP
 
 import os
@@ -60,6 +60,7 @@ class GFNLayer(Cell):
         return node_rep, edge_rep, edge_msg, edge_dec
 
 
+@_readout_register('gfn')
 class GFNReadout(Readout):
     def __init__(self, 
                  dim_node_rep: int = None, 
