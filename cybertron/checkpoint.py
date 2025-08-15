@@ -108,8 +108,8 @@ def load_checkpoint(ckpt_file_name: str,
                     dec_key: Union[None, bytes] = None,
                     dec_mode: str = "AES-GCM",
                     specify_prefix: Union[str, List[str], Tuple[str]] = None,
-                    format: str = 'ckpt',
-                    crc_check: bool = False
+                    crc_check: bool = False,
+                    format: str = 'ckpt'
                     ) -> dict:
     """
     Load checkpoint info from a specified file.
@@ -133,6 +133,8 @@ def load_checkpoint(ckpt_file_name: str,
                         mode, currently supports 'AES-GCM' and 'AES-CBC'. Default: 'AES-GCM'.
         specify_prefix (Union[str, list[str], tuple[str]]): Parameters starting with the specify_prefix
             will be loaded. Default: None.
+        crc_check (bool) : Whether to perform crc32 validation when loading checkpoint. Default: ``False`` .
+        format (str): Format of the input file, can be "ckpt" or "safetensors". Default: "ckpt".
 
     Returns:
         Dict, key is parameter name, value is a Parameter or string. When the `append_dict` parameter of
@@ -158,6 +160,7 @@ def load_checkpoint(ckpt_file_name: str,
     filter_prefix = _check_prefix(filter_prefix)
     dec_key = Validator.check_isinstance('dec_key', dec_key, (type(None), bytes))
     dec_mode = Validator.check_isinstance('dec_mode', dec_mode, str)
+    crc_check = Validator.check_isinstance('crc_check', crc_check, bool)
     logger.info("Execute the process of loading checkpoint files.")
     checkpoint_list = _parse_ckpt_proto(ckpt_file_name, dec_key, dec_mode, crc_check)
 
