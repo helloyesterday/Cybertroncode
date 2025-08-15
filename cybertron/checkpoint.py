@@ -107,7 +107,9 @@ def load_checkpoint(ckpt_file_name: str,
                     filter_prefix: Union[str, List[str], Tuple[str]] = None,
                     dec_key: Union[None, bytes] = None,
                     dec_mode: str = "AES-GCM",
-                    specify_prefix: Union[str, List[str], Tuple[str]] = None
+                    specify_prefix: Union[str, List[str], Tuple[str]] = None,
+                    format: str = 'ckpt',
+                    crc_check: bool = False
                     ) -> dict:
     """
     Load checkpoint info from a specified file.
@@ -151,13 +153,13 @@ def load_checkpoint(ckpt_file_name: str,
         >>> print(param_dict["conv2.weight"])
         Parameter (name=conv2.weight, shape=(16, 6, 5, 5), dtype=Float32, requires_grad=True)
     """
-    ckpt_file_name = _check_ckpt_file_name(ckpt_file_name)
+    ckpt_file_name = _check_ckpt_file_name(ckpt_file_name,format)
     specify_prefix = _check_prefix(specify_prefix)
     filter_prefix = _check_prefix(filter_prefix)
     dec_key = Validator.check_isinstance('dec_key', dec_key, (type(None), bytes))
     dec_mode = Validator.check_isinstance('dec_mode', dec_mode, str)
     logger.info("Execute the process of loading checkpoint files.")
-    checkpoint_list = _parse_ckpt_proto(ckpt_file_name, dec_key, dec_mode)
+    checkpoint_list = _parse_ckpt_proto(ckpt_file_name, dec_key, dec_mode, crc_check)
 
     parameter_dict = {}
     try:
