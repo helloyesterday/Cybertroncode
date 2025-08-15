@@ -154,7 +154,7 @@ class MoleculeWrapper(Cell):
 
         self.atom_type = None
         if (context.get_context("mode") == context.PYNATIVE_MODE and
-                'atom_type' in self._network.__dict__['_tensor_list'].keys()) or \
+                'atom_type' in self._network.__dict__['_kwargs'].keys()) or \
                 (context.get_context("mode") == context.GRAPH_MODE and
                  'atom_type' in self._network.__dict__.keys()):
             self.atom_type = self._network.atom_type
